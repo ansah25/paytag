@@ -1,0 +1,28 @@
+node_modules/
+dist/
+coverage/
+.env
+.env.example
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Next.js build output
+.next/
+out/
+
+# Local tooling
+.claude/
+
+# Internal docs — keep local only
+project_spec.md
+
+# Frontend env example (not pushed per project preference)
+web/.env.local.example
+
