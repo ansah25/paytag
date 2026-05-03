@@ -19,6 +19,7 @@ out/
 
 # Local tooling
 .claude/
+CLAUDE.md
 
 # Internal docs — keep local only
 project_spec.md
