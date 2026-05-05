@@ -2,54 +2,28 @@
 
 > Username-to-wallet identity layer for multi-chain crypto payments.
 
-Replace `0x4f3edf83…d8a3c2` with `@derrick`. Paytag maps human-readable usernames to wallet addresses across Ethereum, Solana, and Bitcoin — and lets anyone send native ETH to a username with one click.
+Replace `0x4f3edf83…d8a3c2` with `@derrick`. Paytag maps human-readable usernames to wallet addresses across Ethereum, Solana, and Bitcoin.
 
-## Status
+## Live
 
-MVP complete (spec phases 1–4):
+- **API:** <https://api.paytag.dev>
+- **dApp:** <https://www.paytag.dev>
+- **SDK:** [`@paytagdev/sdk`](https://www.npmjs.com/package/@paytagdev/sdk) on npm
 
-- ✅ Wallet-signature auth (nonce + EIP-191 + JWT)
-- ✅ Username registration with uniqueness + format rules
-- ✅ Multi-chain address mapping (ethereum, solana, bitcoin)
-- ✅ Public resolution API
-- ✅ Next.js dApp: wallet connect, sign-in, registration, address management
-- ✅ Send-to-username flow on EVM chains via Wagmi
+## SDK
 
-## Architecture
-
-```
-┌────────────────────────────────────┐
-│  Frontend  (web/)                  │   Next.js 14 + Wagmi v2 + viem
-│  ──────────────────                │   - / public resolver
-│  • /                               │   - /app  state machine
-│  • /app                            │   - /pay/:username  send flow
-│  • /pay/:username                  │
-└────────────────┬───────────────────┘
-                 │  HTTP / JSON
-                 ▼
-┌────────────────────────────────────┐
-│  Backend API  (src/)               │   Node.js + Express + TypeScript
-│  ──────────────────                │   - thin controllers
-│  controllers → services → models   │   - business logic in services
-│  + JWT middleware, zod validation  │
-└────────────────┬───────────────────┘
-                 │  @supabase/supabase-js
-                 ▼
-┌────────────────────────────────────┐
-│  Supabase / PostgreSQL             │
-│  users · wallet_mappings · nonces  │
-└────────────────────────────────────┘
+```bash
+npm install @paytagdev/sdk
 ```
 
-## Tech stack
+```ts
+import { resolve } from '@paytagdev/sdk';
 
-| Layer | Choice |
-|---|---|
-| Backend | Node.js, Express, TypeScript, Zod, jsonwebtoken, ethers |
-| Database | Supabase (Postgres) with RLS policies |
-| Frontend | Next.js 14 (App Router), React 18, Tailwind |
-| Wallet | Wagmi v2 + viem, injected connector (MetaMask) |
-| Tests | Jest + ts-jest |
+const user = await resolve('derrick');
+// { username: 'derrick', addresses: { ethereum: '0x4f3edf83…', … } }
+```
+
+Zero config — the SDK ships with `https://api.paytag.dev` as the default base URL. See [`packages/sdk/README.md`](packages/sdk/README.md) for `resolveAddress`, `available`, custom clients, and error codes.
 
 ## API
 
@@ -61,6 +35,9 @@ MVP complete (spec phases 1–4):
 | POST | `/register` | JWT | Register a username |
 | POST | `/add-address` | JWT | Add or update an address for a chain |
 | GET | `/resolve/:username` | — | Resolve username → addresses |
+| GET | `/available/:username` | — | Check whether a username is free |
+
+Public read endpoints (`/resolve`, `/available`, `/health`) are CORS-open. `/resolve` responses carry `Cache-Control: public, max-age=30, stale-while-revalidate=60`.
 
 **Resolution response**
 
@@ -75,6 +52,12 @@ MVP complete (spec phases 1–4):
 }
 ```
 
+**Error response**
+
+```json
+{ "error": "Username not found", "code": "USER_NOT_FOUND" }
+```
+
 ## Auth flow
 
 1. Client calls `GET /auth/nonce?wallet=0x…` → receives `{ nonce }`
@@ -82,19 +65,33 @@ MVP complete (spec phases 1–4):
 3. Client POSTs `{ wallet, signature }` to `/auth/verify` → receives `{ token, wallet }`
 4. Client uses `Authorization: Bearer <token>` on protected routes
 
-The nonce is single-use (deleted after verify) and TTL-bounded (default 300s) to prevent replay.
+Nonces are single-use (deleted on verify) and TTL-bounded (default 300 s) to prevent replay.
 
 ## Username rules
 
 Lowercase, 3–20 characters, `[a-z0-9_]`. One username per wallet.
 
-## Supported chains
+## Architecture
 
-| Chain | Format | Tx support in dApp |
-|---|---|---|
-| `ethereum` | EVM hex (lowercased) | ✅ Native ETH via Wagmi |
-| `solana` | base58 (32–44) | Receive only (copy address) |
-| `bitcoin` | P2PKH, P2SH, or Bech32 | Receive only (copy address) |
+```
+┌──────────────────────────────────────┐
+│  Backend API  (src/)                 │   Node.js + Express + TypeScript
+│  controllers → services → models     │   - thin controllers
+│  + JWT middleware, zod validation    │   - business logic in services
+└────────────────┬─────────────────────┘
+                 │  @supabase/supabase-js
+                 ▼
+┌──────────────────────────────────────┐
+│  Supabase / PostgreSQL               │
+│  users · wallet_mappings · nonces    │
+└──────────────────────────────────────┘
+```
+
+| Layer | Choice |
+|---|---|
+| Backend | Node.js, Express, TypeScript, Zod, jsonwebtoken, ethers |
+| Database | Supabase (Postgres) with RLS policies |
+| Tests | Jest + ts-jest |
 
 ## Local setup
 
@@ -102,9 +99,8 @@ Lowercase, 3–20 characters, `[a-z0-9_]`. One username per wallet.
 
 - Node.js ≥ 20
 - A Supabase project (free tier is fine)
-- A browser wallet (MetaMask) for the frontend
 
-### Backend
+### Run the API
 
 ```bash
 npm install
@@ -112,71 +108,43 @@ cp .env.example .env
 # Fill in SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET (32+ chars)
 ```
 
-Apply the schema once in your Supabase SQL editor:
-
-```bash
-# paste contents of supabase/migrations/0001_init.sql into the editor
-```
-
-Run:
+Apply the schema once in your Supabase SQL editor by pasting the contents of `supabase/migrations/0001_init.sql`.
 
 ```bash
 npm run dev   # http://localhost:3000
 ```
 
-### Frontend
+## Repo layout
 
-```bash
-cd web
-npm install
-cp .env.local.example .env.local
-npm run dev   # http://localhost:3001
+```
+.
+├── src/                  # Backend (Express + TS)
+│   ├── config/           # env, supabase client
+│   ├── controllers/      # route handlers (thin)
+│   ├── services/         # auth, user, wallet (business logic)
+│   ├── middleware/       # auth, validate, errorHandler
+│   ├── routes/           # router wiring
+│   ├── utils/
+│   ├── app.ts
+│   └── index.ts
+├── packages/sdk/         # @paytagdev/sdk (npm package)
+├── web/                  # Next.js dApp (deployed at paytag.dev)
+├── supabase/migrations/  # SQL schema
+└── tests/                # Backend Jest tests
 ```
 
-Visit `http://localhost:3001`, connect MetaMask, register a username on `/app`, then try `/pay/<username>` (use a Sepolia testnet faucet for free test ETH).
+The repo is an npm workspace; `npm install` at the root installs everything.
 
 ## Scripts
-
-**Backend (root)**
 
 | Script | Action |
 |---|---|
 | `npm run dev` | API with hot-reload |
 | `npm run build` | Compile TypeScript |
 | `npm start` | Run compiled build |
-| `npm test` | Run Jest tests |
-
-**Frontend (`web/`)**
-
-| Script | Action |
-|---|---|
-| `npm run dev` | Next.js dev server |
-| `npm run build` | Production build |
-| `npm run type-check` | TypeScript check only |
-
-## Project layout
-
-```
-.
-├── src/                        # Backend (Express + TS)
-│   ├── config/                 # env, supabase client
-│   ├── controllers/            # route handlers (thin)
-│   ├── services/               # auth, user, wallet (business logic)
-│   ├── middleware/             # auth, validate, errorHandler
-│   ├── routes/                 # router wiring
-│   ├── utils/errors.ts
-│   ├── app.ts
-│   └── index.ts
-├── supabase/
-│   └── migrations/0001_init.sql
-├── tests/                      # Jest unit tests
-├── web/                        # Next.js frontend
-│   ├── app/                    # App Router pages
-│   ├── components/
-│   └── lib/                    # api client, wagmi, auth, chains
-├── project_spec.md
-└── CLAUDE.md
-```
+| `npm test` | Backend tests |
+| `npm run sdk:build` | Build the SDK |
+| `npm run sdk:test` | Run SDK tests |
 
 ## Roadmap
 
@@ -184,7 +152,7 @@ Visit `http://localhost:3001`, connect MetaMask, register a username on `/app`, 
 - [x] Phase 2 — Resolution + multi-chain
 - [x] Phase 3 — Frontend MVP
 - [x] Phase 4 — Payments (EVM)
-- [ ] Phase 5 — JavaScript SDK + npm package
+- [x] Phase 5 — JavaScript SDK + npm package
 - [ ] Future — On-chain verification, ERC-20 sends, Solana/Bitcoin tx initiation, payment links with amount, social recovery
 
 ## Security

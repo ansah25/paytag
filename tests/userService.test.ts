@@ -1,5 +1,10 @@
 import './setup';
-import { normalizeUsername, validateUsername, USERNAME_REGEX } from '../src/services/userService';
+import {
+  normalizeUsername,
+  validateUsername,
+  USERNAME_REGEX,
+  RESERVED_USERNAMES,
+} from '../src/services/userService';
 import { BadRequestError } from '../src/utils/errors';
 
 describe('userService - username validation', () => {
@@ -20,7 +25,7 @@ describe('userService - username validation', () => {
       '',
       'ab',
       'a'.repeat(21),
-      'Derrick', // uppercase
+      'Derrick',
       'has-dash',
       'has space',
       'emoji😀',
@@ -28,6 +33,28 @@ describe('userService - username validation', () => {
     ];
     for (const name of invalid) {
       expect(() => validateUsername(name)).toThrow(BadRequestError);
+    }
+  });
+
+  it('rejects reserved usernames with USERNAME_RESERVED code', () => {
+    for (const name of ['app', 'admin', 'paytag', 'send', 'claim']) {
+      expect(RESERVED_USERNAMES.has(name)).toBe(true);
+      try {
+        validateUsername(name);
+        fail('expected throw');
+      } catch (err) {
+        expect(err).toBeInstanceOf(BadRequestError);
+        expect((err as BadRequestError).errorCode).toBe('USERNAME_RESERVED');
+      }
+    }
+  });
+
+  it('uses USERNAME_INVALID_FORMAT code for malformed input', () => {
+    try {
+      validateUsername('Has-Dash');
+      fail('expected throw');
+    } catch (err) {
+      expect((err as BadRequestError).errorCode).toBe('USERNAME_INVALID_FORMAT');
     }
   });
 });

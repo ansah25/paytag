@@ -29,6 +29,7 @@ export const resolve: RequestHandler = async (req, res, next) => {
   try {
     const { username } = req.params as z.infer<typeof resolveParamsSchema>;
     const result = await walletService.resolveByUsername(username);
+    res.set('Cache-Control', 'public, max-age=30, stale-while-revalidate=60');
     res.json(result);
   } catch (err) {
     next(err);

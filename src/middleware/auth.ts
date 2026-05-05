@@ -11,7 +11,7 @@ declare module 'express-serve-static-core' {
 export const requireAuth: RequestHandler = (req, _res, next) => {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
-    next(new UnauthorizedError('Missing bearer token'));
+    next(new UnauthorizedError('Missing bearer token', 'TOKEN_MISSING'));
     return;
   }
 

@@ -5,9 +5,10 @@ import { useState } from 'react';
 interface Props {
   value: string;
   label?: string;
+  variant?: 'quiet' | 'pill';
 }
 
-export function CopyButton({ value, label = 'Copy' }: Props) {
+export function CopyButton({ value, label = 'Copy', variant = 'quiet' }: Props) {
   const [copied, setCopied] = useState(false);
 
   const onClick = async () => {
@@ -20,12 +21,17 @@ export function CopyButton({ value, label = 'Copy' }: Props) {
     }
   };
 
+  if (variant === 'pill') {
+    return (
+      <button onClick={onClick} className="btn-bare !py-2 !px-4 !text-[13px]">
+        <span>{copied ? 'Copied' : label}</span>
+      </button>
+    );
+  }
+
   return (
-    <button
-      onClick={onClick}
-      className="text-xs text-muted hover:text-white border border-border rounded px-2 py-1"
-    >
-      {copied ? 'Copied' : label}
+    <button onClick={onClick} className="btn-quiet">
+      <span>{copied ? 'Copied' : label}</span>
     </button>
   );
 }

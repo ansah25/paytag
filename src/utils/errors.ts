@@ -1,6 +1,7 @@
 export class AppError extends Error {
   constructor(
-    public readonly code: number,
+    public readonly status: number,
+    public readonly errorCode: string,
     message: string,
   ) {
     super(message);
@@ -9,25 +10,25 @@ export class AppError extends Error {
 }
 
 export class BadRequestError extends AppError {
-  constructor(message = 'Bad request') {
-    super(400, message);
+  constructor(message = 'Bad request', errorCode = 'BAD_REQUEST') {
+    super(400, errorCode, message);
   }
 }
 
 export class UnauthorizedError extends AppError {
-  constructor(message = 'Unauthorized') {
-    super(401, message);
+  constructor(message = 'Unauthorized', errorCode = 'UNAUTHORIZED') {
+    super(401, errorCode, message);
   }
 }
 
 export class NotFoundError extends AppError {
-  constructor(message = 'Not found') {
-    super(404, message);
+  constructor(message = 'Not found', errorCode = 'NOT_FOUND') {
+    super(404, errorCode, message);
   }
 }
 
 export class ConflictError extends AppError {
-  constructor(message = 'Conflict') {
-    super(409, message);
+  constructor(message = 'Conflict', errorCode = 'CONFLICT') {
+    super(409, errorCode, message);
   }
 }

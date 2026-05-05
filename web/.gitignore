@@ -1,6 +1,5 @@
-node_modules/
+# Most ignores live in the repo-root .gitignore.
+# This file covers Next.js / Vercel-specific paths only.
 .next/
 out/
-.env*.local
-*.log
-.DS_Store
+.vercel/

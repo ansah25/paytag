@@ -1,23 +1,23 @@
 import { ErrorRequestHandler } from 'express';
 import { ZodError } from 'zod';
 import { AppError } from '../utils/errors';
+import { logger } from '../utils/logger';
 
-export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   if (err instanceof AppError) {
-    res.status(err.code).json({ error: err.message, code: err.code });
+    res.status(err.status).json({ error: err.message, code: err.errorCode });
     return;
   }
 
   if (err instanceof ZodError) {
     res.status(400).json({
       error: 'Validation failed',
-      code: 400,
+      code: 'VALIDATION_ERROR',
       details: err.flatten().fieldErrors,
     });
     return;
   }
 
-  // eslint-disable-next-line no-console
-  console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error', code: 500 });
+  logger.error('unhandled', { path: req.path, err: err instanceof Error ? err.message : String(err) });
+  res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
 };

@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import * as authController from '../controllers/authController';
 import * as userController from '../controllers/userController';
 import * as walletController from '../controllers/walletController';
+import * as availabilityController from '../controllers/availabilityController';
 
 export const router = Router();
 
@@ -41,4 +42,10 @@ router.get(
   '/resolve/:username',
   validate(walletController.resolveParamsSchema, 'params'),
   walletController.resolve,
+);
+
+router.get(
+  '/available/:username',
+  validate(availabilityController.availabilityParamsSchema, 'params'),
+  availabilityController.checkAvailability,
 );

@@ -11,13 +11,13 @@ export function ConnectWallet() {
       <button
         onClick={() => injected && connect({ connector: injected })}
         disabled={!injected || isPending}
-        className="bg-accent hover:opacity-90 disabled:opacity-40 text-white font-medium px-6 py-3 rounded-lg"
+        className="btn-primary"
       >
-        {isPending ? 'Connecting…' : 'Connect wallet'}
+        <span>{isPending ? 'Connecting…' : 'Connect wallet'}</span>
       </button>
-      {error && <p className="text-sm text-red-300">{error.message}</p>}
+      {error && <p className="text-sm text-danger">{error.message}</p>}
       {!injected && (
-        <p className="text-sm text-muted">
+        <p className="text-sm text-ink-3">
           No injected wallet detected. Install MetaMask or another browser wallet.
         </p>
       )}
@@ -28,10 +28,7 @@ export function ConnectWallet() {
 export function DisconnectButton() {
   const { disconnect } = useDisconnect();
   return (
-    <button
-      onClick={() => disconnect()}
-      className="text-sm text-muted hover:text-white"
-    >
+    <button onClick={() => disconnect()} className="btn-quiet">
       Disconnect
     </button>
   );

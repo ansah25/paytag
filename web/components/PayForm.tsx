@@ -10,11 +10,14 @@ import {
 } from 'wagmi';
 import { parseEther } from 'viem';
 import { getChainInfo, isSupportedTxChain } from '@/lib/chains';
+import { NetworkSelector } from './NetworkSelector';
 
 interface Props {
   username: string;
   recipient: `0x${string}`;
 }
+
+const QUICK_AMOUNTS = ['0.005', '0.01', '0.05', '0.1'];
 
 export function PayForm({ username, recipient }: Props) {
   const { address, isConnected } = useAccount();
@@ -30,10 +33,9 @@ export function PayForm({ username, recipient }: Props) {
     reset,
   } = useSendTransaction();
 
-  const {
-    isLoading: confirming,
-    isSuccess: confirmed,
-  } = useWaitForTransactionReceipt({ hash });
+  const { isLoading: confirming, isSuccess: confirmed } = useWaitForTransactionReceipt({
+    hash,
+  });
 
   const [amount, setAmount] = useState('');
   const [parseError, setParseError] = useState<string | null>(null);
@@ -59,14 +61,14 @@ export function PayForm({ username, recipient }: Props) {
 
   if (!isConnected) {
     return (
-      <div className="space-y-3">
-        <p className="text-muted text-sm">Connect a wallet to send.</p>
+      <div className="space-y-4">
+        <p className="text-ink-2">Connect a wallet to send.</p>
         <button
           onClick={() => injected && connect({ connector: injected })}
           disabled={!injected || connecting}
-          className="bg-accent hover:opacity-90 disabled:opacity-40 text-white font-medium px-6 py-3 rounded-lg"
+          className="btn-primary"
         >
-          {connecting ? 'Connecting…' : 'Connect wallet'}
+          <span>{connecting ? 'Connecting…' : 'Connect wallet'}</span>
         </button>
       </div>
     );
@@ -74,63 +76,102 @@ export function PayForm({ username, recipient }: Props) {
 
   if (!isSupportedTxChain(chainId)) {
     return (
-      <div className="p-4 rounded-lg bg-yellow-950/30 border border-yellow-800/50 text-yellow-200 text-sm">
-        Switch your wallet to Ethereum mainnet or Sepolia to send.
+      <div className="space-y-5">
+        <div className="bg-amber/10 border border-amber/40 text-amber-900 rounded-xl p-4 text-sm">
+          <span className="font-semibold">Switch network.</span> Pick a supported network
+          to send on.
+        </div>
+        <NetworkSelector />
       </div>
     );
   }
 
   if (confirmed && hash && chainInfo) {
     return (
-      <div className="space-y-3">
-        <div className="p-4 rounded-lg bg-emerald-950/30 border border-emerald-800/50 text-emerald-200 text-sm">
-          Sent {amount} {chainInfo.nativeSymbol} to @{username} on {chainInfo.name}.
+      <div className="space-y-6">
+        <div className="rounded-2xl p-6 border border-success/30 bg-success/5">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-full bg-success/15 flex items-center justify-center text-success font-bold">
+              ✓
+            </div>
+            <div>
+              <div className="eyebrow text-success">Sent</div>
+              <div className="font-display font-bold text-2xl md:text-3xl text-ink mt-1 leading-tight">
+                <span className="numeric">{amount}</span> {chainInfo.nativeSymbol} to{' '}
+                <span className="text-primary">@{username}</span>
+              </div>
+              <div className="text-sm text-ink-3 mt-1">
+                Confirmed on {chainInfo.name}
+              </div>
+            </div>
+          </div>
         </div>
         <a
           href={chainInfo.explorerTxUrl(hash)}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-accent text-sm hover:underline break-all"
+          className="btn-bare"
         >
-          View transaction on {chainInfo.name} explorer →
+          <span>View transaction</span>
+          <span aria-hidden>↗</span>
         </a>
       </div>
     );
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div className="text-sm text-muted">
-        Network: <span className="text-white">{chainInfo?.name}</span>
-      </div>
+    <form onSubmit={onSubmit} className="space-y-7">
+      <NetworkSelector />
 
-      <div className="space-y-2">
-        <label className="text-sm text-muted block">Amount ({chainInfo?.nativeSymbol})</label>
-        <input
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          placeholder="0.01"
-          inputMode="decimal"
-          className="w-full bg-panel border border-border rounded-lg px-4 py-3 outline-none focus:border-accent"
-        />
+      <div>
+        <div className="eyebrow-muted mb-3">Amount</div>
+        <div className="flex items-baseline gap-3 border border-hairline focus-within:border-primary focus-within:shadow-[0_0_0_4px_rgba(84,105,212,0.15)] rounded-2xl px-5 py-4 bg-white transition-all">
+          <input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            placeholder="0.00"
+            inputMode="decimal"
+            className="flex-1 bg-transparent border-0 outline-none font-display font-bold text-[44px] md:text-[56px] leading-none text-ink placeholder:text-ink-4/40 numeric min-w-0"
+          />
+          <span className="font-mono text-base font-semibold text-ink-2 numeric">
+            {chainInfo?.nativeSymbol}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 mt-3">
+          {QUICK_AMOUNTS.map((q) => (
+            <button
+              key={q}
+              type="button"
+              onClick={() => setAmount(q)}
+              className="font-mono text-xs font-semibold text-ink-2 bg-paper border border-hairline hover:border-primary hover:text-primary rounded-full px-3 py-1.5 numeric transition-colors"
+            >
+              {q}
+            </button>
+          ))}
+        </div>
       </div>
 
       {sendingToSelf && (
-        <div className="text-xs text-yellow-300">
-          Heads up: this is your own wallet.
+        <div className="text-xs text-amber italic flex items-center gap-1.5">
+          <span>⚠</span>
+          <span>This is your own wallet.</span>
         </div>
       )}
 
       <button
         type="submit"
         disabled={signing || confirming || !amount.trim()}
-        className="bg-accent hover:opacity-90 disabled:opacity-40 text-white font-medium px-6 py-3 rounded-lg"
+        className="btn-primary w-full justify-center !py-4 !text-base"
       >
-        {signing
-          ? 'Confirm in wallet…'
-          : confirming
-            ? 'Waiting for confirmation…'
-            : `Send ${chainInfo?.nativeSymbol ?? ''}`}
+        <span>
+          {signing
+            ? 'Confirm in wallet…'
+            : confirming
+              ? 'Awaiting confirmation…'
+              : amount
+                ? `Send ${amount} ${chainInfo?.nativeSymbol ?? ''}`
+                : `Send ${chainInfo?.nativeSymbol ?? ''}`}
+        </span>
       </button>
 
       {hash && !confirmed && chainInfo && (
@@ -138,16 +179,15 @@ export function PayForm({ username, recipient }: Props) {
           href={chainInfo.explorerTxUrl(hash)}
           target="_blank"
           rel="noopener noreferrer"
-          className="block text-xs text-muted hover:text-white break-all"
+          className="block text-xs text-ink-3 hover:text-primary font-mono break-all"
         >
-          Pending: {hash}
+          Pending — {hash}
         </a>
       )}
 
-      {parseError && <p className="text-sm text-red-300">{parseError}</p>}
+      {parseError && <p className="text-sm text-danger">{parseError}</p>}
       {sendError && (
-        <p className="text-sm text-red-300">
-          {/* user-rejected and other wallet errors arrive with shortMessage on viem errors */}
+        <p className="text-sm text-danger">
           {(sendError as { shortMessage?: string }).shortMessage ?? sendError.message}
         </p>
       )}

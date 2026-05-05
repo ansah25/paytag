@@ -2,12 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light only;
+}
+
 html,
 body {
-  background: #0b0d12;
-  color: #e7eaf0;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  min-height: 100vh;
+  background: #ffffff;
+  color: #0a2540;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: 'ss01' 1, 'cv01' 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 * {
@@ -17,4 +23,242 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+::selection {
+  background: rgba(84, 105, 212, 0.18);
+  color: #0a2540;
+}
+
+/* === Gradient mesh — used as atmospheric backdrop === */
+.mesh-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  opacity: 0.55;
+  will-change: transform;
+}
+
+/* === Buttons === */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(180deg, #5469d4 0%, #4358cb 100%);
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: -0.005em;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset, 0 1px 2px rgba(15, 42, 77, 0.15),
+    0 4px 14px -2px rgba(84, 105, 212, 0.4);
+  transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset, 0 2px 4px rgba(15, 42, 77, 0.18),
+    0 10px 24px -4px rgba(84, 105, 212, 0.45);
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-dark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #0a2540;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 15px;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
+}
+.btn-dark:hover:not(:disabled) {
+  background: #122c52;
+  transform: translateY(-1px);
+}
+.btn-dark:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-bare {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ffffff;
+  color: #0a2540;
+  font-weight: 600;
+  font-size: 14px;
+  padding: 11px 20px;
+  border: 1px solid #e3e8ee;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+.btn-bare:hover:not(:disabled) {
+  border-color: #5469d4;
+  color: #4358cb;
+  transform: translateY(-1px);
+}
+
+.btn-quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: #5469d4;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.btn-quiet:hover:not(:disabled) {
+  background: #eef1ff;
+}
+
+/* === Inputs === */
+.field {
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #e3e8ee;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 15px;
+  color: #0a2540;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+  font-family: inherit;
+}
+.field:focus {
+  outline: none;
+  border-color: #5469d4;
+  box-shadow: 0 0 0 4px rgba(84, 105, 212, 0.15);
+}
+.field::placeholder {
+  color: #8898aa;
+}
+.field-mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 13.5px;
+}
+
+/* === Cards === */
+.card {
+  background: #ffffff;
+  border: 1px solid #e3e8ee;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(15, 42, 77, 0.04), 0 4px 14px -4px rgba(15, 42, 77, 0.05);
+  transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+}
+.card-hover:hover {
+  border-color: rgba(84, 105, 212, 0.4);
+  box-shadow: 0 4px 6px -1px rgba(15, 42, 77, 0.06),
+    0 12px 32px -8px rgba(15, 42, 77, 0.14);
+  transform: translateY(-2px);
+}
+
+/* === Eyebrow label === */
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #5469d4;
+}
+.eyebrow-muted {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #697386;
+}
+
+/* === Code block (Stripe-style dark editor) === */
+.code-card {
+  background: linear-gradient(160deg, #0a2540 0%, #0f2c4f 100%);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 30px 60px -20px rgba(10, 37, 64, 0.45),
+    0 18px 36px -18px rgba(84, 105, 212, 0.4);
+  position: relative;
+}
+.code-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    1200px circle at 0% 0%,
+    rgba(84, 105, 212, 0.18),
+    transparent 40%
+  );
+  pointer-events: none;
+}
+.code-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.code-card pre {
+  padding: 24px;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: #d4e0f5;
+}
+.tok-keyword { color: #ff8da1; }
+.tok-string { color: #b3e57a; }
+.tok-comment { color: #6c84a8; font-style: italic; }
+.tok-fn { color: #88c0d0; }
+.tok-prop { color: #fcc88a; }
+
+/* === Numeric / mono helper === */
+.numeric {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
+}
+
+/* === Reveal stagger === */
+.rise-1 { animation-delay: 60ms; }
+.rise-2 { animation-delay: 160ms; }
+.rise-3 { animation-delay: 280ms; }
+.rise-4 { animation-delay: 420ms; }
+.rise-5 { animation-delay: 560ms; }
+
+/* === Wavy divider === */
+.wave-divider {
+  display: block;
+  width: 100%;
+  height: 60px;
+  color: #ffffff;
+}
+
+/* Section helper */
+.section-tint {
+  background: #f6f9fc;
+}
+
+/* Avatar gradient ring */
+.avatar-ring {
+  background:
+    linear-gradient(white, white) padding-box,
+    linear-gradient(135deg, #5469d4 0%, #7e5cff 50%, #ff5a6e 100%) border-box;
+  border: 2px solid transparent;
 }

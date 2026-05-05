@@ -4,6 +4,7 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 import { supabase } from '../config/supabase';
 import { env } from '../config/env';
 import { BadRequestError, UnauthorizedError } from '../utils/errors';
+import { logger } from '../utils/logger';
 
 export interface JwtPayload {
   sub: string; // wallet address (lowercased)
@@ -18,7 +19,7 @@ const buildSignMessage = (nonce: string): string =>
 
 export const createNonce = async (walletAddress: string): Promise<string> => {
   if (!isValidEvmAddress(walletAddress)) {
-    throw new BadRequestError('Invalid wallet address');
+    throw new BadRequestError('Invalid wallet address', 'INVALID_WALLET');
   }
 
   const wallet = walletAddress.toLowerCase();
@@ -40,7 +41,7 @@ export const verifySignatureAndIssueToken = async (
   signature: string,
 ): Promise<{ token: string; wallet: string }> => {
   if (!isValidEvmAddress(walletAddress)) {
-    throw new BadRequestError('Invalid wallet address');
+    throw new BadRequestError('Invalid wallet address', 'INVALID_WALLET');
   }
 
   const wallet = walletAddress.toLowerCase();
@@ -55,24 +56,28 @@ export const verifySignatureAndIssueToken = async (
     throw new Error(`Failed to load nonce: ${error.message}`);
   }
   if (!data) {
-    throw new UnauthorizedError('No nonce issued for this wallet');
+    logger.warn('auth.no_nonce', { wallet });
+    throw new UnauthorizedError('No nonce issued for this wallet', 'NONCE_NOT_FOUND');
   }
 
   const ageSeconds = (Date.now() - new Date(data.created_at).getTime()) / 1000;
   if (ageSeconds > env.NONCE_TTL_SECONDS) {
     await supabase.from('auth_nonces').delete().eq('wallet_address', wallet);
-    throw new UnauthorizedError('Nonce expired');
+    logger.warn('auth.nonce_expired', { wallet });
+    throw new UnauthorizedError('Nonce expired', 'NONCE_EXPIRED');
   }
 
   let recovered: string;
   try {
     recovered = ethers.verifyMessage(buildSignMessage(data.nonce), signature);
   } catch {
-    throw new UnauthorizedError('Invalid signature');
+    logger.warn('auth.signature_malformed', { wallet });
+    throw new UnauthorizedError('Invalid signature', 'INVALID_SIGNATURE');
   }
 
   if (recovered.toLowerCase() !== wallet) {
-    throw new UnauthorizedError('Signature does not match wallet');
+    logger.warn('auth.signature_mismatch', { wallet });
+    throw new UnauthorizedError('Signature does not match wallet', 'INVALID_SIGNATURE');
   }
 
   // Single-use nonce: delete after successful verification (replay protection)
@@ -82,6 +87,7 @@ export const verifySignatureAndIssueToken = async (
   const options: SignOptions = { expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'] };
   const token = jwt.sign(payload, env.JWT_SECRET, options);
 
+  logger.info('auth.success', { wallet });
   return { token, wallet };
 };
 
@@ -89,12 +95,12 @@ export const verifyToken = (token: string): JwtPayload => {
   try {
     const decoded = jwt.verify(token, env.JWT_SECRET);
     if (typeof decoded === 'string' || !decoded.sub) {
-      throw new UnauthorizedError('Invalid token payload');
+      throw new UnauthorizedError('Invalid token payload', 'TOKEN_INVALID');
     }
     return { sub: String(decoded.sub) };
   } catch (err) {
     if (err instanceof UnauthorizedError) throw err;
-    throw new UnauthorizedError('Invalid or expired token');
+    throw new UnauthorizedError('Invalid or expired token', 'TOKEN_INVALID');
   }
 };
 

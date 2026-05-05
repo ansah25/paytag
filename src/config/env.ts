@@ -12,6 +12,11 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default('7d'),
 
   NONCE_TTL_SECONDS: z.coerce.number().int().positive().default(300),
+
+  // Comma-separated list of allowed origins, e.g.
+  //   "https://paytag.dev,https://www.paytag.dev"
+  // Leave unset in dev to allow any origin.
+  CORS_ORIGIN: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

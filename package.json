@@ -3,13 +3,21 @@
   "version": "0.1.0",
   "description": "Username-to-wallet identity layer for multi-chain crypto payments",
   "main": "dist/index.js",
+  "workspaces": [
+    "packages/*",
+    "web"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "sdk:build": "npm run build -w @paytagdev/sdk",
+    "sdk:test": "npm test -w @paytagdev/sdk",
+    "web:dev": "npm run dev -w paytag-web",
+    "web:build": "npm run build -w paytag-web"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

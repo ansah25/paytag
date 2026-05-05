@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 import { api, ApiError, ResolveResponse } from '@/lib/api';
-import { CopyButton } from './CopyButton';
+import { ChainGlyph } from './ChainGlyph';
 
 const CHAINS = [
   { value: 'ethereum', label: 'Ethereum' },
@@ -20,6 +20,7 @@ export function AddressManager({ username }: Props) {
   const [address, setAddress] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
 
   const refresh = async () => {
     try {
@@ -41,88 +42,95 @@ export function AddressManager({ username }: Props) {
     try {
       await api.addAddress(chain, address.trim());
       setAddress('');
+      setEditing(null);
       await refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to add address');
+      setError(err instanceof ApiError ? err.message : 'Failed to save address');
     } finally {
       setBusy(false);
     }
   };
 
-  const payLink =
-    typeof window !== 'undefined' ? `${window.location.origin}/pay/${username}` : '';
+  const startEdit = (c: string, current: string) => {
+    setChain(c as typeof chain);
+    setAddress(current);
+    setEditing(c);
+    setError(null);
+  };
 
   return (
-    <div className="space-y-8">
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Share your pay link</h2>
-        <div className="p-4 rounded-lg bg-panel border border-border flex items-center justify-between gap-3">
-          <span className="font-mono text-sm break-all">{payLink || '/pay/' + username}</span>
-          {payLink && <CopyButton value={payLink} />}
+    <div>
+      {!resolution ? (
+        <div className="text-sm text-ink-3 py-4">Loading…</div>
+      ) : (
+        <div className="card divide-y divide-hairline">
+          {CHAINS.map((c) => {
+            const addr = resolution.addresses[c.value];
+            const isOpen = editing === c.value;
+            return (
+              <div key={c.value}>
+                <div className="flex items-center gap-4 px-5 py-4">
+                  <ChainGlyph chain={c.value} size={36} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-ink">{c.label}</div>
+                    {addr ? (
+                      <div className="font-mono text-[13px] text-ink-3 break-all numeric mt-0.5">
+                        {addr}
+                      </div>
+                    ) : (
+                      <div className="text-[13px] text-ink-4 italic mt-0.5">
+                        No address mapped yet
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    onClick={() =>
+                      isOpen ? setEditing(null) : startEdit(c.value, addr ?? '')
+                    }
+                    className="btn-bare !py-2 !px-4 !text-[13px] shrink-0"
+                  >
+                    {isOpen ? 'Cancel' : addr ? 'Edit' : 'Add'}
+                  </button>
+                </div>
+                {isOpen && (
+                  <form
+                    onSubmit={onSubmit}
+                    className="px-5 pb-5 pt-1 grid grid-cols-12 gap-3 items-end bg-paper/50"
+                  >
+                    <div className="col-span-12 md:col-span-9">
+                      <label className="eyebrow-muted block mb-2">
+                        {addr ? 'Update' : 'Add'} {c.label} address
+                      </label>
+                      <input
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        placeholder="Wallet address"
+                        className="field field-mono"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        autoFocus
+                      />
+                    </div>
+                    <div className="col-span-12 md:col-span-3 flex gap-2 md:justify-end">
+                      <button
+                        type="submit"
+                        disabled={busy || !address.trim()}
+                        className="btn-primary !text-sm"
+                      >
+                        <span>{busy ? 'Saving…' : 'Save'}</span>
+                      </button>
+                    </div>
+                    {error && (
+                      <p className="col-span-12 text-sm text-danger">{error}</p>
+                    )}
+                  </form>
+                )}
+              </div>
+            );
+          })}
         </div>
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Your addresses</h2>
-        {!resolution ? (
-          <div className="text-muted text-sm">Loading…</div>
-        ) : Object.keys(resolution.addresses).length === 0 ? (
-          <div className="p-4 rounded-lg bg-panel border border-border text-muted text-sm">
-            No addresses yet. Add one below.
-          </div>
-        ) : (
-          <ul className="space-y-2">
-            {Object.entries(resolution.addresses).map(([c, addr]) => (
-              <li
-                key={c}
-                className="p-4 rounded-lg bg-panel border border-border flex items-center justify-between gap-4"
-              >
-                <span className="text-sm text-muted w-24 shrink-0 capitalize">{c}</span>
-                <span className="font-mono text-sm break-all text-right">{addr}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-medium">Add or update</h2>
-        <form onSubmit={onSubmit} className="space-y-3 max-w-xl">
-          <div className="flex gap-3">
-            <select
-              value={chain}
-              onChange={(e) => setChain(e.target.value as typeof chain)}
-              className="bg-panel border border-border rounded-lg px-3 py-3 outline-none focus:border-accent"
-            >
-              {CHAINS.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-            <input
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              placeholder="Wallet address for selected chain"
-              className="flex-1 bg-panel border border-border rounded-lg px-4 py-3 outline-none placeholder:text-muted focus:border-accent font-mono text-sm"
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={busy || !address.trim()}
-            className="bg-accent hover:opacity-90 disabled:opacity-40 text-white font-medium px-6 py-3 rounded-lg"
-          >
-            {busy ? 'Saving…' : 'Save address'}
-          </button>
-          {error && <p className="text-sm text-red-300">{error}</p>}
-          <p className="text-xs text-muted">
-            Adding the same chain twice updates the existing entry.
-          </p>
-        </form>
-      </section>
+      )}
     </div>
   );
 }

@@ -33,18 +33,14 @@ export function SignInPanel({ wallet, onSignedIn }: Props) {
   };
 
   return (
-    <div className="space-y-3">
-      <p className="text-muted text-sm">
-        Sign a message with your wallet to prove ownership. No transaction, no gas.
+    <div className="space-y-4">
+      <p className="text-ink-2">
+        Sign a message with your wallet to prove ownership. No transaction. No gas.
       </p>
-      <button
-        onClick={handleSignIn}
-        disabled={busy}
-        className="bg-accent hover:opacity-90 disabled:opacity-40 text-white font-medium px-6 py-3 rounded-lg"
-      >
-        {busy ? 'Waiting for signature…' : 'Sign in with wallet'}
+      <button onClick={handleSignIn} disabled={busy} className="btn-primary">
+        <span>{busy ? 'Waiting for signature…' : 'Sign in with wallet'}</span>
       </button>
-      {error && <p className="text-sm text-red-300">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   );
 }

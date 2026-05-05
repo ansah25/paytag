@@ -1,29 +1,52 @@
+# Dependencies
 node_modules/
+.pnpm-store/
+.npm/
+
+# Build output
 dist/
+.next/
+out/
 coverage/
+*.tsbuildinfo
+
+# npm pack / publish artifacts
+*.tgz
+
+# Environment / secrets — never commit
 .env
 .env.example
 .env.local
 .env.*.local
+*.pem
+*.key
+
+# Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Editors / IDE
 .vscode/
 .idea/
+*.swp
 
-# TypeScript incremental build cache
-*.tsbuildinfo
-
-# Next.js build output
-.next/
-out/
+# Deploy tooling caches
+.fly/
+.vercel/
+.turbo/
 
 # Local tooling
 .claude/
 CLAUDE.md
 
 # Internal docs — keep local only
-project_spec.md
+docs/
 
 # Frontend env example (not pushed per project preference)
 web/.env.local.example
-

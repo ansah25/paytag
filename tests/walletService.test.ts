@@ -22,9 +22,11 @@ jest.mock('../src/config/supabase', () => {
     const filters: FilterEq[] = [];
     const builder: Record<string, unknown> = {};
     let nestedSelect = false;
+    let cols = '';
 
-    builder.select = (cols: string = '') => {
-      nestedSelect = cols.includes('wallet_mappings');
+    builder.select = (c: string = '') => {
+      cols = c;
+      nestedSelect = c.includes('wallet_mappings');
       return builder;
     };
     builder.eq = (column: string, value: string) => {
@@ -45,7 +47,13 @@ jest.mock('../src/config/supabase', () => {
           error: null,
         });
       }
-      return Promise.resolve({ data: { id: match.id }, error: null });
+      // Honor requested columns (basic): default returns id
+      const data: Record<string, string> = {};
+      const wantedCols = cols ? cols.split(',').map((s) => s.trim()) : ['id'];
+      for (const col of wantedCols) {
+        if (col in match) data[col] = (match as unknown as Record<string, string>)[col];
+      }
+      return Promise.resolve({ data, error: null });
     };
     return builder;
   };
@@ -82,6 +90,7 @@ import {
   validateChainAddress,
   addAddress,
   resolveByUsername,
+  clearResolveCache,
 } from '../src/services/walletService';
 import { BadRequestError, NotFoundError } from '../src/utils/errors';
 
@@ -92,6 +101,7 @@ const seedUser = (id: string, username: string, ownerWallet: string) => {
 beforeEach(() => {
   userStore.clear();
   mappingStore.length = 0;
+  clearResolveCache();
 });
 
 describe('walletService - chain/address validation', () => {

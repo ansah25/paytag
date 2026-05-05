@@ -29,17 +29,28 @@ export function RegisterForm({ onRegistered }: Props) {
   };
 
   return (
-    <form onSubmit={onSubmit} className="space-y-3 max-w-md">
-      <p className="text-muted text-sm">
-        Pick a username (3–20 chars, lowercase letters, numbers, or underscore).
+    <form onSubmit={onSubmit} className="space-y-4">
+      <p className="text-ink-2 text-sm">
+        Pick a username — 3 to 20 lowercase letters, numbers, or underscores.
       </p>
-      <div className="flex items-center bg-panel border border-border rounded-lg px-4 focus-within:border-accent">
-        <span className="text-muted mr-1">@</span>
+      <div className="flex items-center gap-2 bg-white border-2 border-hairline focus-within:border-primary focus-within:shadow-[0_0_0_4px_rgba(84,105,212,0.15)] rounded-2xl px-5 py-3 transition-all">
+        <span
+          className="font-display font-bold text-2xl select-none"
+          style={{
+            backgroundImage:
+              'linear-gradient(135deg, #5469D4 0%, #7E5CFF 50%, #FF5A6E 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}
+        >
+          @
+        </span>
         <input
           value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          onChange={(e) => setUsername(e.target.value.toLowerCase())}
           placeholder="yourname"
-          className="flex-1 bg-transparent py-3 outline-none placeholder:text-muted"
+          className="flex-1 bg-transparent border-0 outline-none text-xl font-display font-semibold text-ink placeholder:text-ink-4/60"
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
@@ -48,11 +59,11 @@ export function RegisterForm({ onRegistered }: Props) {
       <button
         type="submit"
         disabled={busy || !username.trim()}
-        className="bg-accent hover:opacity-90 disabled:opacity-40 text-white font-medium px-6 py-3 rounded-lg"
+        className="btn-primary"
       >
-        {busy ? 'Registering…' : 'Register username'}
+        <span>{busy ? 'Registering…' : 'Register'}</span>
       </button>
-      {error && <p className="text-sm text-red-300">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
     </form>
   );
 }
