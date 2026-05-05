@@ -1,20 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { isAddress } from 'viem';
 import { api, ApiError, ResolveResponse } from '@/lib/api';
 import { CopyButton } from '@/components/CopyButton';
 import { PayForm } from '@/components/PayForm';
+import { PayFormSolana } from '@/components/PayFormSolana';
+import { PayFormBitcoin } from '@/components/PayFormBitcoin';
 import { Avatar } from '@/components/Avatar';
 import { ChainGlyph } from '@/components/ChainGlyph';
 import { GradientMesh } from '@/components/GradientMesh';
+import { CHAIN_LABELS, CHAIN_NATIVE_SYMBOL, PaytagChain } from '@/lib/chains';
 
-const CHAIN_LABELS: Record<string, string> = {
-  ethereum: 'Ethereum',
-  solana: 'Solana',
-  bitcoin: 'Bitcoin',
-};
+const CHAIN_ORDER: PaytagChain[] = ['ethereum', 'solana', 'bitcoin'];
 
 interface Props {
   params: { username: string };
@@ -25,6 +24,7 @@ export default function UserPage({ params }: Props) {
   const [resolution, setResolution] = useState<ResolveResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedChain, setSelectedChain] = useState<PaytagChain | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +41,21 @@ export default function UserPage({ params }: Props) {
       cancelled = true;
     };
   }, [username]);
+
+  const availableChains = useMemo<PaytagChain[]>(() => {
+    if (!resolution) return [];
+    return CHAIN_ORDER.filter((c) => Boolean(resolution.addresses[c]));
+  }, [resolution]);
+
+  useEffect(() => {
+    if (availableChains.length === 0) {
+      setSelectedChain(null);
+      return;
+    }
+    if (!selectedChain || !availableChains.includes(selectedChain)) {
+      setSelectedChain(availableChains[0]);
+    }
+  }, [availableChains, selectedChain]);
 
   if (loading) {
     return (
@@ -75,8 +90,9 @@ export default function UserPage({ params }: Props) {
 
   const evmAddress = resolution.addresses.ethereum;
   const evmIsValid = evmAddress && isAddress(evmAddress);
-  const otherChains = (Object.entries(resolution.addresses) as [string, string][]).filter(
-    ([chain]) => chain !== 'ethereum',
+  const recipientForChain = selectedChain ? resolution.addresses[selectedChain] : undefined;
+  const sideChains = (Object.entries(resolution.addresses) as [PaytagChain, string][]).filter(
+    ([chain]) => chain !== selectedChain,
   );
   const link =
     typeof window !== 'undefined'
@@ -100,7 +116,7 @@ export default function UserPage({ params }: Props) {
               </h1>
               <div className="mt-4 flex items-center gap-3 text-sm">
                 <div className="flex items-center gap-1.5">
-                  {(['ethereum', 'solana', 'bitcoin'] as const).map((c) => {
+                  {CHAIN_ORDER.map((c) => {
                     const has = !!resolution.addresses[c];
                     return (
                       <span
@@ -124,8 +140,39 @@ export default function UserPage({ params }: Props) {
 
       <div className="max-w-[1240px] mx-auto px-6 md:px-10 py-12 md:py-16 grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* Pay column */}
-        <section className="lg:col-span-7 animate-rise rise-2">
-          {evmIsValid ? (
+        <section className="lg:col-span-7 animate-rise rise-2 space-y-5">
+          {availableChains.length > 1 && selectedChain && (
+            <div>
+              <div className="eyebrow-muted mb-3">Pay with</div>
+              <div className="grid grid-cols-3 gap-2">
+                {availableChains.map((c) => {
+                  const active = selectedChain === c;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setSelectedChain(c)}
+                      className={`flex items-center justify-center gap-2 px-3 py-3 rounded-2xl border transition-colors ${
+                        active
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-hairline bg-white text-ink-2 hover:border-primary/40'
+                      }`}
+                    >
+                      <ChainGlyph chain={c} size={20} />
+                      <span className="text-sm font-semibold">
+                        {CHAIN_LABELS[c]}{' '}
+                        <span className="font-mono text-xs text-ink-4">
+                          {CHAIN_NATIVE_SYMBOL[c]}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {selectedChain === 'ethereum' && evmIsValid && (
             <div className="card p-7 md:p-9">
               <div className="eyebrow-muted mb-4">Send instantly</div>
               <PayForm
@@ -133,12 +180,33 @@ export default function UserPage({ params }: Props) {
                 recipient={evmAddress as `0x${string}`}
               />
             </div>
-          ) : (
+          )}
+
+          {selectedChain === 'solana' && recipientForChain && (
             <div className="card p-7 md:p-9">
-              <div className="eyebrow-muted mb-3">No Ethereum address</div>
+              <div className="eyebrow-muted mb-4">Send instantly</div>
+              <PayFormSolana
+                username={resolution.username}
+                recipient={recipientForChain}
+              />
+            </div>
+          )}
+
+          {selectedChain === 'bitcoin' && recipientForChain && (
+            <div className="card p-7 md:p-9">
+              <div className="eyebrow-muted mb-4">Send instantly</div>
+              <PayFormBitcoin
+                username={resolution.username}
+                recipient={recipientForChain}
+              />
+            </div>
+          )}
+
+          {availableChains.length === 0 && (
+            <div className="card p-7 md:p-9">
+              <div className="eyebrow-muted mb-3">No addresses yet</div>
               <p className="text-ink-2">
-                @{resolution.username} hasn&apos;t added an Ethereum address yet. Use one
-                of the addresses on the right with your own wallet.
+                @{resolution.username} hasn&apos;t added any addresses to their paytag yet.
               </p>
             </div>
           )}
@@ -159,11 +227,11 @@ export default function UserPage({ params }: Props) {
             </div>
           </div>
 
-          {otherChains.length > 0 && (
+          {sideChains.length > 0 && (
             <div className="card p-6">
               <div className="eyebrow-muted mb-4">Other chains</div>
               <ul className="space-y-4">
-                {otherChains.map(([chain, address]) => (
+                {sideChains.map(([chain, address]) => (
                   <li
                     key={chain}
                     className="flex items-start gap-3 pb-4 last:pb-0 border-b last:border-0 border-hairline"

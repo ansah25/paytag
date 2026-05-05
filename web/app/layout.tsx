@@ -91,8 +91,26 @@ function SiteFooter() {
           <div className="eyebrow-muted mb-3">Build</div>
           <ul className="space-y-2 text-ink-2">
             <li><Link href="/#developers" className="hover:text-primary">API</Link></li>
-            <li><span className="text-ink-4">SDK · soon</span></li>
-            <li><span className="text-ink-4">Docs · soon</span></li>
+            <li>
+              <a
+                href="https://www.npmjs.com/package/@paytagdev/sdk"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-primary"
+              >
+                SDK
+              </a>
+            </li>
+            <li>
+              <a
+                href="https://api.paytag.dev/health"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-primary"
+              >
+                Status
+              </a>
+            </li>
           </ul>
         </div>
       </div>

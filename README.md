@@ -153,7 +153,8 @@ The repo is an npm workspace; `npm install` at the root installs everything.
 - [x] Phase 3 — Frontend MVP
 - [x] Phase 4 — Payments (EVM)
 - [x] Phase 5 — JavaScript SDK + npm package
-- [ ] Future — On-chain verification, ERC-20 sends, Solana/Bitcoin tx initiation, payment links with amount, social recovery
+- [x] Multi-chain tx initiation — Phantom (Solana) + Sats Connect (Bitcoin)
+- [ ] Future — On-chain verification, ERC-20 / SPL-token sends, payment links with amount, social recovery
 
 ## Security
 

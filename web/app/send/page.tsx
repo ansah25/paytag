@@ -1,15 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { isAddress } from 'viem';
 import { api, ApiError, ResolveResponse } from '@/lib/api';
 import { PayForm } from '@/components/PayForm';
+import { PayFormSolana } from '@/components/PayFormSolana';
+import { PayFormBitcoin } from '@/components/PayFormBitcoin';
 import { Avatar } from '@/components/Avatar';
 import { ChainGlyph } from '@/components/ChainGlyph';
 import { GradientMesh } from '@/components/GradientMesh';
+import { CHAIN_LABELS, CHAIN_NATIVE_SYMBOL, PaytagChain } from '@/lib/chains';
 
 type Status = 'idle' | 'looking' | 'found' | 'missing';
+const CHAIN_ORDER: PaytagChain[] = ['ethereum', 'solana', 'bitcoin'];
 
 const shortAddr = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 
@@ -18,6 +22,7 @@ export default function SendPage() {
   const [resolution, setResolution] = useState<ResolveResponse | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [selectedChain, setSelectedChain] = useState<PaytagChain | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -59,9 +64,25 @@ export default function SendPage() {
     };
   }, [recipient]);
 
+  const availableChains = useMemo<PaytagChain[]>(() => {
+    if (!resolution) return [];
+    return CHAIN_ORDER.filter((c) => Boolean(resolution.addresses[c]));
+  }, [resolution]);
+
+  // Auto-select the first available chain whenever the recipient changes.
+  useEffect(() => {
+    if (availableChains.length === 0) {
+      setSelectedChain(null);
+      return;
+    }
+    if (!selectedChain || !availableChains.includes(selectedChain)) {
+      setSelectedChain(availableChains[0]);
+    }
+  }, [availableChains, selectedChain]);
+
   const evmAddress = resolution?.addresses.ethereum;
-  const canPay = !!(evmAddress && isAddress(evmAddress));
   const trimmed = recipient.trim().replace(/^@/, '').toLowerCase();
+  const recipientForChain = selectedChain ? resolution?.addresses[selectedChain] : undefined;
 
   return (
     <>
@@ -156,7 +177,7 @@ export default function SendPage() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                {(['ethereum', 'solana', 'bitcoin'] as const).map((c) => {
+                {CHAIN_ORDER.map((c) => {
                   const has = !!resolution.addresses[c];
                   return (
                     <span key={c} className={has ? '' : 'opacity-25'} title={c}>
@@ -169,21 +190,84 @@ export default function SendPage() {
           </section>
         )}
 
-        {/* Pay form */}
-        {status === 'found' && resolution && canPay && (
-          <section className="card p-7 md:p-9 animate-rise">
-            <PayForm username={resolution.username} recipient={evmAddress as `0x${string}`} />
+        {/* Chain selector — only when the recipient supports more than one */}
+        {status === 'found' && resolution && availableChains.length > 1 && selectedChain && (
+          <section className="animate-rise">
+            <div className="eyebrow-muted mb-3">Pay with</div>
+            <div className="grid grid-cols-3 gap-2">
+              {availableChains.map((c) => {
+                const active = selectedChain === c;
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setSelectedChain(c)}
+                    className={`flex items-center justify-center gap-2 px-3 py-3 rounded-2xl border transition-colors ${
+                      active
+                        ? 'border-primary bg-primary/5 text-primary'
+                        : 'border-hairline bg-white text-ink-2 hover:border-primary/40'
+                    }`}
+                  >
+                    <ChainGlyph chain={c} size={20} />
+                    <span className="text-sm font-semibold">
+                      {CHAIN_LABELS[c]}{' '}
+                      <span className="font-mono text-xs text-ink-4">
+                        {CHAIN_NATIVE_SYMBOL[c]}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </section>
         )}
 
-        {status === 'found' && resolution && !canPay && (
+        {/* Pay form — chain-aware */}
+        {status === 'found' &&
+          resolution &&
+          selectedChain === 'ethereum' &&
+          evmAddress &&
+          isAddress(evmAddress) && (
+            <section className="card p-7 md:p-9 animate-rise">
+              <PayForm
+                username={resolution.username}
+                recipient={evmAddress as `0x${string}`}
+              />
+            </section>
+          )}
+
+        {status === 'found' &&
+          resolution &&
+          selectedChain === 'solana' &&
+          recipientForChain && (
+            <section className="card p-7 md:p-9 animate-rise">
+              <PayFormSolana
+                username={resolution.username}
+                recipient={recipientForChain}
+              />
+            </section>
+          )}
+
+        {status === 'found' &&
+          resolution &&
+          selectedChain === 'bitcoin' &&
+          recipientForChain && (
+            <section className="card p-7 md:p-9 animate-rise">
+              <PayFormBitcoin
+                username={resolution.username}
+                recipient={recipientForChain}
+              />
+            </section>
+          )}
+
+        {status === 'found' && resolution && availableChains.length === 0 && (
           <div className="card p-6 text-sm text-ink-2">
-            @{resolution.username} hasn&apos;t added an Ethereum address yet.{' '}
+            @{resolution.username} hasn&apos;t added any addresses yet.{' '}
             <Link
               href={`/${resolution.username}`}
               className="text-primary font-semibold hover:underline underline-offset-4"
             >
-              View other chains →
+              View profile →
             </Link>
           </div>
         )}
