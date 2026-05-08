@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
 import { ConnectWallet, DisconnectButton } from '@/components/ConnectWallet';
 import { SignInPanel } from '@/components/SignInPanel';
-import { ClaimUsername } from '@/components/ClaimUsername';
+import { RegisterForm } from '@/components/RegisterForm';
 import { AddressManager } from '@/components/AddressManager';
 import { CopyButton } from '@/components/CopyButton';
 import { Avatar } from '@/components/Avatar';
@@ -42,6 +42,29 @@ export default function AppPage() {
       setAuth(null);
     }
   }, [hydrated, isConnected, address, auth]);
+
+  // Resolve the wallet's authoritative paytag from the server. The username is
+  // a property of the wallet, not of the device — so on every dashboard visit
+  // we re-check rather than trust whatever localStorage says.
+  useEffect(() => {
+    if (!auth?.token) return;
+    let cancelled = false;
+    api
+      .me()
+      .then((me) => {
+        if (cancelled) return;
+        setAuth((prev) =>
+          prev ? { ...prev, username: me.username ?? undefined } : prev,
+        );
+      })
+      .catch(() => {
+        // Leave the cached state alone on transient errors; the
+        // useAuthState hook handles 401 cleanup app-wide.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth?.token]);
 
   // Fetch resolution to compute "active networks" stat
   useEffect(() => {
@@ -93,32 +116,29 @@ export default function AppPage() {
     );
   }
 
-  // === No username yet on this device ===
+  // === Wallet has no paytag yet — register inline ===
+  // The server already told us this wallet owns nothing (via /me). The only
+  // way forward is to claim a fresh name with this wallet — there's no
+  // "load by typing it" path because a paytag belongs to a wallet, not to a
+  // device.
   if (!auth.username) {
     return (
-      <div className="max-w-[1240px] mx-auto px-6 md:px-10 py-16 md:py-24 grid md:grid-cols-2 gap-8">
-        <div className="card p-8 md:p-10">
-          <div className="eyebrow mb-3">No name on this device</div>
+      <PreAuthShell>
+        <div className="card p-8 md:p-10 max-w-md w-full">
+          <div className="eyebrow mb-3">One last step</div>
           <h1 className="font-display font-bold text-3xl md:text-4xl text-ink mb-3 leading-tight">
-            Claim a name to start
+            Claim your paytag
           </h1>
           <p className="text-ink-2 mb-6">
-            You&apos;re signed in but haven&apos;t reserved a paytag yet. Pick one to
-            start getting paid.
+            This wallet doesn&apos;t have a paytag yet. Pick a name and it&apos;ll
+            be permanently linked to{' '}
+            <span className="font-mono text-ink-3 numeric">{shortAddr(address)}</span>.
           </p>
-          <Link href="/" className="btn-primary">
-            <span>Pick a name</span>
-            <span aria-hidden>→</span>
-          </Link>
-        </div>
-        <div className="card p-8 md:p-10">
-          <div className="eyebrow-muted mb-3">Already have one?</div>
-          <ClaimUsername
-            wallet={address}
-            onClaimed={(username) => setAuth({ ...auth, username })}
+          <RegisterForm
+            onRegistered={(username) => setAuth({ ...auth, username })}
           />
         </div>
-      </div>
+      </PreAuthShell>
     );
   }
 

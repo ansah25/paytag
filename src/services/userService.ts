@@ -90,6 +90,21 @@ export const generateSuggestions = async (
   return suggestions;
 };
 
+export const findByWallet = async (
+  ownerWallet: string,
+): Promise<UserRecord | null> => {
+  const wallet = ownerWallet.toLowerCase();
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, username, owner_wallet, created_at')
+    .eq('owner_wallet', wallet)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`Failed to look up wallet: ${error.message}`);
+  }
+  return (data as UserRecord | null) ?? null;
+};
+
 export const registerUsername = async (
   username: string,
   ownerWallet: string,
@@ -99,15 +114,7 @@ export const registerUsername = async (
 
   const wallet = ownerWallet.toLowerCase();
 
-  const { data: existing, error: existingErr } = await supabase
-    .from('users')
-    .select('id')
-    .eq('owner_wallet', wallet)
-    .maybeSingle();
-
-  if (existingErr) {
-    throw new Error(`Failed to check existing user: ${existingErr.message}`);
-  }
+  const existing = await findByWallet(wallet);
   if (existing) {
     throw new ConflictError(
       'This wallet already has a registered username',
@@ -123,6 +130,17 @@ export const registerUsername = async (
 
   if (error) {
     if (error.code === PG_UNIQUE_VIOLATION) {
+      // The DB now enforces unique(owner_wallet) too, so disambiguate by
+      // constraint to give the client a useful error code.
+      const isWalletConflict =
+        typeof error.message === 'string' &&
+        error.message.includes('users_owner_wallet_unique');
+      if (isWalletConflict) {
+        throw new ConflictError(
+          'This wallet already has a registered username',
+          'WALLET_HAS_USERNAME',
+        );
+      }
       throw new ConflictError('That username is already taken', 'USERNAME_TAKEN');
     }
     throw new Error(`Failed to register username: ${error.message}`);

@@ -102,6 +102,10 @@ export interface AddAddressResponse {
   chain: string;
   address: string;
 }
+export interface MeResponse {
+  wallet: string;
+  username: string | null;
+}
 export type ResolveResponse = SdkResolveResponse;
 export type AvailabilityResponse = SdkAvailabilityResponse;
 
@@ -119,6 +123,8 @@ export const api = {
       body: { username },
       auth: true,
     }),
+  me: (signal?: AbortSignal) =>
+    request<MeResponse>('/me', { auth: true, signal }),
   addAddress: async (chain: string, address: string) => {
     const result = await request<AddAddressResponse>('/add-address', {
       method: 'POST',

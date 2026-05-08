@@ -22,7 +22,21 @@ export function SignInPanel({ wallet, onSignedIn }: Props) {
       const { nonce } = await api.getNonce(wallet);
       const signature = await signMessageAsync({ message: buildSignMessage(nonce) });
       const { token, wallet: normalized } = await api.verify(wallet, signature);
-      const state: AuthState = { token, wallet: normalized };
+      // Persist the token before the /me call so api.me() can read it.
+      const baseState: AuthState = { token, wallet: normalized };
+      saveAuth(baseState);
+      // The wallet is the source of truth for which paytag is "yours". Fetch
+      // it server-side immediately so the UI never has a window where the
+      // user could enter a different username than the one their wallet owns.
+      let username: string | undefined;
+      try {
+        const me = await api.me();
+        username = me.username ?? undefined;
+      } catch {
+        // /me failure shouldn't block sign-in — the dashboard will retry on
+        // hydrate. Worst case the user sees the "register a name" path.
+      }
+      const state: AuthState = { ...baseState, username };
       saveAuth(state);
       onSignedIn(state);
     } catch (err) {

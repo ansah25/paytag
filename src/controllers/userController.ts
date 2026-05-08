@@ -24,3 +24,19 @@ export const register: RequestHandler = async (req, res, next) => {
     next(err);
   }
 };
+
+export const me: RequestHandler = async (req, res, next) => {
+  try {
+    if (!req.auth) {
+      throw new UnauthorizedError();
+    }
+    const wallet = req.auth.sub;
+    const user = await userService.findByWallet(wallet);
+    res.json({
+      wallet,
+      username: user?.username ?? null,
+    });
+  } catch (err) {
+    next(err);
+  }
+};

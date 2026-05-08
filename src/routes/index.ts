@@ -31,6 +31,8 @@ router.post(
   userController.register,
 );
 
+router.get('/me', requireAuth, userController.me);
+
 router.post(
   '/add-address',
   requireAuth,

@@ -16,6 +16,7 @@ type Step =
   | 'sign'
   | 'register'
   | 'done'
+  | 'wallet_taken'
   | 'error';
 
 interface Props {
@@ -34,6 +35,7 @@ export default function ClaimPage({ params }: Props) {
   const [step, setStep] = useState<Step>('checking');
   const [message, setMessage] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [existingUsername, setExistingUsername] = useState<string | null>(null);
   const registeringRef = useRef(false);
 
   useEffect(() => {
@@ -81,6 +83,25 @@ export default function ClaimPage({ params }: Props) {
       const signature = await signMessageAsync({ message: buildSignMessage(nonce) });
       const { token, wallet } = await api.verify(address, signature);
       saveAuth({ token, wallet });
+
+      // Before registering, ask the server whether this wallet already owns a
+      // paytag. With one-name-per-wallet enforced, a register call from a
+      // wallet that already owns one would fail — we can give a much better
+      // UX by surfacing the existing name up front.
+      const me = await api.me();
+      if (me.username && me.username !== username) {
+        updateAuth({ username: me.username });
+        setExistingUsername(me.username);
+        setStep('wallet_taken');
+        return;
+      }
+      if (me.username === username) {
+        // Already registered (e.g. user retried the flow) — skip the
+        // duplicate insert and go straight to welcome.
+        updateAuth({ username: me.username });
+        router.replace(`/welcome?u=${encodeURIComponent(me.username)}`);
+        return;
+      }
       setStep('register');
     } catch (err) {
       setStep('error');
@@ -220,6 +241,29 @@ export default function ClaimPage({ params }: Props) {
                 <div className="flex items-center gap-2 text-ink-3 text-sm">
                   <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                   <span>Writing to the database</span>
+                </div>
+              </div>
+            )}
+
+            {step === 'wallet_taken' && (
+              <div className="space-y-5">
+                <div className="eyebrow">Already linked</div>
+                <h2 className="font-display font-bold text-3xl text-ink leading-tight">
+                  This wallet already owns @{existingUsername}
+                </h2>
+                <p className="text-ink-2">
+                  A wallet can only own one paytag. If you want @{username} too,
+                  sign in with a different wallet to claim it. Otherwise, head
+                  to your dashboard for @{existingUsername}.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Link href="/app" className="btn-primary">
+                    <span>Open dashboard</span>
+                    <span aria-hidden>→</span>
+                  </Link>
+                  <Link href="/" className="btn-bare">
+                    <span>Back to home</span>
+                  </Link>
                 </div>
               </div>
             )}
