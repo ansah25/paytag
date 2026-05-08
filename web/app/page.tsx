@@ -67,9 +67,7 @@ export default function HomePage() {
       </section>
 
       {/* === How it works === */}
-      {/* The tint background and soft gradient bleed below carry the eye in
-          from the white hero — no hairline border, the color shift is enough. */}
-      <section className="relative section-tint py-20 md:py-28">
+      <section className="relative py-20 md:py-28">
         <div className="max-w-[1240px] mx-auto px-6 md:px-10">
           <Reveal>
             <div className="max-w-3xl mb-14">
@@ -102,57 +100,31 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* === Developer / dark band === */}
-      {/* The two bleed strips soften what would otherwise be a hard cut from
-          the tint section above into navy, and from navy back into white below.
-          They sit on top of the navy background and fade through it. */}
-      <section
-        id="developers"
-        className="relative overflow-hidden py-24 md:py-32"
-        style={{
-          background:
-            'linear-gradient(180deg, #0A2540 0%, #0F2C4F 45%, #0A2540 100%)',
-        }}
-      >
+      {/* === Developers === */}
+      {/* On a unified white canvas the dark CodeCard becomes the visual
+          anchor; copy and chrome around it use ink colors so nothing fights
+          for attention with the code. */}
+      <section id="developers" className="relative overflow-hidden py-20 md:py-28">
+        {/* Atmospheric blobs — kept low-opacity so they read as faint
+            color rather than a different background. */}
         <div
           aria-hidden
-          className="absolute inset-x-0 top-0 h-24 pointer-events-none"
-          style={{
-            background:
-              'linear-gradient(180deg, #F6F9FC 0%, rgba(246,249,252,0) 100%)',
-          }}
-        />
-        <div
-          aria-hidden
-          className="absolute inset-x-0 bottom-0 h-24 pointer-events-none"
-          style={{
-            background:
-              'linear-gradient(0deg, #ffffff 0%, rgba(255,255,255,0) 100%)',
-          }}
-        />
-        {/* subtle blobs in the dark section */}
-        <div
-          aria-hidden
-          className="absolute -top-40 -left-40 w-[40rem] h-[40rem] rounded-full opacity-30 blur-3xl"
+          className="absolute -top-40 -left-40 w-[40rem] h-[40rem] rounded-full opacity-15 blur-3xl"
           style={{ background: '#5469D4' }}
         />
         <div
           aria-hidden
-          className="absolute -bottom-40 -right-40 w-[36rem] h-[36rem] rounded-full opacity-30 blur-3xl"
+          className="absolute -bottom-40 -right-40 w-[36rem] h-[36rem] rounded-full opacity-15 blur-3xl"
           style={{ background: '#7E5CFF' }}
         />
         <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 grid grid-cols-1 md:grid-cols-12 gap-10 md:gap-16 items-center">
-          <Reveal className="md:col-span-5 text-white">
-            <div
-              className="text-[11.5px] font-bold uppercase tracking-eyebrow mb-3"
-              style={{ color: '#7AA8FF' }}
-            >
-              For developers
-            </div>
-            <h2 className="font-display font-bold text-3xl md:text-5xl leading-[1.05] tracking-tightish">
-              Resolve a name. <span style={{ color: '#7E5CFF' }}>One call.</span>
+          <Reveal className="md:col-span-5">
+            <div className="eyebrow mb-3">For developers</div>
+            <h2 className="font-display font-bold text-3xl md:text-5xl leading-[1.05] tracking-tightish text-ink">
+              Resolve a name.{' '}
+              <span style={{ color: '#7E5CFF' }}>One call.</span>
             </h2>
-            <p className="mt-5 text-white/70 text-lg leading-relaxed max-w-md">
+            <p className="mt-5 text-ink-2 text-lg leading-relaxed max-w-md">
               A TypeScript-first SDK over a predictable JSON API. Stable error codes,
               a 30-second edge cache, and zero config — drop it into a wallet, payment
               app, or invoice tool anywhere a wallet address would otherwise be.
@@ -163,16 +135,11 @@ export default function HomePage() {
                 { v: '3', l: 'chains' },
                 { v: '0$', l: 'to use' },
               ].map((s) => (
-                <div key={s.l} className="border-l-2 border-white/15 pl-4">
-                  <div className="font-display font-bold text-3xl text-white numeric">
+                <div key={s.l} className="border-l-2 border-hairline pl-4">
+                  <div className="font-display font-bold text-3xl text-ink numeric">
                     {s.v}
                   </div>
-                  <div
-                    className="mt-1 text-[10.5px] font-bold uppercase tracking-eyebrow"
-                    style={{ color: '#8CA8D5' }}
-                  >
-                    {s.l}
-                  </div>
+                  <div className="eyebrow-muted mt-1">{s.l}</div>
                 </div>
               ))}
             </div>
@@ -189,7 +156,7 @@ export default function HomePage() {
                 href="https://www.npmjs.com/package/@paytagdev/sdk"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-white/70 hover:text-white transition-colors"
+                className="inline-flex items-center gap-1 text-sm text-ink-3 hover:text-primary transition-colors"
               >
                 View on npm
                 <span aria-hidden>→</span>
@@ -198,7 +165,7 @@ export default function HomePage() {
                 href="https://api.paytag.dev/health"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-sm text-white/70 hover:text-white transition-colors"
+                className="inline-flex items-center gap-1 text-sm text-ink-3 hover:text-primary transition-colors"
               >
                 API status
                 <span aria-hidden>→</span>
@@ -207,8 +174,8 @@ export default function HomePage() {
           </Reveal>
 
           <Reveal className="md:col-span-7" delay={120}>
-            <div className="mb-3 inline-flex items-center gap-2 font-mono text-[12px] text-white/70 bg-white/5 border border-white/10 rounded-md px-3 py-1.5">
-              <span className="text-white/40">$</span>
+            <div className="mb-3 inline-flex items-center gap-2 font-mono text-[12px] text-ink-2 bg-paper border border-hairline rounded-md px-3 py-1.5">
+              <span className="text-ink-4">$</span>
               <span>npm install @paytagdev/sdk</span>
             </div>
             <CodeCard tab="resolve.ts" status="200 OK · 38 ms" />
@@ -221,7 +188,7 @@ export default function HomePage() {
               ].map((t) => (
                 <span
                   key={t}
-                  className="text-[12px] font-semibold px-3 py-1.5 rounded-full text-white/80 border border-white/10 bg-white/5"
+                  className="text-[12px] font-semibold px-3 py-1.5 rounded-full text-ink-2 border border-hairline bg-white"
                 >
                   {t}
                 </span>
