@@ -3,6 +3,7 @@ import { UsernameClaimInput } from '@/components/UsernameClaimInput';
 import { GradientMesh } from '@/components/GradientMesh';
 import { CodeCard } from '@/components/CodeCard';
 import { ChainGlyph } from '@/components/ChainGlyph';
+import { Reveal } from '@/components/Reveal';
 
 export default function HomePage() {
   return (
@@ -66,44 +67,69 @@ export default function HomePage() {
       </section>
 
       {/* === How it works === */}
-      <section className="relative section-tint py-20 md:py-28 border-y border-hairline">
+      {/* The tint background and soft gradient bleed below carry the eye in
+          from the white hero — no hairline border, the color shift is enough. */}
+      <section className="relative section-tint py-20 md:py-28">
         <div className="max-w-[1240px] mx-auto px-6 md:px-10">
-          <div className="max-w-3xl mb-14">
-            <div className="eyebrow mb-3">How it works</div>
-            <h2 className="font-display font-bold text-3xl md:text-5xl tracking-tightish text-ink leading-tight">
-              From wallet address to <span className="text-primary">@yourname</span> in
-              about 30 seconds.
-            </h2>
-          </div>
+          <Reveal>
+            <div className="max-w-3xl mb-14">
+              <div className="eyebrow mb-3">How it works</div>
+              <h2 className="font-display font-bold text-3xl md:text-5xl tracking-tightish text-ink leading-tight">
+                From wallet address to <span className="text-primary">@yourname</span> in
+                about 30 seconds.
+              </h2>
+            </div>
+          </Reveal>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {STEPS.map((s, i) => (
-              <div key={s.t} className="card card-hover p-7">
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center mb-5 text-white font-bold"
-                  style={{ background: s.bg, boxShadow: `0 8px 16px -4px ${s.shadow}` }}
-                >
-                  <span className="font-mono text-sm numeric">
-                    {String(i + 1).padStart(2, '0')}
-                  </span>
+              <Reveal key={s.t} delay={i * 90}>
+                <div className="card card-hover p-7 h-full">
+                  <div
+                    className="w-11 h-11 rounded-xl flex items-center justify-center mb-5 text-white font-bold"
+                    style={{ background: s.bg, boxShadow: `0 8px 16px -4px ${s.shadow}` }}
+                  >
+                    <span className="font-mono text-sm numeric">
+                      {String(i + 1).padStart(2, '0')}
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-semibold text-ink mb-2">{s.t}</h3>
+                  <p className="text-ink-2 leading-relaxed">{s.d}</p>
                 </div>
-                <h3 className="text-xl font-semibold text-ink mb-2">{s.t}</h3>
-                <p className="text-ink-2 leading-relaxed">{s.d}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
 
       {/* === Developer / dark band === */}
+      {/* The two bleed strips soften what would otherwise be a hard cut from
+          the tint section above into navy, and from navy back into white below.
+          They sit on top of the navy background and fade through it. */}
       <section
         id="developers"
-        className="relative overflow-hidden py-20 md:py-28"
+        className="relative overflow-hidden py-24 md:py-32"
         style={{
           background:
             'linear-gradient(180deg, #0A2540 0%, #0F2C4F 45%, #0A2540 100%)',
         }}
       >
+        <div
+          aria-hidden
+          className="absolute inset-x-0 top-0 h-24 pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(180deg, #F6F9FC 0%, rgba(246,249,252,0) 100%)',
+          }}
+        />
+        <div
+          aria-hidden
+          className="absolute inset-x-0 bottom-0 h-24 pointer-events-none"
+          style={{
+            background:
+              'linear-gradient(0deg, #ffffff 0%, rgba(255,255,255,0) 100%)',
+          }}
+        />
         {/* subtle blobs in the dark section */}
         <div
           aria-hidden
@@ -116,7 +142,7 @@ export default function HomePage() {
           style={{ background: '#7E5CFF' }}
         />
         <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 grid grid-cols-1 md:grid-cols-12 gap-10 md:gap-16 items-center">
-          <div className="md:col-span-5 text-white">
+          <Reveal className="md:col-span-5 text-white">
             <div
               className="text-[11.5px] font-bold uppercase tracking-eyebrow mb-3"
               style={{ color: '#7AA8FF' }}
@@ -178,9 +204,9 @@ export default function HomePage() {
                 <span aria-hidden>→</span>
               </a>
             </div>
-          </div>
+          </Reveal>
 
-          <div className="md:col-span-7">
+          <Reveal className="md:col-span-7" delay={120}>
             <div className="mb-3 inline-flex items-center gap-2 font-mono text-[12px] text-white/70 bg-white/5 border border-white/10 rounded-md px-3 py-1.5">
               <span className="text-white/40">$</span>
               <span>npm install @paytagdev/sdk</span>
@@ -201,40 +227,41 @@ export default function HomePage() {
                 </span>
               ))}
             </div>
-          </div>
+          </Reveal>
         </div>
       </section>
 
       {/* === Feature grid === */}
       <section className="py-20 md:py-28">
         <div className="max-w-[1240px] mx-auto px-6 md:px-10">
-          <div className="max-w-2xl mb-14">
-            <div className="eyebrow mb-3">Why paytag</div>
-            <h2 className="font-display font-bold text-3xl md:text-5xl tracking-tightish text-ink leading-tight">
-              Designed to <span className="text-primary">disappear</span> behind the
-              experience.
-            </h2>
-          </div>
+          <Reveal>
+            <div className="max-w-2xl mb-14">
+              <div className="eyebrow mb-3">Why paytag</div>
+              <h2 className="font-display font-bold text-3xl md:text-5xl tracking-tightish text-ink leading-tight">
+                Designed to <span className="text-primary">disappear</span> behind the
+                experience.
+              </h2>
+            </div>
+          </Reveal>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {FEATURES.map((f) => (
-              <div
-                key={f.t}
-                className="card card-hover p-7 relative overflow-hidden"
-              >
-                <div
-                  aria-hidden
-                  className="absolute -right-12 -top-12 w-44 h-44 rounded-full blur-2xl"
-                  style={{ background: f.glow, opacity: 0.18 }}
-                />
-                <div className="relative">
-                  <div className="text-2xl mb-4 numeric font-mono text-ink-3">
-                    {f.icon}
+            {FEATURES.map((f, i) => (
+              <Reveal key={f.t} delay={i * 90}>
+                <div className="card card-hover p-7 relative overflow-hidden h-full">
+                  <div
+                    aria-hidden
+                    className="absolute -right-12 -top-12 w-44 h-44 rounded-full blur-2xl"
+                    style={{ background: f.glow, opacity: 0.18 }}
+                  />
+                  <div className="relative">
+                    <div className="text-2xl mb-4 numeric font-mono text-ink-3">
+                      {f.icon}
+                    </div>
+                    <h3 className="text-lg font-semibold text-ink mb-2">{f.t}</h3>
+                    <p className="text-ink-2 leading-relaxed text-[15px]">{f.d}</p>
                   </div>
-                  <h3 className="text-lg font-semibold text-ink mb-2">{f.t}</h3>
-                  <p className="text-ink-2 leading-relaxed text-[15px]">{f.d}</p>
                 </div>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -244,16 +271,18 @@ export default function HomePage() {
       <section className="relative overflow-hidden">
         <GradientMesh intensity="bold" />
         <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 py-24 md:py-32 text-center">
-          <div className="inline-block bg-white/70 backdrop-blur border border-hairline rounded-full px-3 py-1.5 mb-7 text-xs font-semibold text-ink-2">
-            Names are first-come, first-served
-          </div>
-          <h2 className="font-display font-bold text-4xl md:text-6xl tracking-tightest text-ink max-w-3xl mx-auto leading-[1.05]">
-            Reserve your <span className="text-primary">@name</span> while it&apos;s still
-            yours to take.
-          </h2>
-          <div className="mt-10 max-w-2xl mx-auto card p-6 md:p-7 backdrop-blur-md bg-white/95 text-left">
-            <UsernameClaimInput />
-          </div>
+          <Reveal>
+            <div className="inline-block bg-white/70 backdrop-blur border border-hairline rounded-full px-3 py-1.5 mb-7 text-xs font-semibold text-ink-2">
+              Names are first-come, first-served
+            </div>
+            <h2 className="font-display font-bold text-4xl md:text-6xl tracking-tightest text-ink max-w-3xl mx-auto leading-[1.05]">
+              Reserve your <span className="text-primary">@name</span> while it&apos;s still
+              yours to take.
+            </h2>
+            <div className="mt-10 max-w-2xl mx-auto card p-6 md:p-7 backdrop-blur-md bg-white/95 text-left">
+              <UsernameClaimInput />
+            </div>
+          </Reveal>
         </div>
       </section>
     </>

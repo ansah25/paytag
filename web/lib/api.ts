@@ -105,6 +105,7 @@ export interface AddAddressResponse {
 export interface MeResponse {
   wallet: string;
   username: string | null;
+  createdAt: string | null;
 }
 export type ResolveResponse = SdkResolveResponse;
 export type AvailabilityResponse = SdkAvailabilityResponse;

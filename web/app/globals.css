@@ -242,6 +242,27 @@ a {
 .rise-4 { animation-delay: 420ms; }
 .rise-5 { animation-delay: 560ms; }
 
+/* === Scroll-triggered reveal === */
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 700ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal.is-visible {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
 /* === Wavy divider === */
 .wave-divider {
   display: block;

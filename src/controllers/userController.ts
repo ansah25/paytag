@@ -35,6 +35,7 @@ export const me: RequestHandler = async (req, res, next) => {
     res.json({
       wallet,
       username: user?.username ?? null,
+      createdAt: user?.created_at ?? null,
     });
   } catch (err) {
     next(err);

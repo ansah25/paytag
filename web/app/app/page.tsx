@@ -16,11 +16,19 @@ import { AuthState, clearAuth, getAuth } from '@/lib/auth';
 const shortAddr = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 
 export default function AppPage() {
-  const { address, isConnected } = useAccount();
+  // `status` settles to 'connected' or 'disconnected' once wagmi has finished
+  // its reconnect-from-storage on mount. Until then it's 'connecting' or
+  // 'reconnecting' — and `isConnected` is `false` during that window even
+  // though the user is logged in. Acting on `!isConnected` alone wipes a
+  // valid session on every refresh; gate on `status === 'disconnected'`.
+  const { address, status } = useAccount();
+  const isReconnecting = status === 'connecting' || status === 'reconnecting';
+  const isConnected = status === 'connected';
   const [auth, setAuth] = useState<AuthState | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [origin, setOrigin] = useState('');
   const [resolution, setResolution] = useState<ResolveResponse | null>(null);
+  const [createdAt, setCreatedAt] = useState<string | null>(null);
 
   useEffect(() => {
     setAuth(getAuth());
@@ -30,7 +38,9 @@ export default function AppPage() {
 
   useEffect(() => {
     if (!hydrated) return;
-    if (!isConnected) {
+    // Only treat the wallet as gone once wagmi has settled — otherwise we'd
+    // clear auth during the reconnect window and force a re-sign on refresh.
+    if (status === 'disconnected') {
       if (auth) {
         clearAuth();
         setAuth(null);
@@ -41,7 +51,7 @@ export default function AppPage() {
       clearAuth();
       setAuth(null);
     }
-  }, [hydrated, isConnected, address, auth]);
+  }, [hydrated, status, address, auth]);
 
   // Resolve the wallet's authoritative paytag from the server. The username is
   // a property of the wallet, not of the device — so on every dashboard visit
@@ -56,6 +66,7 @@ export default function AppPage() {
         setAuth((prev) =>
           prev ? { ...prev, username: me.username ?? undefined } : prev,
         );
+        setCreatedAt(me.createdAt);
       })
       .catch(() => {
         // Leave the cached state alone on transient errors; the
@@ -77,6 +88,17 @@ export default function AppPage() {
 
   if (!hydrated) {
     return <div className="max-w-[1240px] mx-auto px-6 md:px-10 py-20 text-ink-3">Loading…</div>;
+  }
+
+  // While wagmi is restoring the wallet from storage, hold the page instead
+  // of flashing the "Connect a wallet" shell — otherwise refreshing the
+  // dashboard looks like a forced sign-out.
+  if (isReconnecting) {
+    return (
+      <div className="max-w-[1240px] mx-auto px-6 md:px-10 py-20 text-ink-3">
+        Restoring session…
+      </div>
+    );
   }
 
   // === Pre-auth: connect ===
@@ -144,12 +166,30 @@ export default function AppPage() {
 
   // === Authenticated dashboard ===
   const payLink = `${origin || ''}/${auth.username}`;
-  const displayLink = origin
-    ? `${origin.replace(/^https?:\/\//, '')}/${auth.username}`
-    : `/${auth.username}`;
+  const displayHost = origin ? origin.replace(/^https?:\/\//, '') : 'paytag.dev';
+  const shareText = `Pay me with @${auth.username} on Paytag`;
+  const shareIntents = {
+    x: `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(payLink)}`,
+    whatsapp: `https://wa.me/?text=${encodeURIComponent(`${shareText} ${payLink}`)}`,
+    sms: `sms:?&body=${encodeURIComponent(`${shareText} ${payLink}`)}`,
+    email: `mailto:?subject=${encodeURIComponent('Pay me on Paytag')}&body=${encodeURIComponent(`${shareText}\n\n${payLink}`)}`,
+  };
   const activeNetworks = resolution
     ? Object.values(resolution.addresses).filter(Boolean).length
     : 0;
+  // "May 2026"-style label. Falls back to an em-dash while /me is in flight so
+  // the stat tile keeps its size and the layout doesn't shift on hydrate.
+  const memberSince = createdAt
+    ? new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(
+        new Date(createdAt),
+      )
+    : '—';
+  const chainSteps = [
+    { chain: 'ethereum' as const, label: 'Add Ethereum address', done: !!resolution?.addresses.ethereum },
+    { chain: 'solana' as const, label: 'Add Solana address', done: !!resolution?.addresses.solana },
+    { chain: 'bitcoin' as const, label: 'Add Bitcoin address', done: !!resolution?.addresses.bitcoin },
+  ];
+  const allChainsDone = resolution !== null && chainSteps.every((s) => s.done);
 
   return (
     <>
@@ -176,11 +216,10 @@ export default function AppPage() {
           </div>
 
           {/* Stats */}
-          <div className="mt-10 grid grid-cols-3 gap-4 max-w-2xl animate-rise rise-2">
+          <div className="mt-10 grid grid-cols-2 gap-4 max-w-xl animate-rise rise-2">
             {[
               { l: 'Active networks', v: `${activeNetworks}/3` },
-              { l: 'Length', v: `${auth.username.length}` },
-              { l: 'Cost', v: '$0' },
+              { l: 'Member since', v: memberSince },
             ].map((s) => (
               <div
                 key={s.l}
@@ -197,91 +236,98 @@ export default function AppPage() {
       </section>
 
       <div className="max-w-[1240px] mx-auto px-6 md:px-10 py-12 md:py-16 grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-        {/* Send CTA */}
-        <Link
-          href="/send"
-          className="lg:col-span-3 group relative overflow-hidden rounded-2xl p-7 md:p-9 text-white animate-rise rise-1"
-          style={{
-            background:
-              'linear-gradient(135deg, #5469D4 0%, #7E5CFF 50%, #FF5A6E 100%)',
-            boxShadow:
-              '0 12px 28px -8px rgba(84,105,212,0.45), 0 24px 48px -12px rgba(126,92,255,0.35)',
-          }}
-        >
-          <div
-            aria-hidden
-            className="absolute -right-20 -top-20 w-72 h-72 rounded-full bg-white/15 blur-3xl"
-          />
-          <div className="relative flex items-center justify-between gap-6">
-            <div>
-              <div className="text-[11.5px] font-bold uppercase tracking-eyebrow text-white/70 mb-2">
-                Primary action
-              </div>
-              <div className="font-display font-bold text-3xl md:text-5xl leading-tight tracking-tightish">
-                Send money
-              </div>
-              <div className="mt-2 text-white/75 max-w-md">
-                Pay any @paytag with one click. Auto-resolves and lets you pick the
-                network.
-              </div>
-            </div>
-            <div className="hidden md:flex items-center justify-center w-16 h-16 rounded-full bg-white/15 backdrop-blur text-2xl group-hover:bg-white/25 transition-colors">
-              →
-            </div>
-          </div>
-        </Link>
+        {/* Hero Receive — the dashboard's anchor. The link itself is the
+            visual: hostname in muted ink, username in the brand gradient. */}
+        <section className="lg:col-span-2 card p-7 md:p-9 animate-rise rise-1">
+          <div className="eyebrow mb-2">Receive</div>
+          <h2 className="font-display font-bold text-2xl md:text-3xl text-ink mb-1">
+            Share to get paid
+          </h2>
+          <p className="text-ink-3 text-sm mb-6 max-w-md">
+            Anyone can send you crypto with this one link — no install, no
+            extension, no copy-paste.
+          </p>
 
-        {/* Receive */}
-        <section className="lg:col-span-2 card p-7 md:p-9 animate-rise rise-2">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <div className="eyebrow mb-2">Receive</div>
-              <h2 className="font-display font-bold text-2xl md:text-3xl text-ink">
-                Share your link
-              </h2>
+          {/* Stylized link — username gets the brand gradient */}
+          <div className="rounded-2xl border-2 border-hairline bg-paper/60 p-6 md:p-8 mb-5">
+            <div className="font-display font-bold text-3xl md:text-5xl leading-tight tracking-tightish break-all">
+              <span className="text-ink-3">{displayHost}/</span>
+              <span
+                className="bg-clip-text text-transparent"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(110deg, #5469D4 0%, #7E5CFF 35%, #FF5A6E 75%, #FFB547 100%)',
+                }}
+              >
+                {auth.username}
+              </span>
             </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
             <CopyButton value={payLink} label="Copy link" variant="pill" />
+            <ShareButton href={shareIntents.x} label="Share on X" />
+            <ShareButton href={shareIntents.whatsapp} label="WhatsApp" />
+            <ShareButton href={shareIntents.sms} label="iMessage" />
+            <ShareButton href={shareIntents.email} label="Email" />
           </div>
-          <div className="bg-paper border border-hairline rounded-xl p-4 font-mono text-sm md:text-base text-ink break-all numeric">
-            {displayLink}
-          </div>
-          <div className="mt-5 flex items-center gap-4 text-sm">
+
+          <div className="mt-5">
             <Link
               href={`/${auth.username}`}
-              className="text-primary font-semibold hover:underline underline-offset-4"
+              className="text-primary font-semibold text-sm hover:underline underline-offset-4"
             >
               Open public page →
             </Link>
-            <span className="text-ink-4">·</span>
-            <span className="text-ink-3">Works on any device, no install needed.</span>
           </div>
         </section>
 
-        {/* Tip card */}
+        {/* Setup checklist — replaces the static Tip card. Items reflect the
+            current resolution; once all chains are mapped the card morphs to
+            an "all set" state instead of nagging. */}
         <section
-          className="card p-7 md:p-9 relative overflow-hidden animate-rise rise-3"
+          className="card p-7 md:p-9 relative overflow-hidden animate-rise rise-2"
           style={{
-            background:
-              'linear-gradient(180deg, #F6F9FC 0%, #ffffff 100%)',
+            background: 'linear-gradient(180deg, #F6F9FC 0%, #ffffff 100%)',
           }}
         >
           <div
             aria-hidden
             className="absolute -right-10 -top-10 w-32 h-32 rounded-full opacity-15 blur-2xl"
-            style={{ background: '#FFB547' }}
+            style={{ background: allChainsDone ? '#13BC8C' : '#FFB547' }}
           />
-          <div className="eyebrow-muted mb-3">Tip</div>
-          <h3 className="font-display font-bold text-xl text-ink mb-2 leading-snug">
-            Add Solana &amp; Bitcoin addresses to receive on every chain.
-          </h3>
-          <p className="text-ink-2 text-sm">
-            Your @paytag works across networks — but each chain needs its own address. Add
-            them below.
-          </p>
+          <div className="eyebrow-muted mb-3">Setup</div>
+          {allChainsDone ? (
+            <>
+              <h3 className="font-display font-bold text-xl text-ink mb-2 leading-snug">
+                You&apos;re all set.
+              </h3>
+              <p className="text-ink-2 text-sm">
+                Every chain is live. Share your link and start getting paid.
+              </p>
+            </>
+          ) : (
+            <>
+              <h3 className="font-display font-bold text-xl text-ink mb-4 leading-snug">
+                Finish setting up
+              </h3>
+              <ul className="space-y-3">
+                <ChecklistItem done label="Claim your name" hint={`@${auth.username}`} />
+                {chainSteps.map((s) => (
+                  <ChecklistItem
+                    key={s.chain}
+                    done={s.done}
+                    label={s.label}
+                    hint={s.done ? undefined : 'Add it below.'}
+                  />
+                ))}
+              </ul>
+            </>
+          )}
         </section>
 
         {/* Wallets */}
-        <section className="lg:col-span-3 animate-rise rise-4">
+        <section className="lg:col-span-3 animate-rise rise-3">
           <div className="flex items-baseline justify-between mb-4">
             <div>
               <div className="eyebrow mb-2">Wallets</div>
@@ -295,6 +341,50 @@ export default function AppPage() {
         </section>
       </div>
     </>
+  );
+}
+
+function ShareButton({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="btn-bare !py-2 !px-4 !text-[13px]"
+    >
+      <span>{label}</span>
+    </a>
+  );
+}
+
+function ChecklistItem({
+  done,
+  label,
+  hint,
+}: {
+  done: boolean;
+  label: string;
+  hint?: string;
+}) {
+  return (
+    <li className="flex items-start gap-3">
+      <span
+        aria-hidden
+        className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 ${
+          done
+            ? 'bg-success/15 text-success'
+            : 'bg-paper border border-hairline text-ink-4'
+        }`}
+      >
+        {done ? '✓' : ''}
+      </span>
+      <div className="min-w-0">
+        <div className={`text-sm font-semibold ${done ? 'text-ink' : 'text-ink-2'}`}>
+          {label}
+        </div>
+        {hint && <div className="text-xs text-ink-3 mt-0.5 truncate">{hint}</div>}
+      </div>
+    </li>
   );
 }
 
