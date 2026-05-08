@@ -10,7 +10,6 @@ import { PayFormSolana } from '@/components/PayFormSolana';
 import { PayFormBitcoin } from '@/components/PayFormBitcoin';
 import { Avatar } from '@/components/Avatar';
 import { ChainGlyph } from '@/components/ChainGlyph';
-import { GradientMesh } from '@/components/GradientMesh';
 import { CHAIN_LABELS, CHAIN_NATIVE_SYMBOL, PaytagChain } from '@/lib/chains';
 
 const CHAIN_ORDER: PaytagChain[] = ['ethereum', 'solana', 'bitcoin'];
@@ -68,7 +67,6 @@ export default function UserPage({ params }: Props) {
   if (error || !resolution) {
     return (
       <section className="relative overflow-hidden">
-        <GradientMesh intensity="soft" />
         <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 py-20 md:py-32">
           <div className="max-w-md card p-8 md:p-10">
             <div className="eyebrow mb-3 text-danger">Not found</div>
@@ -104,8 +102,7 @@ export default function UserPage({ params }: Props) {
   return (
     <>
       {/* Profile hero */}
-      <section className="relative overflow-hidden border-b border-hairline">
-        <GradientMesh intensity="soft" />
+      <section className="relative overflow-hidden">
         <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 pt-14 pb-12 animate-rise rise-1">
           <div className="flex flex-col md:flex-row md:items-end gap-6 md:gap-8">
             <Avatar username={resolution.username} size={104} />

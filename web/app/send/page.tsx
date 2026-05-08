@@ -9,7 +9,6 @@ import { PayFormSolana } from '@/components/PayFormSolana';
 import { PayFormBitcoin } from '@/components/PayFormBitcoin';
 import { Avatar } from '@/components/Avatar';
 import { ChainGlyph } from '@/components/ChainGlyph';
-import { GradientMesh } from '@/components/GradientMesh';
 import { CHAIN_LABELS, CHAIN_NATIVE_SYMBOL, PaytagChain } from '@/lib/chains';
 
 type Status = 'idle' | 'looking' | 'found' | 'missing';
@@ -86,8 +85,7 @@ export default function SendPage() {
 
   return (
     <>
-      <section className="relative overflow-hidden border-b border-hairline">
-        <GradientMesh intensity="soft" />
+      <section className="relative overflow-hidden">
         <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 pt-14 pb-10">
           <div className="max-w-2xl animate-rise rise-1">
             <div className="eyebrow mb-3">Send</div>

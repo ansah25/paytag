@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { CopyButton } from '@/components/CopyButton';
 import { Avatar } from '@/components/Avatar';
-import { GradientMesh } from '@/components/GradientMesh';
 
 export default function WelcomePage() {
   return (
@@ -44,7 +43,6 @@ function WelcomeContent() {
 
   return (
     <section className="relative overflow-hidden">
-      <GradientMesh intensity="bold" />
       <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 py-16 md:py-24">
         {/* Hero block */}
         <div className="max-w-3xl animate-rise rise-1">

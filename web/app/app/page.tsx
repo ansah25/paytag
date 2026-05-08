@@ -9,7 +9,6 @@ import { RegisterForm } from '@/components/RegisterForm';
 import { AddressManager } from '@/components/AddressManager';
 import { CopyButton } from '@/components/CopyButton';
 import { Avatar } from '@/components/Avatar';
-import { GradientMesh } from '@/components/GradientMesh';
 import { api, ResolveResponse } from '@/lib/api';
 import { AuthState, clearAuth, getAuth } from '@/lib/auth';
 
@@ -194,8 +193,7 @@ export default function AppPage() {
   return (
     <>
       {/* Header band */}
-      <section className="relative overflow-hidden border-b border-hairline">
-        <GradientMesh intensity="soft" />
+      <section className="relative overflow-hidden">
         <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 pt-14 pb-12">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 animate-rise rise-1">
             <div className="flex items-center gap-5">
@@ -391,7 +389,6 @@ function ChecklistItem({
 function PreAuthShell({ children }: { children: React.ReactNode }) {
   return (
     <section className="relative overflow-hidden">
-      <GradientMesh intensity="soft" />
       <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 py-20 md:py-32 flex justify-center">
         {children}
       </div>

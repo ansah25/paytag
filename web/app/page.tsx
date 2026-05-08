@@ -1,6 +1,5 @@
 import Link from 'next/link';
 import { UsernameClaimInput } from '@/components/UsernameClaimInput';
-import { GradientMesh } from '@/components/GradientMesh';
 import { CodeCard } from '@/components/CodeCard';
 import { ChainGlyph } from '@/components/ChainGlyph';
 import { Reveal } from '@/components/Reveal';
@@ -10,7 +9,6 @@ export default function HomePage() {
     <>
       {/* === Hero === */}
       <section className="relative overflow-hidden">
-        <GradientMesh />
         <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 pt-16 md:pt-24 pb-20 md:pb-28">
           <div className="max-w-3xl animate-rise rise-1">
             <div className="inline-flex items-center gap-2 bg-white/70 backdrop-blur border border-hairline rounded-full px-3 py-1.5 mb-7 text-xs font-semibold text-ink-2">
@@ -236,7 +234,6 @@ export default function HomePage() {
 
       {/* === Final CTA === */}
       <section className="relative overflow-hidden">
-        <GradientMesh intensity="bold" />
         <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 py-24 md:py-32 text-center">
           <Reveal>
             <div className="inline-block bg-white/70 backdrop-blur border border-hairline rounded-full px-3 py-1.5 mb-7 text-xs font-semibold text-ink-2">

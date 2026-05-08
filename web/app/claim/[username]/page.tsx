@@ -7,7 +7,6 @@ import { useAccount, useConnect, useSignMessage } from 'wagmi';
 import { api, ApiError, buildSignMessage } from '@/lib/api';
 import { saveAuth, updateAuth } from '@/lib/auth';
 import { Avatar } from '@/components/Avatar';
-import { GradientMesh } from '@/components/GradientMesh';
 
 type Step =
   | 'checking'
@@ -128,8 +127,7 @@ export default function ClaimPage({ params }: Props) {
 
   return (
     <>
-      <section className="relative overflow-hidden border-b border-hairline">
-        <GradientMesh intensity="soft" />
+      <section className="relative overflow-hidden">
         <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 pt-14 pb-10 animate-rise rise-1">
           <Link
             href="/"
