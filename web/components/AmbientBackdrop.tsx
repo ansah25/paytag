@@ -23,10 +23,13 @@ export function AmbientBackdrop() {
       style={{
         zIndex: -10,
         backgroundImage: [
-          'radial-gradient(60vw 60vw at -15% -25%, rgba(84,105,212,0.18), transparent 55%)',
-          'radial-gradient(50vw 50vw at 115% -10%, rgba(126,92,255,0.15), transparent 55%)',
-          'radial-gradient(55vw 55vw at 110% 130%, rgba(255,90,110,0.13), transparent 55%)',
-          'radial-gradient(45vw 45vw at -10% 125%, rgba(0,212,255,0.13), transparent 55%)',
+          // Larger sizes + later transparent stops so the colored region
+          // actually reaches the viewport center. Alphas push the visible
+          // tint comfortably above the "is anything happening?" threshold.
+          'radial-gradient(90vw 90vw at -10% -20%, rgba(84,105,212,0.32), transparent 70%)',
+          'radial-gradient(80vw 80vw at 110% -10%, rgba(126,92,255,0.28), transparent 70%)',
+          'radial-gradient(85vw 85vw at 110% 115%, rgba(255,90,110,0.22), transparent 70%)',
+          'radial-gradient(75vw 75vw at -5% 115%, rgba(0,212,255,0.22), transparent 70%)',
         ].join(', '),
       }}
     />
