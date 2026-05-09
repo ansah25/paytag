@@ -38,10 +38,17 @@ export default function HomePage() {
           {/* Claim widget */}
           <div
             id="claim"
-            className="mt-12 max-w-2xl card p-6 md:p-7 animate-rise rise-3 backdrop-blur-md bg-white/95"
+            className="mt-12 max-w-2xl card card-hover p-6 md:p-7 animate-rise rise-3 relative overflow-hidden"
           >
-            <div className="eyebrow mb-3">Reserve your name</div>
-            <UsernameClaimInput />
+            <div
+              aria-hidden
+              className="absolute -right-12 -top-12 w-44 h-44 rounded-full blur-2xl pointer-events-none"
+              style={{ background: '#7E5CFF', opacity: 0.18 }}
+            />
+            <div className="relative">
+              <div className="eyebrow mb-3">Reserve your name</div>
+              <UsernameClaimInput />
+            </div>
           </div>
 
           {/* Trust row */}
@@ -80,17 +87,24 @@ export default function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {STEPS.map((s, i) => (
               <Reveal key={s.t} delay={i * 90}>
-                <div className="card card-hover p-7 h-full">
+                <div className="card card-hover p-7 h-full relative overflow-hidden">
                   <div
-                    className="w-11 h-11 rounded-xl flex items-center justify-center mb-5 text-white font-bold"
-                    style={{ background: s.bg, boxShadow: `0 8px 16px -4px ${s.shadow}` }}
-                  >
-                    <span className="font-mono text-sm numeric">
-                      {String(i + 1).padStart(2, '0')}
-                    </span>
+                    aria-hidden
+                    className="absolute -right-12 -top-12 w-44 h-44 rounded-full blur-2xl pointer-events-none"
+                    style={{ background: s.glow, opacity: 0.18 }}
+                  />
+                  <div className="relative">
+                    <div
+                      className="w-11 h-11 rounded-xl flex items-center justify-center mb-5 text-white font-bold"
+                      style={{ background: s.bg, boxShadow: `0 8px 16px -4px ${s.shadow}` }}
+                    >
+                      <span className="font-mono text-sm numeric">
+                        {String(i + 1).padStart(2, '0')}
+                      </span>
+                    </div>
+                    <h3 className="text-xl font-semibold text-ink mb-2">{s.t}</h3>
+                    <p className="text-ink-2 leading-relaxed">{s.d}</p>
                   </div>
-                  <h3 className="text-xl font-semibold text-ink mb-2">{s.t}</h3>
-                  <p className="text-ink-2 leading-relaxed">{s.d}</p>
                 </div>
               </Reveal>
             ))}
@@ -231,8 +245,20 @@ export default function HomePage() {
               Reserve your <span className="text-primary">@name</span> while it&apos;s still
               yours to take.
             </h2>
-            <div className="mt-10 max-w-2xl mx-auto card p-6 md:p-7 backdrop-blur-md bg-white/95 text-left">
-              <UsernameClaimInput />
+            <div className="mt-10 max-w-2xl mx-auto card card-hover p-6 md:p-7 relative overflow-hidden text-left">
+              <div
+                aria-hidden
+                className="absolute -right-12 -top-12 w-44 h-44 rounded-full blur-2xl pointer-events-none"
+                style={{ background: '#5469D4', opacity: 0.18 }}
+              />
+              <div
+                aria-hidden
+                className="absolute -left-12 -bottom-12 w-44 h-44 rounded-full blur-2xl pointer-events-none"
+                style={{ background: '#FF5A6E', opacity: 0.14 }}
+              />
+              <div className="relative">
+                <UsernameClaimInput />
+              </div>
             </div>
           </Reveal>
         </div>
@@ -247,18 +273,21 @@ const STEPS = [
     d: 'Type the @name you want. Live availability checks tell you instantly if it’s free, with smart suggestions when it isn’t.',
     bg: 'linear-gradient(135deg, #5469D4 0%, #7E5CFF 100%)',
     shadow: 'rgba(84,105,212,0.45)',
+    glow: '#5469D4',
   },
   {
     t: 'Sign once',
     d: 'A single message signature proves the wallet is yours. No transaction. No gas. No password to forget later.',
     bg: 'linear-gradient(135deg, #00D4FF 0%, #5469D4 100%)',
     shadow: 'rgba(0,212,255,0.4)',
+    glow: '#00D4FF',
   },
   {
     t: 'Get paid',
     d: 'Share paytag.io/yourname. Anyone can send you crypto with one link — no install, no extension, no copy-paste.',
     bg: 'linear-gradient(135deg, #FF5A6E 0%, #FFB547 100%)',
     shadow: 'rgba(255,90,110,0.4)',
+    glow: '#FFB547',
   },
 ];
 

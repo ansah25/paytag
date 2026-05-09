@@ -21,7 +21,7 @@ export function AmbientBackdrop() {
           left: '-15%',
           top: '-25%',
           background: '#5469D4',
-          opacity: 0.32,
+          opacity: 0.4,
         }}
       />
       <div
@@ -32,7 +32,7 @@ export function AmbientBackdrop() {
           right: '-15%',
           top: '-10%',
           background: '#7E5CFF',
-          opacity: 0.26,
+          opacity: 0.34,
         }}
       />
       <div
@@ -43,7 +43,7 @@ export function AmbientBackdrop() {
           right: '-10%',
           bottom: '-30%',
           background: '#FF5A6E',
-          opacity: 0.22,
+          opacity: 0.28,
         }}
       />
       <div
@@ -54,11 +54,11 @@ export function AmbientBackdrop() {
           left: '-10%',
           bottom: '-25%',
           background: '#00D4FF',
-          opacity: 0.22,
+          opacity: 0.28,
         }}
       />
-      {/* Lighter veil — color should show through clearly without overpowering. */}
-      <div className="absolute inset-0 bg-white/68" />
+      {/* Soft white wash — keeps text legible without flattening the mesh. */}
+      <div className="absolute inset-0 bg-white/55 backdrop-blur-[3px]" />
     </div>
   );
 }

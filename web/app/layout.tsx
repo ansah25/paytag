@@ -70,7 +70,7 @@ function Logo() {
 
 function SiteFooter() {
   return (
-    <footer className="border-t border-hairline mt-32">
+    <footer className="mt-32">
       <div className="max-w-[1240px] mx-auto px-6 md:px-10 py-12 grid grid-cols-2 md:grid-cols-4 gap-8 text-sm">
         <div className="col-span-2 md:col-span-2 max-w-sm">
           <div className="flex items-center gap-2 mb-3">
@@ -116,7 +116,7 @@ function SiteFooter() {
           </ul>
         </div>
       </div>
-      <div className="border-t border-hairline">
+      <div>
         <div className="max-w-[1240px] mx-auto px-6 md:px-10 py-5 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between text-xs text-ink-4">
           <div>© {new Date().getFullYear()} Paytag. Money has a name now.</div>
           <div className="font-mono numeric">v0.1 · made for paying friends</div>
