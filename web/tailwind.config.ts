@@ -53,22 +53,12 @@ const config: Config = {
         '2xl': '1.25rem',
       },
       keyframes: {
-        meshDrift: {
-          '0%, 100%': { transform: 'translate3d(0,0,0) scale(1)' },
-          '50%': { transform: 'translate3d(2%, -1%, 0) scale(1.04)' },
-        },
-        meshDrift2: {
-          '0%, 100%': { transform: 'translate3d(0,0,0) scale(1)' },
-          '50%': { transform: 'translate3d(-2%, 1%, 0) scale(1.06)' },
-        },
         rise: {
           from: { opacity: '0', transform: 'translateY(10px)' },
           to: { opacity: '1', transform: 'translateY(0)' },
         },
       },
       animation: {
-        'mesh-drift': 'meshDrift 18s ease-in-out infinite',
-        'mesh-drift-2': 'meshDrift2 22s ease-in-out infinite',
         rise: 'rise 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
       },
     },

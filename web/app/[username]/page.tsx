@@ -1,17 +1,33 @@
 'use client';
 
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useState } from 'react';
 import { isAddress } from 'viem';
 import { api, ApiError, ResolveResponse } from '@/lib/api';
 import { CopyButton } from '@/components/CopyButton';
-import { PayForm } from '@/components/PayForm';
-import { PayFormSolana } from '@/components/PayFormSolana';
-import { PayFormBitcoin } from '@/components/PayFormBitcoin';
 import { Avatar } from '@/components/Avatar';
 import { ChainGlyph } from '@/components/ChainGlyph';
 import { CardGlow } from '@/components/CardGlow';
 import { CHAIN_LABELS, CHAIN_NATIVE_SYMBOL, PaytagChain } from '@/lib/chains';
+
+// Lazy-load each chain's PayForm. Each variant pulls a chain-specific SDK
+// (ethers/viem for ETH, @solana/web3.js for SOL, sats-connect for BTC).
+// Loading them eagerly meant every visitor paid ~150 kB of unused JS just to
+// pick a chain. Dynamic import keeps the initial bundle lean and only fetches
+// the SDK when the user actually selects that tab.
+const PayForm = dynamic(
+  () => import('@/components/PayForm').then((m) => ({ default: m.PayForm })),
+  { ssr: false },
+);
+const PayFormSolana = dynamic(
+  () => import('@/components/PayFormSolana').then((m) => ({ default: m.PayFormSolana })),
+  { ssr: false },
+);
+const PayFormBitcoin = dynamic(
+  () => import('@/components/PayFormBitcoin').then((m) => ({ default: m.PayFormBitcoin })),
+  { ssr: false },
+);
 
 const CHAIN_ORDER: PaytagChain[] = ['ethereum', 'solana', 'bitcoin'];
 

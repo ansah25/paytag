@@ -1,16 +1,29 @@
 'use client';
 
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { isAddress } from 'viem';
 import { api, ApiError, ResolveResponse } from '@/lib/api';
-import { PayForm } from '@/components/PayForm';
-import { PayFormSolana } from '@/components/PayFormSolana';
-import { PayFormBitcoin } from '@/components/PayFormBitcoin';
 import { Avatar } from '@/components/Avatar';
 import { ChainGlyph } from '@/components/ChainGlyph';
 import { CardGlow } from '@/components/CardGlow';
 import { CHAIN_LABELS, CHAIN_NATIVE_SYMBOL, PaytagChain } from '@/lib/chains';
+
+// Same code-split as /[username]: each chain SDK is heavy and only one is in
+// use at a time, so we load them on demand instead of bundling all three.
+const PayForm = dynamic(
+  () => import('@/components/PayForm').then((m) => ({ default: m.PayForm })),
+  { ssr: false },
+);
+const PayFormSolana = dynamic(
+  () => import('@/components/PayFormSolana').then((m) => ({ default: m.PayFormSolana })),
+  { ssr: false },
+);
+const PayFormBitcoin = dynamic(
+  () => import('@/components/PayFormBitcoin').then((m) => ({ default: m.PayFormBitcoin })),
+  { ssr: false },
+);
 
 type Status = 'idle' | 'looking' | 'found' | 'missing';
 const CHAIN_ORDER: PaytagChain[] = ['ethereum', 'solana', 'bitcoin'];

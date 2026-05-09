@@ -110,6 +110,24 @@ export interface MeResponse {
 export type ResolveResponse = SdkResolveResponse;
 export type AvailabilityResponse = SdkAvailabilityResponse;
 
+// Single-flight `/me`: useAuthState (in SiteHeader) and the dashboard at /app
+// both call /me on hydrate. Without this, every dashboard load fires two
+// identical requests in parallel. We coalesce them into one in-flight promise
+// that any caller can await; the slot clears as soon as the request settles.
+//
+// AbortSignal handling: each caller can pass a signal, but aborting one
+// caller's signal must NOT cancel the underlying request — other callers are
+// still awaiting the same promise. We ignore per-caller signals here (the
+// /me payload is tiny and short-lived; nothing useful to abort).
+let mePending: Promise<MeResponse> | null = null;
+const meSingleFlight = (_signal?: AbortSignal): Promise<MeResponse> => {
+  if (mePending) return mePending;
+  mePending = request<MeResponse>('/me', { auth: true }).finally(() => {
+    mePending = null;
+  });
+  return mePending;
+};
+
 export const api = {
   getNonce: (wallet: string) =>
     request<NonceResponse>(`/auth/nonce?wallet=${encodeURIComponent(wallet)}`),
@@ -124,8 +142,7 @@ export const api = {
       body: { username },
       auth: true,
     }),
-  me: (signal?: AbortSignal) =>
-    request<MeResponse>('/me', { auth: true, signal }),
+  me: (signal?: AbortSignal) => meSingleFlight(signal),
   addAddress: async (chain: string, address: string) => {
     const result = await request<AddAddressResponse>('/add-address', {
       method: 'POST',
