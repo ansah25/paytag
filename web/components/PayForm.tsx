@@ -181,7 +181,7 @@ export function PayForm({ username, recipient }: Props) {
           rel="noopener noreferrer"
           className="block text-xs text-ink-3 hover:text-primary font-mono break-all"
         >
-          Pending — {hash}
+          Pending · {hash}
         </a>
       )}
 

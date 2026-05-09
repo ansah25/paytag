@@ -144,8 +144,8 @@ export function PayFormBitcoin({ username, recipient }: Props) {
           ))}
         </div>
         <p className="mt-2 text-[11px] text-ink-4">
-          The actual broadcast network is whatever your wallet is set to —
-          this just picks the explorer link.
+          The actual broadcast network is whatever your wallet is set to.
+          This just picks the explorer link.
         </p>
       </div>
 

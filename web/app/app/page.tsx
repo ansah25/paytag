@@ -254,7 +254,7 @@ export default function AppPage() {
               Share to get paid
             </h2>
             <p className="text-ink-3 text-sm mb-6 max-w-md">
-              Anyone can send you crypto with this one link — no install, no
+              Anyone can send you crypto with this one link. No install, no
               extension, no copy-paste.
             </p>
 

@@ -139,7 +139,7 @@ export default function UserPage({ params }: Props) {
                       <span
                         key={c}
                         className={has ? '' : 'opacity-25'}
-                        title={`${CHAIN_LABELS[c]}${has ? '' : ' — not set'}`}
+                        title={`${CHAIN_LABELS[c]}${has ? '' : ' · not set'}`}
                       >
                         <ChainGlyph chain={c} size={22} />
                       </span>

@@ -31,7 +31,7 @@ export function RegisterForm({ onRegistered }: Props) {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <p className="text-ink-2 text-sm">
-        Pick a username — 3 to 20 lowercase letters, numbers, or underscores.
+        Pick a username. 3 to 20 lowercase letters, numbers, or underscores.
       </p>
       <div className="flex items-center gap-2 bg-white border-2 border-hairline focus-within:border-primary focus-within:shadow-[0_0_0_4px_rgba(84,105,212,0.15)] rounded-2xl px-5 py-3 transition-all">
         <span

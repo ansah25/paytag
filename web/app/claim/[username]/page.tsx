@@ -198,7 +198,7 @@ export default function ClaimPage({ params }: Props) {
 
             {step === 'connect' && (
               <div className="space-y-5">
-                <div className="eyebrow">Step 02 — Connect</div>
+                <div className="eyebrow">Step 02 · Connect</div>
                 <h2 className="font-display font-bold text-3xl text-ink leading-tight">
                   Connect a wallet
                 </h2>
@@ -219,7 +219,7 @@ export default function ClaimPage({ params }: Props) {
 
             {step === 'sign' && (
               <div className="space-y-5">
-                <div className="eyebrow">Step 03 — Sign</div>
+                <div className="eyebrow">Step 03 · Sign</div>
                 <h2 className="font-display font-bold text-3xl text-ink leading-tight">
                   Sign to confirm
                 </h2>
@@ -235,7 +235,7 @@ export default function ClaimPage({ params }: Props) {
 
             {step === 'register' && (
               <div className="space-y-3">
-                <div className="eyebrow">Step 04 — Register</div>
+                <div className="eyebrow">Step 04 · Register</div>
                 <p className="font-display font-bold text-2xl md:text-3xl text-ink">
                   Reserving @{username}…
                 </p>

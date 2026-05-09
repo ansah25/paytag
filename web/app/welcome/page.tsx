@@ -18,7 +18,7 @@ export default function WelcomePage() {
 function WelcomeContent() {
   const params = useSearchParams();
   const username = params.get('u') ?? '';
-  const [origin, setOrigin] = useState('paytag.io');
+  const [origin, setOrigin] = useState('paytag.dev');
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -65,7 +65,7 @@ function WelcomeContent() {
             is yours.
           </h1>
           <p className="mt-6 text-lg md:text-xl text-ink-2 max-w-xl">
-            Anyone with a wallet can now send you crypto using one link — no install, no
+            Anyone with a wallet can now send you crypto using one link. No install, no
             extension, no copy-paste.
           </p>
         </div>

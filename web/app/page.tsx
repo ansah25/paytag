@@ -13,7 +13,7 @@ export default function HomePage() {
           <div className="max-w-3xl animate-rise rise-1">
             <div className="inline-flex items-center gap-2 bg-white/70 backdrop-blur border border-hairline rounded-full px-3 py-1.5 mb-7 text-xs font-semibold text-ink-2">
               <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-              <span>Now in public beta — names are first-come, first-served</span>
+              <span>Now in public beta · names are first-come, first-served</span>
             </div>
             <h1 className="font-display font-bold text-[40px] sm:text-[64px] lg:text-[88px] leading-[0.95] tracking-tightest text-ink">
               Money has a{' '}
@@ -30,7 +30,7 @@ export default function HomePage() {
             </h1>
             <p className="mt-6 text-lg md:text-xl text-ink-2 max-w-xl leading-relaxed animate-rise rise-2">
               Replace long wallet addresses with a single @username. Paytag resolves to
-              your wallets across Ethereum, Solana, and Bitcoin — share one link, get
+              your wallets across Ethereum, Solana, and Bitcoin. Share one link, get
               paid anywhere.
             </p>
           </div>
@@ -126,7 +126,7 @@ export default function HomePage() {
             </h2>
             <p className="mt-5 text-ink-2 text-lg leading-relaxed max-w-md">
               A TypeScript-first SDK over a predictable JSON API. Stable error codes,
-              a 30-second edge cache, and zero config — drop it into a wallet, payment
+              a 30-second edge cache, and zero config. Drop it into a wallet, payment
               app, or invoice tool anywhere a wallet address would otherwise be.
             </p>
             <div className="mt-8 grid grid-cols-3 gap-4 max-w-md">
@@ -284,7 +284,7 @@ const STEPS = [
   },
   {
     t: 'Get paid',
-    d: 'Share paytag.io/yourname. Anyone can send you crypto with one link — no install, no extension, no copy-paste.',
+    d: 'Share paytag.dev/yourname. Anyone can send you crypto with one link. No install, no extension, no copy-paste.',
     bg: 'linear-gradient(135deg, #FF5A6E 0%, #FFB547 100%)',
     shadow: 'rgba(255,90,110,0.4)',
     glow: '#FFB547',
@@ -295,7 +295,7 @@ const FEATURES = [
   {
     icon: '@01',
     t: 'One name across chains',
-    d: 'Map @yourname to your Ethereum, Solana, and Bitcoin wallets. Senders pick the chain — you keep one identity.',
+    d: 'Map @yourname to your Ethereum, Solana, and Bitcoin wallets. Senders pick the chain. You keep one identity.',
     glow: '#5469D4',
   },
   {
