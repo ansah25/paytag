@@ -57,6 +57,12 @@ function WelcomeContent() {
               style={{
                 backgroundImage:
                   'linear-gradient(110deg, #5469D4 0%, #7E5CFF 35%, #FF5A6E 75%, #FFB547 100%)',
+                // Pad the gradient bounding box on every side so tight
+                // line-height + tracking-tightest don't clip the bottom of
+                // letters or the right edge. Negative margin keeps layout
+                // unchanged.
+                padding: '0.05em 0.1em 0.08em',
+                margin: '-0.05em -0.1em -0.08em',
               }}
             >
               @{username}

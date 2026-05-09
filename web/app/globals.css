@@ -38,6 +38,32 @@ a {
   color: #0a2540;
 }
 
+/* === Scrollbar — blends with the AmbientBackdrop ===
+   Track is transparent so the page bg + mesh shows through. Thumb is a low-
+   opacity ink color so it reads as a subtle pill, not a chrome rail. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(15, 42, 77, 0.16);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(15, 42, 77, 0.28);
+  background-clip: padding-box;
+}
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(15, 42, 77, 0.16) transparent;
+}
+
 /* === Buttons === */
 .btn-primary {
   display: inline-flex;

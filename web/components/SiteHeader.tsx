@@ -123,7 +123,7 @@ export function SiteHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-40 backdrop-blur-xl bg-white/20">
+    <header className="sticky top-0 z-40 backdrop-blur-xl bg-white/10">
       <div className="max-w-[1240px] mx-auto px-6 md:px-10 h-16 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <Link href="/" className="flex items-center gap-2 group shrink-0">

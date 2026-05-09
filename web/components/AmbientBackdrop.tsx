@@ -26,10 +26,10 @@ export function AmbientBackdrop() {
           // Larger sizes + later transparent stops so the colored region
           // actually reaches the viewport center. Alphas push the visible
           // tint comfortably above the "is anything happening?" threshold.
-          'radial-gradient(90vw 90vw at -10% -20%, rgba(84,105,212,0.40), transparent 70%)',
-          'radial-gradient(80vw 80vw at 110% -10%, rgba(126,92,255,0.35), transparent 70%)',
-          'radial-gradient(85vw 85vw at 110% 115%, rgba(255,90,110,0.28), transparent 70%)',
-          'radial-gradient(75vw 75vw at -5% 115%, rgba(0,212,255,0.28), transparent 70%)',
+          'radial-gradient(90vw 90vw at -10% -20%, rgba(84,105,212,0.66), transparent 80%)',
+          'radial-gradient(80vw 80vw at 110% -10%, rgba(126,92,255,0.58), transparent 80%)',
+          'radial-gradient(85vw 85vw at 110% 115%, rgba(255,90,110,0.46), transparent 80%)',
+          'radial-gradient(75vw 75vw at -5% 115%, rgba(0,212,255,0.46), transparent 80%)',
         ].join(', '),
       }}
     />

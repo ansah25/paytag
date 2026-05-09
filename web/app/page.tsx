@@ -9,19 +9,25 @@ export default function HomePage() {
     <>
       {/* === Hero === */}
       <section className="relative overflow-hidden">
-        <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 pt-16 md:pt-24 pb-20 md:pb-28">
+        <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 pt-10 md:pt-16 pb-20 md:pb-28">
           <div className="max-w-3xl animate-rise rise-1">
             <div className="inline-flex items-center gap-2 bg-white/70 backdrop-blur border border-hairline rounded-full px-3 py-1.5 mb-7 text-xs font-semibold text-ink-2">
               <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
               <span>Now in public beta · names are first-come, first-served</span>
             </div>
-            <h1 className="font-display font-bold text-[40px] sm:text-[64px] lg:text-[88px] leading-[0.95] tracking-tightest text-ink">
+            <h1 className="font-display font-bold text-[40px] sm:text-[64px] lg:text-[88px] leading-[1.0] tracking-tightest text-ink">
               Money has a{' '}
               <span
                 className="inline-block bg-clip-text text-transparent"
                 style={{
                   backgroundImage:
                     'linear-gradient(110deg, #5469D4 0%, #7E5CFF 35%, #FF5A6E 75%, #FFB547 100%)',
+                  // Pad the gradient box on every side so tracking-tightest
+                  // and the e's bottom curve don't get clipped by the
+                  // bounding edges. Negative margin pulls the surrounding
+                  // text back so layout stays the same.
+                  padding: '0.05em 0.1em 0.08em',
+                  margin: '-0.05em -0.1em -0.08em',
                 }}
               >
                 name

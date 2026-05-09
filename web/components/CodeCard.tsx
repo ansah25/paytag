@@ -21,7 +21,7 @@ export function CodeCard({ tab = 'resolve.ts', status = '200 OK · 38 ms' }: Pro
         </div>
         <span className="font-mono text-[11px] text-white/55 numeric">{status}</span>
       </div>
-      <pre className="!m-0 whitespace-pre">
+      <pre className="!m-0 whitespace-pre overflow-x-auto max-w-full">
 {`  `}<span className="tok-keyword">{`import`}</span>{` { `}<span className="tok-prop">resolve</span>{` } `}<span className="tok-keyword">{`from`}</span>{` `}<span className="tok-string">{`"@paytagdev/sdk"`}</span>{`;
 
   `}<span className="tok-keyword">const</span>{` `}<span className="tok-prop">user</span>{` = `}<span className="tok-keyword">await</span>{` `}<span className="tok-fn">resolve</span>{`(`}<span className="tok-string">{`"derrick"`}</span>{`);
