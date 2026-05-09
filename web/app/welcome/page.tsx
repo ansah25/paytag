@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { CopyButton } from '@/components/CopyButton';
 import { Avatar } from '@/components/Avatar';
+import { CardGlow } from '@/components/CardGlow';
 
 export default function WelcomePage() {
   return (
@@ -71,26 +72,29 @@ function WelcomeContent() {
 
         <div className="mt-12 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 max-w-5xl">
           {/* Share link card */}
-          <div className="lg:col-span-7 card p-6 md:p-8 backdrop-blur-md bg-white/95 animate-rise rise-2">
-            <div className="flex items-center gap-4 mb-6">
-              <Avatar username={username} size={56} />
-              <div>
-                <div className="eyebrow mb-1">Your share link</div>
-                <div className="font-display font-bold text-xl text-ink">@{username}</div>
+          <div className="lg:col-span-7 card card-hover p-6 md:p-8 animate-rise rise-2 relative overflow-hidden">
+            <CardGlow color="#7E5CFF" size="lg" />
+            <div className="relative">
+              <div className="flex items-center gap-4 mb-6">
+                <Avatar username={username} size={56} />
+                <div>
+                  <div className="eyebrow mb-1">Your share link</div>
+                  <div className="font-display font-bold text-xl text-ink">@{username}</div>
+                </div>
               </div>
-            </div>
-            <div className="bg-paper border border-hairline rounded-xl p-4 font-mono text-base text-ink break-all numeric">
-              {origin}/{username}
-            </div>
-            <div className="mt-5 flex flex-wrap gap-3">
-              <Link href="/app" className="btn-primary">
-                <span>Open dashboard</span>
-                <span aria-hidden>→</span>
-              </Link>
-              <CopyButton value={link} label="Copy link" variant="pill" />
-              <Link href={`/${username}`} className="btn-bare">
-                Public page
-              </Link>
+              <div className="bg-paper border border-hairline rounded-xl p-4 font-mono text-base text-ink break-all numeric">
+                {origin}/{username}
+              </div>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link href="/app" className="btn-primary">
+                  <span>Open dashboard</span>
+                  <span aria-hidden>→</span>
+                </Link>
+                <CopyButton value={link} label="Copy link" variant="pill" />
+                <Link href={`/${username}`} className="btn-bare">
+                  Public page
+                </Link>
+              </div>
             </div>
           </div>
 
@@ -101,22 +105,22 @@ function WelcomeContent() {
               { l: 'Chains', v: '3' },
               { l: 'Cost', v: '$0' },
             ].map((s) => (
-              <div
-                key={s.l}
-                className="card p-5 backdrop-blur-md bg-white/95 text-center"
-              >
+              <div key={s.l} className="card p-5 text-center">
                 <div className="font-display font-bold text-3xl md:text-4xl text-ink leading-none numeric">
                   {s.v}
                 </div>
                 <div className="eyebrow-muted mt-2.5">{s.l}</div>
               </div>
             ))}
-            <div className="col-span-3 card p-5 backdrop-blur-md bg-white/95">
-              <div className="eyebrow-muted mb-1">Next step</div>
-              <p className="text-sm text-ink-2">
-                Add Solana and Bitcoin addresses on your dashboard so people can pay you on
-                any chain.
-              </p>
+            <div className="col-span-3 card card-hover p-5 relative overflow-hidden">
+              <CardGlow color="#FFB547" />
+              <div className="relative">
+                <div className="eyebrow-muted mb-1">Next step</div>
+                <p className="text-sm text-ink-2">
+                  Add Solana and Bitcoin addresses on your dashboard so people can pay you on
+                  any chain.
+                </p>
+              </div>
             </div>
           </div>
         </div>

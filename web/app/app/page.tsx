@@ -9,6 +9,7 @@ import { RegisterForm } from '@/components/RegisterForm';
 import { AddressManager } from '@/components/AddressManager';
 import { CopyButton } from '@/components/CopyButton';
 import { Avatar } from '@/components/Avatar';
+import { CardGlow } from '@/components/CardGlow';
 import { api, ResolveResponse } from '@/lib/api';
 import { AuthState, clearAuth, getAuth } from '@/lib/auth';
 
@@ -104,16 +105,19 @@ export default function AppPage() {
   if (!isConnected || !address) {
     return (
       <PreAuthShell>
-        <div className="card p-8 md:p-10 max-w-md w-full">
-          <div className="eyebrow mb-3">Welcome back</div>
-          <h1 className="font-display font-bold text-3xl md:text-4xl text-ink mb-3 leading-tight">
-            Connect a wallet
-          </h1>
-          <p className="text-ink-2 mb-7">
-            Your wallet is your identity here. No password to remember, no account to
-            forget.
-          </p>
-          <ConnectWallet />
+        <div className="card card-hover p-8 md:p-10 max-w-md w-full relative overflow-hidden">
+          <CardGlow color="#5469D4" />
+          <div className="relative">
+            <div className="eyebrow mb-3">Welcome back</div>
+            <h1 className="font-display font-bold text-3xl md:text-4xl text-ink mb-3 leading-tight">
+              Connect a wallet
+            </h1>
+            <p className="text-ink-2 mb-7">
+              Your wallet is your identity here. No password to remember, no account to
+              forget.
+            </p>
+            <ConnectWallet />
+          </div>
         </div>
       </PreAuthShell>
     );
@@ -123,15 +127,18 @@ export default function AppPage() {
   if (!auth) {
     return (
       <PreAuthShell>
-        <div className="card p-8 md:p-10 max-w-md w-full">
-          <div className="eyebrow mb-3">One more step</div>
-          <h1 className="font-display font-bold text-3xl md:text-4xl text-ink mb-1 leading-tight">
-            Prove it&apos;s you
-          </h1>
-          <div className="font-mono text-[13px] text-ink-3 numeric mb-6">
-            {shortAddr(address)}
+        <div className="card card-hover p-8 md:p-10 max-w-md w-full relative overflow-hidden">
+          <CardGlow color="#7E5CFF" />
+          <div className="relative">
+            <div className="eyebrow mb-3">One more step</div>
+            <h1 className="font-display font-bold text-3xl md:text-4xl text-ink mb-1 leading-tight">
+              Prove it&apos;s you
+            </h1>
+            <div className="font-mono text-[13px] text-ink-3 numeric mb-6">
+              {shortAddr(address)}
+            </div>
+            <SignInPanel wallet={address} onSignedIn={setAuth} />
           </div>
-          <SignInPanel wallet={address} onSignedIn={setAuth} />
         </div>
       </PreAuthShell>
     );
@@ -145,19 +152,22 @@ export default function AppPage() {
   if (!auth.username) {
     return (
       <PreAuthShell>
-        <div className="card p-8 md:p-10 max-w-md w-full">
-          <div className="eyebrow mb-3">One last step</div>
-          <h1 className="font-display font-bold text-3xl md:text-4xl text-ink mb-3 leading-tight">
-            Claim your paytag
-          </h1>
-          <p className="text-ink-2 mb-6">
-            This wallet doesn&apos;t have a paytag yet. Pick a name and it&apos;ll
-            be permanently linked to{' '}
-            <span className="font-mono text-ink-3 numeric">{shortAddr(address)}</span>.
-          </p>
-          <RegisterForm
-            onRegistered={(username) => setAuth({ ...auth, username })}
-          />
+        <div className="card card-hover p-8 md:p-10 max-w-md w-full relative overflow-hidden">
+          <CardGlow color="#FF5A6E" />
+          <div className="relative">
+            <div className="eyebrow mb-3">One last step</div>
+            <h1 className="font-display font-bold text-3xl md:text-4xl text-ink mb-3 leading-tight">
+              Claim your paytag
+            </h1>
+            <p className="text-ink-2 mb-6">
+              This wallet doesn&apos;t have a paytag yet. Pick a name and it&apos;ll
+              be permanently linked to{' '}
+              <span className="font-mono text-ink-3 numeric">{shortAddr(address)}</span>.
+            </p>
+            <RegisterForm
+              onRegistered={(username) => setAuth({ ...auth, username })}
+            />
+          </div>
         </div>
       </PreAuthShell>
     );
@@ -236,64 +246,59 @@ export default function AppPage() {
       <div className="max-w-[1240px] mx-auto px-6 md:px-10 py-12 md:py-16 grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
         {/* Hero Receive — the dashboard's anchor. The link itself is the
             visual: hostname in muted ink, username in the brand gradient. */}
-        <section className="lg:col-span-2 card p-7 md:p-9 animate-rise rise-1">
-          <div className="eyebrow mb-2">Receive</div>
-          <h2 className="font-display font-bold text-2xl md:text-3xl text-ink mb-1">
-            Share to get paid
-          </h2>
-          <p className="text-ink-3 text-sm mb-6 max-w-md">
-            Anyone can send you crypto with this one link — no install, no
-            extension, no copy-paste.
-          </p>
+        <section className="lg:col-span-2 card card-hover p-7 md:p-9 animate-rise rise-1 relative overflow-hidden">
+          <CardGlow color="#7E5CFF" size="lg" />
+          <div className="relative">
+            <div className="eyebrow mb-2">Receive</div>
+            <h2 className="font-display font-bold text-2xl md:text-3xl text-ink mb-1">
+              Share to get paid
+            </h2>
+            <p className="text-ink-3 text-sm mb-6 max-w-md">
+              Anyone can send you crypto with this one link — no install, no
+              extension, no copy-paste.
+            </p>
 
-          {/* Stylized link — username gets the brand gradient */}
-          <div className="rounded-2xl border-2 border-hairline bg-paper/60 p-6 md:p-8 mb-5">
-            <div className="font-display font-bold text-3xl md:text-5xl leading-tight tracking-tightish break-all">
-              <span className="text-ink-3">{displayHost}/</span>
-              <span
-                className="bg-clip-text text-transparent"
-                style={{
-                  backgroundImage:
-                    'linear-gradient(110deg, #5469D4 0%, #7E5CFF 35%, #FF5A6E 75%, #FFB547 100%)',
-                }}
-              >
-                {auth.username}
-              </span>
+            {/* Stylized link — username gets the brand gradient */}
+            <div className="rounded-2xl border-2 border-hairline bg-paper/60 p-6 md:p-8 mb-5">
+              <div className="font-display font-bold text-3xl md:text-5xl leading-tight tracking-tightish break-all">
+                <span className="text-ink-3">{displayHost}/</span>
+                <span
+                  className="bg-clip-text text-transparent"
+                  style={{
+                    backgroundImage:
+                      'linear-gradient(110deg, #5469D4 0%, #7E5CFF 35%, #FF5A6E 75%, #FFB547 100%)',
+                  }}
+                >
+                  {auth.username}
+                </span>
+              </div>
             </div>
-          </div>
 
-          <div className="flex flex-wrap gap-2">
-            <CopyButton value={payLink} label="Copy link" variant="pill" />
-            <ShareButton href={shareIntents.x} label="Share on X" />
-            <ShareButton href={shareIntents.whatsapp} label="WhatsApp" />
-            <ShareButton href={shareIntents.sms} label="iMessage" />
-            <ShareButton href={shareIntents.email} label="Email" />
-          </div>
+            <div className="flex flex-wrap gap-2">
+              <CopyButton value={payLink} label="Copy link" variant="pill" />
+              <ShareButton href={shareIntents.x} label="Share on X" />
+              <ShareButton href={shareIntents.whatsapp} label="WhatsApp" />
+              <ShareButton href={shareIntents.sms} label="iMessage" />
+              <ShareButton href={shareIntents.email} label="Email" />
+            </div>
 
-          <div className="mt-5">
-            <Link
-              href={`/${auth.username}`}
-              className="text-primary font-semibold text-sm hover:underline underline-offset-4"
-            >
-              Open public page →
-            </Link>
+            <div className="mt-5">
+              <Link
+                href={`/${auth.username}`}
+                className="text-primary font-semibold text-sm hover:underline underline-offset-4"
+              >
+                Open public page →
+              </Link>
+            </div>
           </div>
         </section>
 
         {/* Setup checklist — replaces the static Tip card. Items reflect the
             current resolution; once all chains are mapped the card morphs to
             an "all set" state instead of nagging. */}
-        <section
-          className="card p-7 md:p-9 relative overflow-hidden animate-rise rise-2"
-          style={{
-            background: 'linear-gradient(180deg, #F6F9FC 0%, #ffffff 100%)',
-          }}
-        >
-          <div
-            aria-hidden
-            className="absolute -right-10 -top-10 w-32 h-32 rounded-full opacity-15 blur-2xl"
-            style={{ background: allChainsDone ? '#13BC8C' : '#FFB547' }}
-          />
+        <section className="card card-hover p-7 md:p-9 relative overflow-hidden animate-rise rise-2">
+          <CardGlow color={allChainsDone ? '#13BC8C' : '#FFB547'} />
+          <div className="relative">
           <div className="eyebrow-muted mb-3">Setup</div>
           {allChainsDone ? (
             <>
@@ -322,6 +327,7 @@ export default function AppPage() {
               </ul>
             </>
           )}
+          </div>
         </section>
 
         {/* Wallets */}

@@ -10,6 +10,7 @@ import { PayFormSolana } from '@/components/PayFormSolana';
 import { PayFormBitcoin } from '@/components/PayFormBitcoin';
 import { Avatar } from '@/components/Avatar';
 import { ChainGlyph } from '@/components/ChainGlyph';
+import { CardGlow } from '@/components/CardGlow';
 import { CHAIN_LABELS, CHAIN_NATIVE_SYMBOL, PaytagChain } from '@/lib/chains';
 
 const CHAIN_ORDER: PaytagChain[] = ['ethereum', 'solana', 'bitcoin'];
@@ -68,18 +69,21 @@ export default function UserPage({ params }: Props) {
     return (
       <section className="relative overflow-hidden">
         <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 py-20 md:py-32">
-          <div className="max-w-md card p-8 md:p-10">
-            <div className="eyebrow mb-3 text-danger">Not found</div>
-            <h1 className="font-display font-bold text-3xl md:text-4xl text-ink leading-tight mb-4">
-              @{username} isn&apos;t a paytag yet
-            </h1>
-            <p className="text-ink-2 mb-7">
-              {error ?? 'This name has not been claimed.'}
-            </p>
-            <Link href={`/claim/${username}`} className="btn-primary">
-              <span>Claim @{username}</span>
-              <span aria-hidden>→</span>
-            </Link>
+          <div className="max-w-md card card-hover p-8 md:p-10 relative overflow-hidden">
+            <CardGlow color="#FF5A6E" />
+            <div className="relative">
+              <div className="eyebrow mb-3 text-danger">Not found</div>
+              <h1 className="font-display font-bold text-3xl md:text-4xl text-ink leading-tight mb-4">
+                @{username} isn&apos;t a paytag yet
+              </h1>
+              <p className="text-ink-2 mb-7">
+                {error ?? 'This name has not been claimed.'}
+              </p>
+              <Link href={`/claim/${username}`} className="btn-primary">
+                <span>Claim @{username}</span>
+                <span aria-hidden>→</span>
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -170,57 +174,72 @@ export default function UserPage({ params }: Props) {
           )}
 
           {selectedChain === 'ethereum' && evmIsValid && (
-            <div className="card p-7 md:p-9">
-              <div className="eyebrow-muted mb-4">Send instantly</div>
-              <PayForm
-                username={resolution.username}
-                recipient={evmAddress as `0x${string}`}
-              />
+            <div className="card card-hover p-7 md:p-9 relative overflow-hidden">
+              <CardGlow color="#5469D4" size="lg" />
+              <div className="relative">
+                <div className="eyebrow-muted mb-4">Send instantly</div>
+                <PayForm
+                  username={resolution.username}
+                  recipient={evmAddress as `0x${string}`}
+                />
+              </div>
             </div>
           )}
 
           {selectedChain === 'solana' && recipientForChain && (
-            <div className="card p-7 md:p-9">
-              <div className="eyebrow-muted mb-4">Send instantly</div>
-              <PayFormSolana
-                username={resolution.username}
-                recipient={recipientForChain}
-              />
+            <div className="card card-hover p-7 md:p-9 relative overflow-hidden">
+              <CardGlow color="#7E5CFF" size="lg" />
+              <div className="relative">
+                <div className="eyebrow-muted mb-4">Send instantly</div>
+                <PayFormSolana
+                  username={resolution.username}
+                  recipient={recipientForChain}
+                />
+              </div>
             </div>
           )}
 
           {selectedChain === 'bitcoin' && recipientForChain && (
-            <div className="card p-7 md:p-9">
-              <div className="eyebrow-muted mb-4">Send instantly</div>
-              <PayFormBitcoin
-                username={resolution.username}
-                recipient={recipientForChain}
-              />
+            <div className="card card-hover p-7 md:p-9 relative overflow-hidden">
+              <CardGlow color="#FFB547" size="lg" />
+              <div className="relative">
+                <div className="eyebrow-muted mb-4">Send instantly</div>
+                <PayFormBitcoin
+                  username={resolution.username}
+                  recipient={recipientForChain}
+                />
+              </div>
             </div>
           )}
 
           {availableChains.length === 0 && (
-            <div className="card p-7 md:p-9">
-              <div className="eyebrow-muted mb-3">No addresses yet</div>
-              <p className="text-ink-2">
-                @{resolution.username} hasn&apos;t added any addresses to their paytag yet.
-              </p>
+            <div className="card p-7 md:p-9 relative overflow-hidden">
+              <CardGlow color="#FF5A6E" />
+              <div className="relative">
+                <div className="eyebrow-muted mb-3">No addresses yet</div>
+                <p className="text-ink-2">
+                  @{resolution.username} hasn&apos;t added any addresses to their paytag yet.
+                </p>
+              </div>
             </div>
           )}
         </section>
 
         {/* Side column: share + other chains */}
         <aside className="lg:col-span-5 space-y-5 animate-rise rise-3">
-          <div className="card p-6">
-            <div className="eyebrow-muted mb-3">Share link</div>
-            <div className="bg-paper border border-hairline rounded-xl p-4 font-mono text-sm text-ink break-all numeric">
-              {displayLink}
-            </div>
-            <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs text-ink-3">
-                Anyone can pay with this link.
-              </span>
-              <CopyButton value={link} label="Copy" variant="pill" />
+          <div className="card card-hover p-6 relative overflow-hidden">
+            <CardGlow color="#7E5CFF" />
+            <div className="relative">
+              <div className="eyebrow-muted mb-3">Share link</div>
+              <div className="bg-paper border border-hairline rounded-xl p-4 font-mono text-sm text-ink break-all numeric">
+                {displayLink}
+              </div>
+              <div className="mt-3 flex items-center justify-between">
+                <span className="text-xs text-ink-3">
+                  Anyone can pay with this link.
+                </span>
+                <CopyButton value={link} label="Copy" variant="pill" />
+              </div>
             </div>
           </div>
 

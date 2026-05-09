@@ -9,6 +9,7 @@ import { PayFormSolana } from '@/components/PayFormSolana';
 import { PayFormBitcoin } from '@/components/PayFormBitcoin';
 import { Avatar } from '@/components/Avatar';
 import { ChainGlyph } from '@/components/ChainGlyph';
+import { CardGlow } from '@/components/CardGlow';
 import { CHAIN_LABELS, CHAIN_NATIVE_SYMBOL, PaytagChain } from '@/lib/chains';
 
 type Status = 'idle' | 'looking' | 'found' | 'missing';
@@ -157,32 +158,35 @@ export default function SendPage() {
         {/* Recipient preview card */}
         {status === 'found' && resolution && (
           <section className="animate-rise">
-            <div className="card p-5 md:p-6 flex items-center gap-4 bg-gradient-to-br from-white to-paper">
-              <Avatar username={resolution.username} size={56} />
-              <div className="flex-1 min-w-0">
-                <div className="font-display font-bold text-xl md:text-2xl text-ink">
-                  @{resolution.username}
-                </div>
-                <div className="mt-1 flex items-center gap-2 text-xs text-ink-3 numeric">
-                  {evmAddress && (
-                    <span className="font-mono">{shortAddr(evmAddress)}</span>
-                  )}
-                  <span>·</span>
-                  <span>
-                    {Object.values(resolution.addresses).filter(Boolean).length} active
-                    network{Object.values(resolution.addresses).filter(Boolean).length === 1 ? '' : 's'}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                {CHAIN_ORDER.map((c) => {
-                  const has = !!resolution.addresses[c];
-                  return (
-                    <span key={c} className={has ? '' : 'opacity-25'} title={c}>
-                      <ChainGlyph chain={c} size={22} />
+            <div className="card card-hover p-5 md:p-6 relative overflow-hidden">
+              <CardGlow color="#7E5CFF" />
+              <div className="relative flex items-center gap-4">
+                <Avatar username={resolution.username} size={56} />
+                <div className="flex-1 min-w-0">
+                  <div className="font-display font-bold text-xl md:text-2xl text-ink">
+                    @{resolution.username}
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-xs text-ink-3 numeric">
+                    {evmAddress && (
+                      <span className="font-mono">{shortAddr(evmAddress)}</span>
+                    )}
+                    <span>·</span>
+                    <span>
+                      {Object.values(resolution.addresses).filter(Boolean).length} active
+                      network{Object.values(resolution.addresses).filter(Boolean).length === 1 ? '' : 's'}
                     </span>
-                  );
-                })}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  {CHAIN_ORDER.map((c) => {
+                    const has = !!resolution.addresses[c];
+                    return (
+                      <span key={c} className={has ? '' : 'opacity-25'} title={c}>
+                        <ChainGlyph chain={c} size={22} />
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </section>
@@ -226,11 +230,14 @@ export default function SendPage() {
           selectedChain === 'ethereum' &&
           evmAddress &&
           isAddress(evmAddress) && (
-            <section className="card p-7 md:p-9 animate-rise">
-              <PayForm
-                username={resolution.username}
-                recipient={evmAddress as `0x${string}`}
-              />
+            <section className="card card-hover p-7 md:p-9 animate-rise relative overflow-hidden">
+              <CardGlow color="#5469D4" size="lg" />
+              <div className="relative">
+                <PayForm
+                  username={resolution.username}
+                  recipient={evmAddress as `0x${string}`}
+                />
+              </div>
             </section>
           )}
 
@@ -238,11 +245,14 @@ export default function SendPage() {
           resolution &&
           selectedChain === 'solana' &&
           recipientForChain && (
-            <section className="card p-7 md:p-9 animate-rise">
-              <PayFormSolana
-                username={resolution.username}
-                recipient={recipientForChain}
-              />
+            <section className="card card-hover p-7 md:p-9 animate-rise relative overflow-hidden">
+              <CardGlow color="#7E5CFF" size="lg" />
+              <div className="relative">
+                <PayFormSolana
+                  username={resolution.username}
+                  recipient={recipientForChain}
+                />
+              </div>
             </section>
           )}
 
@@ -250,11 +260,14 @@ export default function SendPage() {
           resolution &&
           selectedChain === 'bitcoin' &&
           recipientForChain && (
-            <section className="card p-7 md:p-9 animate-rise">
-              <PayFormBitcoin
-                username={resolution.username}
-                recipient={recipientForChain}
-              />
+            <section className="card card-hover p-7 md:p-9 animate-rise relative overflow-hidden">
+              <CardGlow color="#FFB547" size="lg" />
+              <div className="relative">
+                <PayFormBitcoin
+                  username={resolution.username}
+                  recipient={recipientForChain}
+                />
+              </div>
             </section>
           )}
 
