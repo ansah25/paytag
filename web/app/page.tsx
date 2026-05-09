@@ -99,22 +99,10 @@ export default function HomePage() {
       </section>
 
       {/* === Developers === */}
-      {/* On a unified white canvas the dark CodeCard becomes the visual
-          anchor; copy and chrome around it use ink colors so nothing fights
-          for attention with the code. */}
-      <section id="developers" className="relative overflow-hidden py-20 md:py-28">
-        {/* Atmospheric blobs — kept low-opacity so they read as faint
-            color rather than a different background. */}
-        <div
-          aria-hidden
-          className="absolute -top-40 -left-40 w-[40rem] h-[40rem] rounded-full opacity-15 blur-3xl"
-          style={{ background: '#5469D4' }}
-        />
-        <div
-          aria-hidden
-          className="absolute -bottom-40 -right-40 w-[36rem] h-[36rem] rounded-full opacity-15 blur-3xl"
-          style={{ background: '#7E5CFF' }}
-        />
+      {/* Atmosphere comes from the page-wide AmbientBackdrop in the root
+          layout, so this section adds no local backgrounds — the dark
+          CodeCard is the only color anchor. */}
+      <section id="developers" className="relative py-20 md:py-28">
         <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 grid grid-cols-1 md:grid-cols-12 gap-10 md:gap-16 items-center">
           <Reveal className="md:col-span-5">
             <div className="eyebrow mb-3">For developers</div>

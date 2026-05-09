@@ -4,6 +4,7 @@ import Link from 'next/link';
 import './globals.css';
 import { Providers } from './providers';
 import { SiteHeader } from '@/components/SiteHeader';
+import { AmbientBackdrop } from '@/components/AmbientBackdrop';
 
 const cabin = Cabin({
   subsets: ['latin'],
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${cabin.variable} ${cabinCondensed.variable} ${jetbrainsMono.variable}`}
     >
       <body>
+        <AmbientBackdrop />
         <Providers>
           <div className="relative min-h-screen flex flex-col">
             <SiteHeader />
