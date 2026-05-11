@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { useDisconnect } from 'wagmi';
 import { clearAuth } from '@/lib/auth';
 import { useAuthState } from '@/lib/useAuthState';
@@ -104,6 +105,7 @@ export function SiteHeader() {
   const currentPath = pathname.toLowerCase();
   const { auth, hydrated, isSignedIn } = useAuthState();
   const { disconnect } = useDisconnect();
+  const hidden = useHideOnScroll();
 
   // Until we hydrate from localStorage, render the signed-out shape — this
   // matches the server render and avoids a hydration mismatch.
@@ -123,7 +125,11 @@ export function SiteHeader() {
   };
 
   return (
-    <header className="sticky top-0 z-40 backdrop-blur-xl bg-white/10">
+    <header
+      className={`sticky top-0 z-40 backdrop-blur-xl bg-white/10 transition-transform duration-300 ease-out will-change-transform ${
+        hidden ? '-translate-y-full' : 'translate-y-0'
+      }`}
+    >
       <div className="max-w-[1240px] mx-auto px-6 md:px-10 h-16 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           <Link href="/" className="flex items-center gap-2 group shrink-0">
@@ -247,6 +253,41 @@ function NavLink({
       {children}
     </Link>
   );
+}
+
+function useHideOnScroll(threshold = 80, delta = 6) {
+  const [hidden, setHidden] = useState(false);
+  const lastY = useRef(0);
+  const ticking = useRef(false);
+
+  useEffect(() => {
+    lastY.current = window.scrollY;
+
+    const onScroll = () => {
+      if (ticking.current) return;
+      ticking.current = true;
+      window.requestAnimationFrame(() => {
+        const y = window.scrollY;
+        const diff = y - lastY.current;
+
+        if (y < threshold) {
+          setHidden(false);
+        } else if (diff > delta) {
+          setHidden(true);
+        } else if (diff < -delta) {
+          setHidden(false);
+        }
+
+        lastY.current = y;
+        ticking.current = false;
+      });
+    };
+
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [threshold, delta]);
+
+  return hidden;
 }
 
 function Logo() {
