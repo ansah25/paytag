@@ -21,8 +21,8 @@ jobs:
       - name: Install workspaces
         run: npm ci
 
-      - name: Lint backend
-        run: npm run lint
+      - name: Type-check backend
+        run: npx tsc --noEmit
 
       - name: Test backend
         run: npm test
