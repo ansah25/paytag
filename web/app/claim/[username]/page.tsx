@@ -7,7 +7,6 @@ import { useAccount, useConnect, useSignMessage } from 'wagmi';
 import { api, ApiError, buildSignMessage } from '@/lib/api';
 import { saveAuth, updateAuth } from '@/lib/auth';
 import { Avatar } from '@/components/Avatar';
-import { CardGlow } from '@/components/CardGlow';
 
 type Step =
   | 'checking'
@@ -158,7 +157,6 @@ export default function ClaimPage({ params }: Props) {
         {/* Step content */}
         <section className="lg:col-span-8 animate-rise rise-2">
           <div className="card card-hover p-7 md:p-10 min-h-[280px] relative overflow-hidden">
-            <CardGlow color="#5469D4" size="lg" />
             <div className="relative">
             {step === 'checking' && (
               <div className="flex items-center gap-3 text-ink-3">

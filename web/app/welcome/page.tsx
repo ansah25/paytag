@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense, useEffect, useState } from 'react';
 import { CopyButton } from '@/components/CopyButton';
 import { Avatar } from '@/components/Avatar';
-import { CardGlow } from '@/components/CardGlow';
 
 export default function WelcomePage() {
   return (
@@ -79,7 +78,6 @@ function WelcomeContent() {
         <div className="mt-12 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 max-w-5xl">
           {/* Share link card */}
           <div className="lg:col-span-7 card card-hover p-6 md:p-8 animate-rise rise-2 relative overflow-hidden">
-            <CardGlow color="#7E5CFF" size="lg" />
             <div className="relative">
               <div className="flex items-center gap-4 mb-6">
                 <Avatar username={username} size={56} />
@@ -119,7 +117,6 @@ function WelcomeContent() {
               </div>
             ))}
             <div className="col-span-3 card card-hover p-5 relative overflow-hidden">
-              <CardGlow color="#FFB547" />
               <div className="relative">
                 <div className="eyebrow-muted mb-1">Next step</div>
                 <p className="text-sm text-ink-2">

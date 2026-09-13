@@ -8,7 +8,6 @@ import { api, ApiError, ResolveResponse } from '@/lib/api';
 import { CopyButton } from '@/components/CopyButton';
 import { Avatar } from '@/components/Avatar';
 import { ChainGlyph } from '@/components/ChainGlyph';
-import { CardGlow } from '@/components/CardGlow';
 import { CHAIN_LABELS, CHAIN_NATIVE_SYMBOL, PaytagChain } from '@/lib/chains';
 
 // Lazy-load each chain's PayForm. Each variant pulls a chain-specific SDK
@@ -86,7 +85,6 @@ export default function UserPage({ params }: Props) {
       <section className="relative overflow-hidden">
         <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 py-20 md:py-32">
           <div className="max-w-md card card-hover p-8 md:p-10 relative overflow-hidden">
-            <CardGlow color="#FF5A6E" />
             <div className="relative">
               <div className="eyebrow mb-3 text-danger">Not found</div>
               <h1 className="font-display font-bold text-3xl md:text-4xl text-ink leading-tight mb-4">
@@ -191,7 +189,6 @@ export default function UserPage({ params }: Props) {
 
           {selectedChain === 'ethereum' && evmIsValid && (
             <div className="card card-hover p-7 md:p-9 relative overflow-hidden">
-              <CardGlow color="#5469D4" size="lg" />
               <div className="relative">
                 <div className="eyebrow-muted mb-4">Send instantly</div>
                 <PayForm
@@ -204,7 +201,6 @@ export default function UserPage({ params }: Props) {
 
           {selectedChain === 'solana' && recipientForChain && (
             <div className="card card-hover p-7 md:p-9 relative overflow-hidden">
-              <CardGlow color="#7E5CFF" size="lg" />
               <div className="relative">
                 <div className="eyebrow-muted mb-4">Send instantly</div>
                 <PayFormSolana
@@ -217,7 +213,6 @@ export default function UserPage({ params }: Props) {
 
           {selectedChain === 'bitcoin' && recipientForChain && (
             <div className="card card-hover p-7 md:p-9 relative overflow-hidden">
-              <CardGlow color="#FFB547" size="lg" />
               <div className="relative">
                 <div className="eyebrow-muted mb-4">Send instantly</div>
                 <PayFormBitcoin
@@ -230,7 +225,6 @@ export default function UserPage({ params }: Props) {
 
           {availableChains.length === 0 && (
             <div className="card p-7 md:p-9 relative overflow-hidden">
-              <CardGlow color="#FF5A6E" />
               <div className="relative">
                 <div className="eyebrow-muted mb-3">No addresses yet</div>
                 <p className="text-ink-2">
@@ -244,7 +238,6 @@ export default function UserPage({ params }: Props) {
         {/* Side column: share + other chains */}
         <aside className="lg:col-span-5 space-y-5 animate-rise rise-3">
           <div className="card card-hover p-6 relative overflow-hidden">
-            <CardGlow color="#7E5CFF" />
             <div className="relative">
               <div className="eyebrow-muted mb-3">Share link</div>
               <div className="bg-paper border border-hairline rounded-xl p-4 font-mono text-sm text-ink break-all numeric">

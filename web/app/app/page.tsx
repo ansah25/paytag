@@ -9,7 +9,6 @@ import { RegisterForm } from '@/components/RegisterForm';
 import { AddressManager } from '@/components/AddressManager';
 import { CopyButton } from '@/components/CopyButton';
 import { Avatar } from '@/components/Avatar';
-import { CardGlow } from '@/components/CardGlow';
 import { api, ResolveResponse } from '@/lib/api';
 import { AuthState, clearAuth, getAuth } from '@/lib/auth';
 
@@ -106,7 +105,6 @@ export default function AppPage() {
     return (
       <PreAuthShell>
         <div className="card card-hover p-8 md:p-10 max-w-md w-full relative overflow-hidden">
-          <CardGlow color="#5469D4" />
           <div className="relative">
             <div className="eyebrow mb-3">Welcome back</div>
             <h1 className="font-display font-bold text-3xl md:text-4xl text-ink mb-3 leading-tight">
@@ -128,7 +126,6 @@ export default function AppPage() {
     return (
       <PreAuthShell>
         <div className="card card-hover p-8 md:p-10 max-w-md w-full relative overflow-hidden">
-          <CardGlow color="#7E5CFF" />
           <div className="relative">
             <div className="eyebrow mb-3">One more step</div>
             <h1 className="font-display font-bold text-3xl md:text-4xl text-ink mb-1 leading-tight">
@@ -153,7 +150,6 @@ export default function AppPage() {
     return (
       <PreAuthShell>
         <div className="card card-hover p-8 md:p-10 max-w-md w-full relative overflow-hidden">
-          <CardGlow color="#FF5A6E" />
           <div className="relative">
             <div className="eyebrow mb-3">One last step</div>
             <h1 className="font-display font-bold text-3xl md:text-4xl text-ink mb-3 leading-tight">
@@ -247,7 +243,6 @@ export default function AppPage() {
         {/* Hero Receive — the dashboard's anchor. The link itself is the
             visual: hostname in muted ink, username in the brand gradient. */}
         <section className="lg:col-span-2 card card-hover p-7 md:p-9 animate-rise rise-1 relative overflow-hidden">
-          <CardGlow color="#7E5CFF" size="lg" />
           <div className="relative">
             <div className="eyebrow mb-2">Receive</div>
             <h2 className="font-display font-bold text-2xl md:text-3xl text-ink mb-1">
@@ -297,7 +292,6 @@ export default function AppPage() {
             current resolution; once all chains are mapped the card morphs to
             an "all set" state instead of nagging. */}
         <section className="card card-hover p-7 md:p-9 relative overflow-hidden animate-rise rise-2">
-          <CardGlow color={allChainsDone ? '#13BC8C' : '#FFB547'} />
           <div className="relative">
           <div className="eyebrow-muted mb-3">Setup</div>
           {allChainsDone ? (

@@ -7,7 +7,6 @@ import { isAddress } from 'viem';
 import { api, ApiError, ResolveResponse } from '@/lib/api';
 import { Avatar } from '@/components/Avatar';
 import { ChainGlyph } from '@/components/ChainGlyph';
-import { CardGlow } from '@/components/CardGlow';
 import { CHAIN_LABELS, CHAIN_NATIVE_SYMBOL, PaytagChain } from '@/lib/chains';
 
 // Same code-split as /[username]: each chain SDK is heavy and only one is in
@@ -172,7 +171,6 @@ export default function SendPage() {
         {status === 'found' && resolution && (
           <section className="animate-rise">
             <div className="card card-hover p-5 md:p-6 relative overflow-hidden">
-              <CardGlow color="#7E5CFF" />
               <div className="relative flex items-center gap-4">
                 <Avatar username={resolution.username} size={56} />
                 <div className="flex-1 min-w-0">
@@ -244,7 +242,6 @@ export default function SendPage() {
           evmAddress &&
           isAddress(evmAddress) && (
             <section className="card card-hover p-7 md:p-9 animate-rise relative overflow-hidden">
-              <CardGlow color="#5469D4" size="lg" />
               <div className="relative">
                 <PayForm
                   username={resolution.username}
@@ -259,7 +256,6 @@ export default function SendPage() {
           selectedChain === 'solana' &&
           recipientForChain && (
             <section className="card card-hover p-7 md:p-9 animate-rise relative overflow-hidden">
-              <CardGlow color="#7E5CFF" size="lg" />
               <div className="relative">
                 <PayFormSolana
                   username={resolution.username}
@@ -274,7 +270,6 @@ export default function SendPage() {
           selectedChain === 'bitcoin' &&
           recipientForChain && (
             <section className="card card-hover p-7 md:p-9 animate-rise relative overflow-hidden">
-              <CardGlow color="#FFB547" size="lg" />
               <div className="relative">
                 <PayFormBitcoin
                   username={resolution.username}
