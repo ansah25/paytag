@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import { useAccount } from 'wagmi';
 import { ConnectWallet, DisconnectButton } from '@/components/ConnectWallet';
 import { SignInPanel } from '@/components/SignInPanel';
-import { RegisterForm } from '@/components/RegisterForm';
 import { AddressManager } from '@/components/AddressManager';
 import { CopyButton } from '@/components/CopyButton';
 import { Avatar } from '@/components/Avatar';
@@ -141,29 +140,24 @@ export default function AppPage() {
     );
   }
 
-  // === Wallet has no paytag yet — register inline ===
-  // The server already told us this wallet owns nothing (via /me). The only
-  // way forward is to claim a fresh name with this wallet — there's no
-  // "load by typing it" path because a paytag belongs to a wallet, not to a
-  // device.
+  // === Wallet has no paytag yet ===
+  // Registration now lives in the claim wizard's pick step (/claim). This gate
+  // is restyled in step 6.
   if (!auth.username) {
     return (
       <PreAuthShell>
-        <div className="card card-hover p-8 md:p-10 max-w-md w-full relative overflow-hidden">
-          <div className="relative">
-            <div className="eyebrow mb-3">One last step</div>
-            <h1 className="font-display font-bold text-3xl md:text-4xl text-ink mb-3 leading-tight">
-              Claim your paytag
-            </h1>
-            <p className="text-ink-2 mb-6">
-              This wallet doesn&apos;t have a paytag yet. Pick a name and it&apos;ll
-              be permanently linked to{' '}
-              <span className="font-mono text-ink-3 numeric">{shortAddr(address)}</span>.
-            </p>
-            <RegisterForm
-              onRegistered={(username) => setAuth({ ...auth, username })}
-            />
-          </div>
+        <div className="max-w-md w-full border border-line p-8 md:p-10">
+          <div className="mb-3">Almost there</div>
+          <h1 className="font-display font-bold text-3xl md:text-4xl text-ink mb-3 leading-tight">
+            This wallet has no paytag yet
+          </h1>
+          <p className="text-ink2 mb-6">
+            Pick a name and it&apos;ll be linked to{' '}
+            <span className="font-mono">{shortAddr(address)}</span>.
+          </p>
+          <Link href="/claim" className="text-accent font-semibold">
+            Choose a name →
+          </Link>
         </div>
       </PreAuthShell>
     );
