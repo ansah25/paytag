@@ -9,10 +9,17 @@ import { describeDevice } from './device';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
 
-// Single SDK client shared across the web app. Cache is enabled (30 s TTL) so
-// repeated resolves of the same username are free; we explicitly invalidate
-// after mutations (address, verification and profile writes).
-const sdk = new Paytag({ baseUrl: BASE_URL });
+// The API marks /resolve cacheable (max-age=30, stale-while-revalidate=60) for
+// third-party SDK users. This app shows data the user may have just changed,
+// so in the browser ask for revalidation every time — an unchanged response is
+// still a cheap 304 thanks to its ETag.
+type SdkFetch = NonNullable<NonNullable<ConstructorParameters<typeof Paytag>[0]>['fetch']>;
+const revalidatingFetch: SdkFetch = (input, init) =>
+  typeof window === 'undefined' ? fetch(input, init) : fetch(input, { ...init, cache: 'no-cache' });
+
+// Single SDK client shared across the web app. Its in-memory cache (30 s TTL)
+// makes repeated resolves free; mutations below invalidate it.
+const sdk = new Paytag({ baseUrl: BASE_URL, fetch: revalidatingFetch });
 
 export class ApiError extends Error {
   constructor(
@@ -100,10 +107,6 @@ export interface RegisterResponse {
   ownerWallet: string;
   createdAt: string;
 }
-export interface AddAddressResponse {
-  chain: string;
-  address: string;
-}
 export interface ProfileFields {
   displayName: string | null;
   bio: string | null;
@@ -121,6 +124,28 @@ export type ResolveResponse = SdkResolveResponse &
     verified?: Partial<Record<ChainId, boolean>>;
   };
 export type AvailabilityResponse = SdkAvailabilityResponse;
+
+/**
+ * Address mutations return the owner's updated resolution. Use it instead of
+ * re-reading /resolve, which can briefly return a cached copy after a write.
+ * Optional so an older API still works (callers fall back to a re-fetch).
+ */
+interface WithResolution {
+  resolution?: ResolveResponse;
+}
+export interface AddAddressResponse extends WithResolution {
+  chain: string;
+  address: string;
+}
+export interface RemoveAddressResponse extends WithResolution {
+  chain: ChainId;
+  removed: true;
+}
+export interface VerifyAddressResponse extends WithResolution {
+  chain: ChainId;
+  verified: true;
+  verifiedAt: string;
+}
 
 export interface VerificationChallenge {
   chain: ChainId;
@@ -178,23 +203,27 @@ export const api = {
     }),
   me: (signal?: AbortSignal) => meSingleFlight(signal),
   addAddress: async (chain: string, address: string) => {
-    const result = await request<AddAddressResponse>('/add-address', {
-      method: 'POST',
-      body: { chain, address },
-      auth: true,
-    });
-    // The user just mutated their own mapping — drop the SDK cache so the next
-    // resolve returns fresh data.
-    sdk.invalidate();
-    return result;
+    try {
+      return await request<AddAddressResponse>('/add-address', {
+        method: 'POST',
+        body: { chain, address },
+        auth: true,
+      });
+    } finally {
+      // Drop the SDK cache whether or not the write landed, so the next
+      // resolve re-reads rather than serving a copy from before the attempt.
+      sdk.invalidate();
+    }
   },
   removeAddress: async (chain: ChainId) => {
-    const result = await request<{ chain: ChainId; removed: true }>(
-      `/address/${encodeURIComponent(chain)}`,
-      { method: 'DELETE', auth: true },
-    );
-    sdk.invalidate();
-    return result;
+    try {
+      return await request<RemoveAddressResponse>(`/address/${encodeURIComponent(chain)}`, {
+        method: 'DELETE',
+        auth: true,
+      });
+    } finally {
+      sdk.invalidate();
+    }
   },
   /** Ask the server for a one-time message proving control of the mapped address. */
   verifyAddressChallenge: (chain: ChainId) =>
@@ -204,12 +233,15 @@ export const api = {
       auth: true,
     }),
   verifyAddress: async (chain: ChainId, signature: string) => {
-    const result = await request<{ chain: ChainId; verified: true; verifiedAt: string }>(
-      '/verify-address',
-      { method: 'POST', body: { chain, signature }, auth: true },
-    );
-    sdk.invalidate();
-    return result;
+    try {
+      return await request<VerifyAddressResponse>('/verify-address', {
+        method: 'POST',
+        body: { chain, signature },
+        auth: true,
+      });
+    } finally {
+      sdk.invalidate();
+    }
   },
   updateProfile: async (fields: { displayName: string | null; bio: string | null }) => {
     const result = await request<ProfileFields & { username: string }>('/me/profile', {

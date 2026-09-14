@@ -12,7 +12,7 @@ import { shortAddress } from '@/lib/format';
 import { walletErrorMessage } from '@/lib/pay/errors';
 import { CHAIN_ORDER } from '@/lib/pay/meta';
 import { Activity } from './Activity';
-import { AddressManager } from './AddressManager';
+import { AddressManager, type ResolutionUpdate } from './AddressManager';
 import { GateCard } from './GateCard';
 import { ProfileForm } from './ProfileForm';
 import { ReceiveCard } from './ReceiveCard';
@@ -97,14 +97,28 @@ export function Dashboard() {
   }, [token]);
 
   const username = auth?.username;
-  const refreshResolution = useCallback(async () => {
-    if (!username) return;
-    try {
-      setResolution(await api.resolve(username));
-    } catch {
-      // Keep the last good resolution on a failed refresh.
-    }
-  }, [username]);
+  // Address mutations hand back the updated resolution — use it directly so
+  // the UI never re-reads a cached /resolve after a write. An updater applies a
+  // change the server has confirmed; with neither, fetch.
+  const refreshResolution = useCallback(
+    async (next?: ResolutionUpdate) => {
+      if (typeof next === 'function') {
+        setResolution((current) => (current ? next(current) : current));
+        return;
+      }
+      if (next) {
+        setResolution(next);
+        return;
+      }
+      if (!username) return;
+      try {
+        setResolution(await api.resolve(username));
+      } catch {
+        // Keep the last good resolution on a failed refresh.
+      }
+    },
+    [username],
+  );
 
   useEffect(() => {
     setResolution(null);
