@@ -43,3 +43,10 @@ create table if not exists address_verification_nonces (
 );
 
 alter table address_verification_nonces enable row level security;
+
+-- New tables are no longer granted to the Data API roles automatically
+-- (Supabase change, enforced 2026-10-30). The API talks to this table as
+-- service_role through supabase-js, so grant that explicitly; the public
+-- roles get nothing (RLS with no policies would deny them anyway).
+grant select, insert, update, delete on table address_verification_nonces to service_role;
+revoke all on table address_verification_nonces from anon, authenticated;
