@@ -50,3 +50,7 @@ docs/
 
 # Frontend env example (not pushed per project preference)
 web/.env.local.example
+
+# UI redesign handoff bundle — local reference only, never commit
+design_handoff_paytag_redesign/
+Paytag UI Redesign.zip

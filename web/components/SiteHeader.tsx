@@ -2,118 +2,59 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useDisconnect } from 'wagmi';
 import { clearAuth } from '@/lib/auth';
 import { useAuthState } from '@/lib/useAuthState';
-
-type NavItem = { href: string; label: string };
-type Cta = { href: string; label: string } | null;
-
-const HOME: NavItem = { href: '/', label: 'Home' };
-const SEND: NavItem = { href: '/send', label: 'Send' };
-const DASHBOARD: NavItem = { href: '/app', label: 'Dashboard' };
-const DEVELOPERS: NavItem = { href: '/#developers', label: 'Developers' };
-
-interface RouteCtx {
-  section: string | null;
-  baseNav: NavItem[];
-  signedOutCta: Cta;
-  signedInCta: Cta;
-  /** Hide the Sign in link even when signed-out (e.g. on /app the page handles it). */
-  forceHideSignIn?: boolean;
-}
-
-function resolveRoute(pathname: string): RouteCtx {
-  const path = pathname.toLowerCase();
-  const segments = path.split('/').filter(Boolean);
-  const first = segments[0] ?? '';
-
-  if (path === '/') {
-    return {
-      section: null,
-      baseNav: [SEND, DASHBOARD, DEVELOPERS],
-      signedOutCta: { href: '/#claim', label: 'Claim a name' },
-      signedInCta: { href: '/app', label: 'Open dashboard' },
-    };
-  }
-
-  if (first === 'send') {
-    return {
-      section: 'Send',
-      baseNav: [DASHBOARD, HOME],
-      signedOutCta: { href: '/#claim', label: 'Claim a name' },
-      // Already on /send — no extra CTA needed for signed-in users
-      signedInCta: null,
-    };
-  }
-
-  if (first === 'app') {
-    return {
-      section: 'Dashboard',
-      baseNav: [SEND, HOME],
-      signedOutCta: { href: '/send', label: 'Send money' },
-      signedInCta: { href: '/send', label: 'Send money' },
-      forceHideSignIn: true,
-    };
-  }
-
-  if (first === 'welcome') {
-    return {
-      section: 'Welcome',
-      baseNav: [DASHBOARD, SEND, HOME],
-      signedOutCta: { href: '/app', label: 'Open dashboard' },
-      signedInCta: { href: '/app', label: 'Open dashboard' },
-      forceHideSignIn: true,
-    };
-  }
-
-  if (first === 'claim') {
-    const username = segments[1];
-    return {
-      section: username ? `Claim @${username}` : 'Claim',
-      baseNav: [HOME],
-      signedOutCta: { href: '/', label: 'Choose another' },
-      signedInCta: { href: '/app', label: 'Open dashboard' },
-    };
-  }
-
-  if (first === 'pay') {
-    const username = segments[1];
-    return {
-      section: username ? `Pay @${username}` : 'Pay',
-      baseNav: [SEND, HOME],
-      signedOutCta: { href: '/#claim', label: 'Claim your name' },
-      signedInCta: { href: '/app', label: 'Open dashboard' },
-    };
-  }
-
-  // Public profile: /[username]
-  return {
-    section: `@${first}`,
-    baseNav: [SEND, HOME],
-    signedOutCta: { href: '/#claim', label: 'Claim your name' },
-    signedInCta: { href: '/app', label: 'Open dashboard' },
-  };
-}
+import { isActivePath, resolveRoute } from '@/lib/routes';
+import { useTheme } from './ThemeProvider';
 
 const shortAddr = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 
 export function SiteHeader() {
   const pathname = usePathname() ?? '/';
   const route = resolveRoute(pathname);
-  const currentPath = pathname.toLowerCase();
   const { auth, hydrated, isSignedIn } = useAuthState();
   const { disconnect } = useDisconnect();
-  const hidden = useHideOnScroll();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuId = useId();
+  const headerRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   // Until we hydrate from localStorage, render the signed-out shape — this
   // matches the server render and avoids a hydration mismatch.
-  const treatAsSignedIn = hydrated && isSignedIn;
+  const signedIn = hydrated && isSignedIn && !!auth;
+  const showSignIn = hydrated && !isSignedIn && !route.hideSignIn;
+  const identity = auth ? (auth.username ? `@${auth.username}` : shortAddr(auth.wallet)) : '';
 
-  const cta = treatAsSignedIn ? route.signedInCta : route.signedOutCta;
-  const showSignInLink =
-    !route.forceHideSignIn && hydrated && !isSignedIn;
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setMenuOpen(false);
+      menuButtonRef.current?.focus();
+    };
+    const onPointer = (e: PointerEvent) => {
+      if (!headerRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    // The menu only exists at ≤820px; drop it if the viewport grows past that.
+    const desktop = window.matchMedia('(min-width: 821px)');
+    const onResize = (e: MediaQueryListEvent) => {
+      if (e.matches) setMenuOpen(false);
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onPointer);
+    desktop.addEventListener('change', onResize);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPointer);
+      desktop.removeEventListener('change', onResize);
+    };
+  }, [menuOpen]);
 
   const handleSignOut = () => {
     clearAuth();
@@ -122,29 +63,31 @@ export function SiteHeader() {
     } catch {
       // wagmi may not be ready in some edge cases — clearAuth alone is enough
     }
+    setMenuOpen(false);
   };
 
   return (
-    <header
-      className={`sticky top-0 z-40 backdrop-blur-xl bg-white/10 transition-transform duration-300 ease-out will-change-transform ${
-        hidden ? '-translate-y-full' : 'translate-y-0'
-      }`}
-    >
-      <div className="max-w-[1240px] mx-auto px-6 md:px-10 h-16 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <Link href="/" className="flex items-center gap-2 group shrink-0">
-            <Logo />
-            <span className="font-display font-bold text-[19px] text-ink tracking-tightish">
+    <header ref={headerRef} className="sticky top-0 z-30 px-5 py-3.5">
+      <div className="mx-auto flex h-14 max-w-content items-center justify-between gap-3 rounded-pill border border-line bg-surface pl-[18px] pr-2.5">
+        <div className="flex min-w-0 items-center gap-3">
+          <Link href="/" className="flex shrink-0 items-center gap-2.5 rounded-pill text-ink">
+            <span
+              aria-hidden
+              className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-full bg-accent font-display text-[17px] font-bold text-on-accent"
+            >
+              @
+            </span>
+            <span className="font-display text-[18px] font-semibold tracking-display max-[480px]:sr-only">
               paytag
             </span>
           </Link>
           {route.section && (
             <>
-              <span aria-hidden className="text-ink-4 select-none">
+              <span aria-hidden className="text-[15px] text-ink3 max-[480px]:hidden">
                 /
               </span>
               <span
-                className="font-display font-semibold text-[15px] text-ink-2 truncate max-w-[200px] sm:max-w-[320px]"
+                className="min-w-0 max-w-[220px] truncate text-sm font-semibold text-ink2 max-[480px]:hidden"
                 title={route.section}
               >
                 {route.section}
@@ -153,154 +96,124 @@ export function SiteHeader() {
           )}
         </div>
 
-        <nav className="hidden md:flex items-center gap-1">
-          {route.baseNav.map((item) => (
-            <NavLink
+        <nav aria-label="Primary" className="flex gap-1 text-sm font-medium max-[820px]:hidden">
+          {route.nav.map((item) => (
+            <Link
               key={item.href}
               href={item.href}
-              active={isActive(item.href, currentPath)}
+              aria-current={isActivePath(item.href, pathname) ? 'page' : undefined}
+              className="inline-flex min-h-10 shrink-0 items-center whitespace-nowrap rounded-pill px-3.5 text-ink2 transition-colors hover:bg-surface2 hover:text-ink"
             >
               {item.label}
-            </NavLink>
+            </Link>
           ))}
         </nav>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {showSignInLink && (
+        <div className="flex shrink-0 items-center gap-1.5">
+          {showSignIn && (
             <Link
               href="/app"
-              className="inline-flex text-sm text-ink-2 hover:text-primary px-2 py-1.5 sm:px-3 font-medium transition-colors"
+              className="inline-flex min-h-10 items-center px-3.5 text-sm font-medium text-ink2 transition-colors hover:text-ink max-[820px]:hidden"
             >
               Sign in
             </Link>
           )}
 
-          {treatAsSignedIn && auth && (
-            <IdentityBadge
-              username={auth.username}
-              wallet={auth.wallet}
-              onSignOut={handleSignOut}
-            />
-          )}
-
-          {cta && (
-            <Link href={cta.href} className="btn-primary">
-              <span>{cta.label}</span>
-              <span aria-hidden>→</span>
+          {signedIn && (
+            <Link
+              href="/app"
+              title={auth.username ? `Signed in as @${auth.username}` : `Signed in · ${auth.wallet}`}
+              // The chip is 34px tall to match the design; the ::before
+              // extends the hit area to 40px without changing its look.
+              className="relative inline-flex max-w-[180px] items-center gap-2 whitespace-nowrap rounded-pill border border-line py-[7px] pl-2.5 pr-3 font-mono text-[13px] font-semibold text-ink transition-colors before:absolute before:-inset-y-[3px] before:inset-x-0 before:content-[''] hover:border-line2 max-[820px]:hidden"
+            >
+              <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-ok" />
+              <span className="truncate">{identity}</span>
             </Link>
           )}
+
+          {route.cta && (
+            <Link
+              href={route.cta.href}
+              className="inline-flex min-h-10 items-center whitespace-nowrap rounded-pill bg-btn px-[18px] text-sm font-bold text-on-btn transition-colors hover:bg-accent hover:text-on-accent"
+            >
+              {route.cta.label}
+            </Link>
+          )}
+
+          <ThemeToggle />
+
+          <button
+            ref={menuButtonRef}
+            type="button"
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={menuOpen}
+            aria-controls={menuId}
+            className="hidden h-10 w-10 flex-col items-center justify-center gap-[5px] rounded-full border border-line text-ink transition-colors hover:border-line2 max-[820px]:inline-flex"
+          >
+            <span aria-hidden className="block h-0.5 w-4 rounded-full bg-current" />
+            <span aria-hidden className="block h-0.5 w-4 rounded-full bg-current" />
+          </button>
         </div>
       </div>
+
+      {menuOpen && (
+        <div id={menuId} className="absolute inset-x-5 top-[calc(100%-6px)]">
+          <div className="mx-auto grid max-w-content animate-stage gap-1 rounded-card border border-line bg-surface p-2.5 text-base font-semibold shadow-float">
+            {route.nav.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMenuOpen(false)}
+                aria-current={isActivePath(item.href, pathname) ? 'page' : undefined}
+                className="flex min-h-11 items-center rounded-inset-sm px-4 py-3.5 text-ink transition-colors hover:bg-surface2"
+              >
+                {item.label}
+              </Link>
+            ))}
+            {(signedIn || showSignIn) && <div aria-hidden className="mx-2 my-1.5 h-px bg-line" />}
+            {signedIn && (
+              <div className="flex min-h-11 items-center justify-between gap-3 px-4 py-2.5">
+                <span className="truncate font-mono text-sm text-ink2">{identity}</span>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="inline-flex min-h-10 shrink-0 items-center text-sm text-danger"
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
+            {showSignIn && (
+              <Link
+                href="/app"
+                onClick={() => setMenuOpen(false)}
+                className="flex min-h-11 items-center rounded-inset-sm px-4 py-3.5 text-ink2 transition-colors hover:bg-surface2"
+              >
+                Sign in
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 }
 
-function IdentityBadge({
-  username,
-  wallet,
-  onSignOut,
-}: {
-  username?: string;
-  wallet: string;
-  onSignOut: () => void;
-}) {
-  const label = username ? `@${username}` : shortAddr(wallet);
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  const label = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
   return (
-    <div className="flex items-center gap-1">
-      <Link
-        href="/app"
-        className="inline-flex items-center gap-1.5 text-sm font-semibold text-ink-2 hover:text-primary px-2 py-1.5 sm:px-3 rounded-full border border-hairline bg-white/70 hover:border-primary/40 transition-colors max-w-[120px] sm:max-w-[180px] truncate"
-        title={username ? `Signed in as @${username}` : `Signed in · ${wallet}`}
-      >
-        <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
-        <span className="font-mono numeric truncate">{label}</span>
-      </Link>
-      <button
-        type="button"
-        onClick={onSignOut}
-        className="hidden sm:inline-flex text-xs text-ink-3 hover:text-danger px-2 py-1.5 font-medium transition-colors"
-        aria-label="Sign out"
-      >
-        Sign out
-      </button>
-    </div>
-  );
-}
-
-function isActive(href: string, currentPath: string): boolean {
-  if (href.includes('#')) return false;
-  if (href === '/') return currentPath === '/';
-  return currentPath === href || currentPath.startsWith(`${href}/`);
-}
-
-function NavLink({
-  href,
-  active,
-  children,
-}: {
-  href: string;
-  active: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      aria-current={active ? 'page' : undefined}
-      className={`px-3 py-2 text-sm font-medium transition-colors ${
-        active ? 'text-primary' : 'text-ink-2 hover:text-primary'
-      }`}
+    <button
+      type="button"
+      onClick={toggleTheme}
+      aria-label={label}
+      title={label}
+      className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-line text-ink2 transition-colors hover:border-line2 hover:text-ink"
     >
-      {children}
-    </Link>
-  );
-}
-
-function useHideOnScroll(threshold = 80, delta = 6) {
-  const [hidden, setHidden] = useState(false);
-  const lastY = useRef(0);
-  const ticking = useRef(false);
-
-  useEffect(() => {
-    lastY.current = window.scrollY;
-
-    const onScroll = () => {
-      if (ticking.current) return;
-      ticking.current = true;
-      window.requestAnimationFrame(() => {
-        const y = window.scrollY;
-        const diff = y - lastY.current;
-
-        if (y < threshold) {
-          setHidden(false);
-        } else if (diff > delta) {
-          setHidden(true);
-        } else if (diff < -delta) {
-          setHidden(false);
-        }
-
-        lastY.current = y;
-        ticking.current = false;
-      });
-    };
-
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, [threshold, delta]);
-
-  return hidden;
-}
-
-function Logo() {
-  return (
-    <span
-      aria-hidden
-      className="inline-flex items-center justify-center w-7 h-7 rounded-md text-white text-[14px] font-bold"
-      style={{
-        background: 'linear-gradient(135deg, #5469D4 0%, #7E5CFF 50%, #FF5A6E 100%)',
-        boxShadow: '0 4px 12px -2px rgba(84,105,212,0.45)',
-      }}
-    >
-      @
-    </span>
+      {/* Glyph is styled from [data-theme] in globals.css so it's correct on first paint. */}
+      <span aria-hidden className="theme-dot h-3.5 w-3.5 rounded-full" />
+    </button>
   );
 }

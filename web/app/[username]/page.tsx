@@ -1,292 +1,225 @@
 'use client';
 
-import Link from 'next/link';
-import dynamic from 'next/dynamic';
-import { useEffect, useMemo, useState } from 'react';
-import { isAddress } from 'viem';
-import { api, ApiError, ResolveResponse } from '@/lib/api';
-import { CopyButton } from '@/components/CopyButton';
-import { Avatar } from '@/components/Avatar';
-import { ChainGlyph } from '@/components/ChainGlyph';
-import { CardGlow } from '@/components/CardGlow';
-import { CHAIN_LABELS, CHAIN_NATIVE_SYMBOL, PaytagChain } from '@/lib/chains';
+import { notFound } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { USERNAME_PATTERN } from '@/components/ClaimInput';
+import { MessageScreen } from '@/components/MessageScreen';
+import { PayPanel } from '@/components/PayPanel';
+import { AddressText } from '@/components/ui/AddressText';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { ChainDot } from '@/components/ui/ChainDot';
+import { Skeleton, SkeletonStatus } from '@/components/ui/Skeleton';
+import { api, ApiError, type ResolveResponse } from '@/lib/api';
+import type { PaytagChain } from '@/lib/chains';
+import { CHAIN_META, CHAIN_ORDER } from '@/lib/pay/meta';
+import { useCopy } from '@/lib/useCopy';
 
-// Lazy-load each chain's PayForm. Each variant pulls a chain-specific SDK
-// (ethers/viem for ETH, @solana/web3.js for SOL, sats-connect for BTC).
-// Loading them eagerly meant every visitor paid ~150 kB of unused JS just to
-// pick a chain. Dynamic import keeps the initial bundle lean and only fetches
-// the SDK when the user actually selects that tab.
-const PayForm = dynamic(
-  () => import('@/components/PayForm').then((m) => ({ default: m.PayForm })),
-  { ssr: false },
-);
-const PayFormSolana = dynamic(
-  () => import('@/components/PayFormSolana').then((m) => ({ default: m.PayFormSolana })),
-  { ssr: false },
-);
-const PayFormBitcoin = dynamic(
-  () => import('@/components/PayFormBitcoin').then((m) => ({ default: m.PayFormBitcoin })),
-  { ssr: false },
-);
-
-const CHAIN_ORDER: PaytagChain[] = ['ethereum', 'solana', 'bitcoin'];
+type LoadState =
+  | { kind: 'loading' }
+  | { kind: 'ready'; resolution: ResolveResponse }
+  | { kind: 'not_found' }
+  | { kind: 'error' };
 
 interface Props {
   params: { username: string };
 }
 
-export default function UserPage({ params }: Props) {
-  const username = params.username.toLowerCase();
-  const [resolution, setResolution] = useState<ResolveResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedChain, setSelectedChain] = useState<PaytagChain | null>(null);
+export default function ProfilePage({ params }: Props) {
+  const username = decodeURIComponent(params.username).toLowerCase();
+  const validName = USERNAME_PATTERN.test(username);
+  const [state, setState] = useState<LoadState>({ kind: 'loading' });
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
+    if (!validName) return;
+    const controller = new AbortController();
+    setState({ kind: 'loading' });
     api
-      .resolve(username)
-      .then((data) => !cancelled && setResolution(data))
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err instanceof ApiError ? err.message : 'Could not load this paytag');
+      .resolve(username, controller.signal)
+      .then((resolution) => {
+        if (!controller.signal.aborted) setState({ kind: 'ready', resolution });
       })
-      .finally(() => !cancelled && setLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [username]);
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        const missing = err instanceof ApiError && (err.code === 'USER_NOT_FOUND' || err.status === 404);
+        setState({ kind: missing ? 'not_found' : 'error' });
+      });
+    return () => controller.abort();
+  }, [username, validName, attempt]);
 
-  const availableChains = useMemo<PaytagChain[]>(() => {
-    if (!resolution) return [];
-    return CHAIN_ORDER.filter((c) => Boolean(resolution.addresses[c]));
-  }, [resolution]);
+  // Not a possible paytag (e.g. /some-page): the route 404, not "claim it".
+  if (!validName) notFound();
 
-  useEffect(() => {
-    if (availableChains.length === 0) {
-      setSelectedChain(null);
-      return;
-    }
-    if (!selectedChain || !availableChains.includes(selectedChain)) {
-      setSelectedChain(availableChains[0]);
-    }
-  }, [availableChains, selectedChain]);
+  if (state.kind === 'loading') return <ProfileSkeleton username={username} />;
 
-  if (loading) {
+  if (state.kind === 'not_found') {
     return (
-      <div className="max-w-[1240px] mx-auto px-6 md:px-10 py-20 text-ink-3">
-        Loading…
-      </div>
+      <MessageScreen
+        kicker="Not found"
+        title={`@${username} isn’t a paytag yet.`}
+        copy="Nobody has claimed this name. If it’s meant to be yours, take it before someone else does."
+        primary={{ label: `Claim @${username}`, href: `/claim/${username}` }}
+      />
     );
   }
 
-  if (error || !resolution) {
+  if (state.kind === 'error') {
     return (
-      <section className="relative overflow-hidden">
-        <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 py-20 md:py-32">
-          <div className="max-w-md card card-hover p-8 md:p-10 relative overflow-hidden">
-            <CardGlow color="#FF5A6E" />
-            <div className="relative">
-              <div className="eyebrow mb-3 text-danger">Not found</div>
-              <h1 className="font-display font-bold text-3xl md:text-4xl text-ink leading-tight mb-4">
-                @{username} isn&apos;t a paytag yet
-              </h1>
-              <p className="text-ink-2 mb-7">
-                {error ?? 'This name has not been claimed.'}
-              </p>
-              <Link href={`/claim/${username}`} className="btn-primary">
-                <span>Claim @{username}</span>
-                <span aria-hidden>→</span>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+      <MessageScreen
+        kicker="Something broke"
+        title="We couldn’t load this page."
+        copy="The resolver didn’t answer. Your wallets and names are unaffected — this is on our side. Try again in a moment."
+        primary={{ label: 'Try again', onClick: () => setAttempt((n) => n + 1) }}
+      />
     );
   }
 
-  const evmAddress = resolution.addresses.ethereum;
-  const evmIsValid = evmAddress && isAddress(evmAddress);
-  const recipientForChain = selectedChain ? resolution.addresses[selectedChain] : undefined;
-  const sideChains = (Object.entries(resolution.addresses) as [PaytagChain, string][]).filter(
-    ([chain]) => chain !== selectedChain,
-  );
-  const link =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/${resolution.username}`
-      : `/${resolution.username}`;
-  const displayLink = link.replace(/^https?:\/\//, '');
-  const activeChains = Object.values(resolution.addresses).filter(Boolean).length;
+  const { resolution } = state;
+  const name = resolution.username;
+  const verified = resolution.verified ?? {};
+  const chains = CHAIN_ORDER.filter((c) => resolution.addresses[c]);
+  const verifiedCount = chains.filter((c) => verified[c]).length;
 
   return (
-    <>
-      {/* Profile hero */}
-      <section className="relative overflow-hidden">
-        <div className="relative max-w-[1240px] mx-auto px-6 md:px-10 pt-14 pb-12 animate-rise rise-1">
-          <div className="flex flex-col md:flex-row md:items-end gap-6 md:gap-8">
-            <Avatar username={resolution.username} size={104} />
-            <div>
-              <div className="eyebrow mb-2">Pay</div>
-              <h1 className="font-display font-bold text-4xl md:text-6xl text-ink leading-none tracking-tightish">
-                @{resolution.username}
-              </h1>
-              <div className="mt-4 flex items-center gap-3 text-sm">
-                <div className="flex items-center gap-1.5">
-                  {CHAIN_ORDER.map((c) => {
-                    const has = !!resolution.addresses[c];
-                    return (
-                      <span
-                        key={c}
-                        className={has ? '' : 'opacity-25'}
-                        title={`${CHAIN_LABELS[c]}${has ? '' : ' · not set'}`}
-                      >
-                        <ChainGlyph chain={c} size={22} />
-                      </span>
-                    );
-                  })}
-                </div>
-                <span className="text-ink-3 numeric">
-                  {activeChains} active network{activeChains === 1 ? '' : 's'}
-                </span>
-              </div>
+    <section className="mx-auto grid w-full max-w-content gap-7 px-6 pb-24 pt-12">
+      <div className="flex animate-enter flex-wrap items-center gap-[18px]">
+        <span
+          aria-hidden
+          className="inline-flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-accent font-display text-[34px] font-bold text-on-accent"
+        >
+          {name.charAt(0)}
+        </span>
+        <div className="min-w-0">
+          <h1 className="break-all font-display text-[clamp(36px,5vw,60px)] font-semibold leading-none tracking-display-lg">
+            @{name}
+          </h1>
+          {resolution.displayName && (
+            <div className="mt-2 text-[17px] font-semibold text-ink">{resolution.displayName}</div>
+          )}
+          {resolution.bio && (
+            <p className="mt-1.5 max-w-[520px] text-[15px] leading-[1.5] text-ink2">{resolution.bio}</p>
+          )}
+          <div className="mt-3 flex flex-wrap items-center gap-2.5">
+            <div className="flex gap-1.5">
+              {CHAIN_ORDER.map((c) => (
+                <ChainDot
+                  key={c}
+                  chain={c}
+                  size={12}
+                  muted={!resolution.addresses[c]}
+                  title={`${CHAIN_META[c].label}${resolution.addresses[c] ? '' : ' · not set'}`}
+                />
+              ))}
             </div>
+            <span className="text-sm text-ink2">
+              {chains.length} active network{chains.length === 1 ? '' : 's'}
+            </span>
+            {verifiedCount > 0 && (
+              <Badge>
+                {verifiedCount} verified wallet{verifiedCount === 1 ? '' : 's'}
+              </Badge>
+            )}
           </div>
         </div>
-      </section>
+      </div>
 
-      <div className="max-w-[1240px] mx-auto px-6 md:px-10 py-12 md:py-16 grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Pay column */}
-        <section className="lg:col-span-7 animate-rise rise-2 space-y-5">
-          {availableChains.length > 1 && selectedChain && (
-            <div>
-              <div className="eyebrow-muted mb-3">Pay with</div>
-              <div className="grid grid-cols-3 gap-2">
-                {availableChains.map((c) => {
-                  const active = selectedChain === c;
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setSelectedChain(c)}
-                      className={`flex items-center justify-center gap-2 px-3 py-3 rounded-2xl border transition-colors ${
-                        active
-                          ? 'border-primary bg-primary/5 text-primary'
-                          : 'border-hairline bg-white text-ink-2 hover:border-primary/40'
-                      }`}
-                    >
-                      <ChainGlyph chain={c} size={20} />
-                      <span className="text-sm font-semibold">
-                        {CHAIN_LABELS[c]}{' '}
-                        <span className="font-mono text-xs text-ink-4">
-                          {CHAIN_NATIVE_SYMBOL[c]}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {selectedChain === 'ethereum' && evmIsValid && (
-            <div className="card card-hover p-7 md:p-9 relative overflow-hidden">
-              <CardGlow color="#5469D4" size="lg" />
-              <div className="relative">
-                <div className="eyebrow-muted mb-4">Send instantly</div>
-                <PayForm
-                  username={resolution.username}
-                  recipient={evmAddress as `0x${string}`}
+      <div className="flex animate-enter flex-wrap items-start gap-4 [animation-delay:80ms]">
+        <div className="min-w-0 flex-[3_1_380px]">
+          <PayPanel
+            username={name}
+            chains={chains}
+            addresses={resolution.addresses}
+            verified={verified}
+            hideProfileLink
+          />
+        </div>
+        <aside className="grid min-w-0 flex-[2_1_280px] gap-3.5">
+          <ShareCard username={name} />
+          {chains.length > 0 && (
+            <Card padding="compact" className="grid gap-1">
+              <h2 className="mb-2 text-xs font-bold uppercase tracking-label text-ink3">Addresses</h2>
+              {chains.map((chain) => (
+                <AddressRow
+                  key={chain}
+                  chain={chain}
+                  address={resolution.addresses[chain] ?? ''}
+                  verified={!!verified[chain]}
                 />
-              </div>
-            </div>
-          )}
-
-          {selectedChain === 'solana' && recipientForChain && (
-            <div className="card card-hover p-7 md:p-9 relative overflow-hidden">
-              <CardGlow color="#7E5CFF" size="lg" />
-              <div className="relative">
-                <div className="eyebrow-muted mb-4">Send instantly</div>
-                <PayFormSolana
-                  username={resolution.username}
-                  recipient={recipientForChain}
-                />
-              </div>
-            </div>
-          )}
-
-          {selectedChain === 'bitcoin' && recipientForChain && (
-            <div className="card card-hover p-7 md:p-9 relative overflow-hidden">
-              <CardGlow color="#FFB547" size="lg" />
-              <div className="relative">
-                <div className="eyebrow-muted mb-4">Send instantly</div>
-                <PayFormBitcoin
-                  username={resolution.username}
-                  recipient={recipientForChain}
-                />
-              </div>
-            </div>
-          )}
-
-          {availableChains.length === 0 && (
-            <div className="card p-7 md:p-9 relative overflow-hidden">
-              <CardGlow color="#FF5A6E" />
-              <div className="relative">
-                <div className="eyebrow-muted mb-3">No addresses yet</div>
-                <p className="text-ink-2">
-                  @{resolution.username} hasn&apos;t added any addresses to their paytag yet.
-                </p>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* Side column: share + other chains */}
-        <aside className="lg:col-span-5 space-y-5 animate-rise rise-3">
-          <div className="card card-hover p-6 relative overflow-hidden">
-            <CardGlow color="#7E5CFF" />
-            <div className="relative">
-              <div className="eyebrow-muted mb-3">Share link</div>
-              <div className="bg-paper border border-hairline rounded-xl p-4 font-mono text-sm text-ink break-all numeric">
-                {displayLink}
-              </div>
-              <div className="mt-3 flex items-center justify-between">
-                <span className="text-xs text-ink-3">
-                  Anyone can pay with this link.
-                </span>
-                <CopyButton value={link} label="Copy" variant="pill" />
-              </div>
-            </div>
-          </div>
-
-          {sideChains.length > 0 && (
-            <div className="card p-6">
-              <div className="eyebrow-muted mb-4">Other chains</div>
-              <ul className="space-y-4">
-                {sideChains.map(([chain, address]) => (
-                  <li
-                    key={chain}
-                    className="flex items-start gap-3 pb-4 last:pb-0 border-b last:border-0 border-hairline"
-                  >
-                    <ChainGlyph chain={chain} size={32} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-semibold text-ink">
-                          {CHAIN_LABELS[chain] ?? chain}
-                        </span>
-                        <CopyButton value={address} />
-                      </div>
-                      <div className="font-mono text-xs text-ink-3 break-all numeric">
-                        {address}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
+              ))}
+            </Card>
           )}
         </aside>
       </div>
-    </>
+    </section>
+  );
+}
+
+function ShareCard({ username }: { username: string }) {
+  const { copied, copy } = useCopy();
+  const [origin, setOrigin] = useState('https://paytag.dev');
+  useEffect(() => setOrigin(window.location.origin), []);
+
+  return (
+    <Card padding="compact" className="grid gap-3">
+      <h2 className="text-xs font-bold uppercase tracking-label text-ink3">Share link</h2>
+      <div className="break-all rounded-inset-sm bg-surface2 px-3.5 py-3 font-mono text-sm">
+        {origin.replace(/^https?:\/\//, '')}/{username}
+      </div>
+      <div className="flex items-center justify-between gap-2.5">
+        <span className="text-[13px] text-ink3">Anyone can pay with this link.</span>
+        <Button variant="solid" size={40} onClick={() => void copy(`${origin}/${username}`, 'Link copied')}>
+          {copied ? 'Copied' : 'Copy'}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+function AddressRow({ chain, address, verified }: { chain: PaytagChain; address: string; verified: boolean }) {
+  const { copied, copy } = useCopy();
+  const label = CHAIN_META[chain].label;
+
+  return (
+    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-t border-line py-2.5">
+      <ChainDot chain={chain} size={10} />
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold">{label}</span>
+          <Badge size="sm" tone={verified ? 'ok' : 'muted'}>
+            {verified ? 'Verified' : 'Unverified'}
+          </Badge>
+        </div>
+        <AddressText address={address} className="mt-0.5 text-xs" />
+      </div>
+      <Button
+        variant="outline-muted"
+        size={36}
+        aria-label={`Copy ${label} address`}
+        onClick={() => void copy(address, `${label} address copied`)}
+      >
+        {copied ? 'Copied' : 'Copy'}
+      </Button>
+    </div>
+  );
+}
+
+function ProfileSkeleton({ username }: { username: string }) {
+  return (
+    <section aria-busy="true" className="mx-auto grid w-full max-w-content gap-7 px-6 pb-24 pt-14">
+      <div className="flex items-center gap-4">
+        <Skeleton shape="circle" className="h-20 w-20 shrink-0" />
+        <div className="grid gap-2.5">
+          <Skeleton className="h-10 w-[220px] max-w-[55vw]" />
+          <Skeleton className="h-3.5 w-[140px]" delay={200} />
+        </div>
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(300px,100%),1fr))] gap-4">
+        <Skeleton shape="card" className="h-[380px]" delay={100} />
+        <Skeleton shape="card" className="h-[220px]" delay={300} />
+      </div>
+      <SkeletonStatus>Resolving @{username}…</SkeletonStatus>
+    </section>
   );
 }

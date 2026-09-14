@@ -1,46 +1,85 @@
 import type { Config } from 'tailwindcss';
 
+// Colors, radii, shadows and fonts are *replaced* (not extended) so only the
+// design-system values exist as classes. Every color points at a CSS variable
+// defined in app/globals.css, so the same class works in both themes.
+// Note: opacity modifiers (`bg-accent/10`) don't apply to var() colors — use
+// the dedicated `*-bg` tokens instead.
 const config: Config = {
   content: ['./app/**/*.{ts,tsx}', './components/**/*.{ts,tsx}'],
   theme: {
+    colors: {
+      transparent: 'transparent',
+      current: 'currentColor',
+      inherit: 'inherit',
+      bg: 'var(--bg)',
+      surface: 'var(--surface)',
+      surface2: 'var(--surface2)',
+      line: 'var(--line)',
+      line2: 'var(--line2)',
+      ink: 'var(--ink)',
+      ink2: 'var(--ink2)',
+      ink3: 'var(--ink3)',
+      accent: 'var(--accent)',
+      'on-accent': 'var(--on-accent)',
+      ok: 'var(--ok)',
+      'ok-bg': 'var(--ok-bg)',
+      warn: 'var(--warn)',
+      'warn-bg': 'var(--warn-bg)',
+      danger: 'var(--danger)',
+      'danger-bg': 'var(--danger-bg)',
+      btn: 'var(--btn)',
+      'on-btn': 'var(--on-btn)',
+      // Chain dots only — theme-independent, never used for text.
+      eth: '#627EEA',
+      sol: '#9945FF',
+      btc: '#F7931A',
+    },
+    fontFamily: {
+      display: ['var(--font-display)', 'system-ui', 'sans-serif'],
+      sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+      mono: ['var(--font-mono)', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+    },
+    borderRadius: {
+      none: '0',
+      full: '9999px',
+      pill: '999px',
+      card: '24px',
+      panel: '28px',
+      'inset-sm': '14px',
+      inset: '16px',
+      'inset-lg': '18px',
+      'inset-xl': '20px',
+    },
+    boxShadow: {
+      none: 'none',
+      float: 'var(--shadow)',
+      tab: '0 1px 2px rgba(0,0,0,0.2)',
+    },
+    // Keyframes live in app/globals.css; emptying this stops Tailwind emitting
+    // its own `spin`/`pulse` keyframes over ours.
+    keyframes: {},
+    animation: {
+      none: 'none',
+      enter: 'rise 0.5s ease-out both',
+      'enter-slow': 'rise 0.7s ease-out both',
+      stage: 'stage 0.3s ease-out both',
+      toast: 'toastIn 0.25s ease-out both',
+      spin: 'spin 0.8s linear infinite',
+      shimmer: 'shimmer 1.6s ease-in-out infinite',
+      pulse: 'pulse 1.2s ease-in-out infinite',
+      float: 'float 7s ease-in-out infinite',
+    },
     extend: {
-      colors: {
-        paper: '#F6F9FC',
-        ink: '#0A2540',
-        'ink-2': '#425466',
-        'ink-3': '#697386',
-        'ink-4': '#8898AA',
-        hairline: '#E3E8EE',
-        primary: '#5469D4',
-        'primary-soft': '#EEF1FF',
-        amber: '#FFB547',
-        success: '#13BC8C',
-        danger: '#E5424D',
-      },
-      fontFamily: {
-        display: ['var(--font-display)', 'ui-serif', 'system-ui', 'sans-serif'],
-        sans: ['var(--font-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        mono: ['var(--font-mono)', 'ui-monospace', 'SFMono-Regular', 'monospace'],
-      },
       letterSpacing: {
-        tightest: '-0.04em',
-        tightish: '-0.022em',
-        eyebrow: '0.16em',
+        display: '-0.02em',
+        'display-md': '-0.03em',
+        'display-lg': '-0.04em',
+        label: '0.06em',
+        kicker: '0.08em',
       },
-      boxShadow: {
-        soft: '0 1px 2px rgba(15,42,77,0.04), 0 4px 14px -4px rgba(15,42,77,0.06)',
-      },
-      borderRadius: {
-        '2xl': '1.25rem',
-      },
-      keyframes: {
-        rise: {
-          from: { opacity: '0', transform: 'translateY(10px)' },
-          to: { opacity: '1', transform: 'translateY(0)' },
-        },
-      },
-      animation: {
-        rise: 'rise 600ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
+      maxWidth: {
+        content: '1120px',
       },
     },
   },

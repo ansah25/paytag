@@ -3,9 +3,8 @@ import { ImageResponse } from 'next/og';
 export const size = { width: 32, height: 32 };
 export const contentType = 'image/png';
 
-// Browser-tab favicon. Mirrors the gradient @ logo used in SiteHeader and
-// SiteFooter so the brand mark stays in sync — change the gradient stops in
-// one place and tabs / iOS / footer all follow.
+// Browser-tab favicon: the header's accent "@" mark. Rendered to PNG, so CSS
+// variables aren't available — these are the dark-theme --accent / --on-accent.
 export default function Icon() {
   return new ImageResponse(
     (
@@ -16,10 +15,9 @@ export default function Icon() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background:
-            'linear-gradient(135deg, #5469D4 0%, #7E5CFF 50%, #FF5A6E 100%)',
-          borderRadius: 7,
-          color: 'white',
+          background: '#7DD3C8',
+          borderRadius: '50%',
+          color: '#101012',
           fontSize: 22,
           fontWeight: 700,
           fontFamily: 'sans-serif',
