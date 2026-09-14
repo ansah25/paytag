@@ -142,7 +142,7 @@ export function ClaimInput({
   const isError = FIELD_STATUS[status] === 'error';
 
   return (
-    <form onSubmit={onSubmit} className={cx('grid gap-3', className)}>
+    <form onSubmit={onSubmit} className={cx('grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3', className)}>
       <Field
         id={id}
         size={size}

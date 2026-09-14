@@ -5,7 +5,8 @@ export const contentType = 'image/png';
 
 // iOS home-screen icon. iOS applies its own squircle mask, so we render a
 // solid square (no borderRadius) and let the OS shape it — adding rounded
-// corners here would double-mask and look subtly off.
+// corners here would double-mask and look subtly off. Colors are the
+// dark-theme --accent / --on-accent (PNG output can't read CSS variables).
 export default function AppleIcon() {
   return new ImageResponse(
     (
@@ -16,9 +17,8 @@ export default function AppleIcon() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background:
-            'linear-gradient(135deg, #5469D4 0%, #7E5CFF 50%, #FF5A6E 100%)',
-          color: 'white',
+          background: '#7DD3C8',
+          color: '#101012',
           fontSize: 124,
           fontWeight: 700,
           fontFamily: 'sans-serif',

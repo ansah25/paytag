@@ -92,7 +92,9 @@ export const Field = forwardRef<HTMLInputElement, FieldProps>(function Field(
   const background = surface ?? (shape === 'pill' ? 'surface' : 'surface2');
 
   return (
-    <div className={cx('grid gap-2', wrapperClassName)}>
+    // minmax(0,1fr): without it the grid track grows to the input's intrinsic
+    // width (large display type) and overflows narrow screens.
+    <div className={cx('grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2', wrapperClassName)}>
       {label && (
         <label
           htmlFor={inputId}
