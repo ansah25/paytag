@@ -40,6 +40,11 @@ const splitCors = (): RequestHandler => {
 export const createApp = (): Application => {
   const app = express();
 
+  // Parse query strings with Node's querystring instead of qs. qs (pinned by
+  // Express 4) has open DoS advisories, and the API only reads flat params
+  // such as ?wallet=, so nested/array query syntax isn't needed.
+  app.set('query parser', 'simple');
+
   app.use(splitCors());
   app.use(express.json({ limit: '100kb' }));
 
