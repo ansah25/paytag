@@ -1,40 +1,41 @@
-'use client';
-
 interface Props {
-  tab?: string;
+  file?: string;
   status?: string;
+  latency?: string;
 }
 
 /**
- * Stripe-style dark code card showing the @paytagdev/sdk usage + response.
- * Hand-tokenized so we can color it without a heavy syntax-highlighter dep.
+ * Static SDK usage sample for the landing page. Hand-tokenized (keywords in
+ * ink2, strings in accent, comments in ink3) so no syntax highlighter ships.
  */
-export function CodeCard({ tab = 'resolve.ts', status = '200 OK · 38 ms' }: Props) {
+export function CodeCard({ file = 'resolve.ts', status = '200 OK', latency = '38 ms' }: Props) {
   return (
-    <div className="code-card">
-      <div className="code-card-header">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-[#FF5A6E]/80" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#FFB547]/80" />
-          <span className="w-2.5 h-2.5 rounded-full bg-[#13BC8C]/80" />
-          <span className="ml-3 font-mono text-[11px] text-white/55 numeric">{tab}</span>
-        </div>
-        <span className="font-mono text-[11px] text-white/55 numeric">{status}</span>
-      </div>
-      <pre className="!m-0 whitespace-pre overflow-x-auto max-w-full">
-{`  `}<span className="tok-keyword">{`import`}</span>{` { `}<span className="tok-prop">resolve</span>{` } `}<span className="tok-keyword">{`from`}</span>{` `}<span className="tok-string">{`"@paytagdev/sdk"`}</span>{`;
-
-  `}<span className="tok-keyword">const</span>{` `}<span className="tok-prop">user</span>{` = `}<span className="tok-keyword">await</span>{` `}<span className="tok-fn">resolve</span>{`(`}<span className="tok-string">{`"derrick"`}</span>{`);
-
-  `}<span className="tok-comment">{`// {`}</span>{`
-  `}<span className="tok-comment">{`//   username: "derrick",`}</span>{`
-  `}<span className="tok-comment">{`//   addresses: {`}</span>{`
-  `}<span className="tok-comment">{`//     ethereum: "0x4f3edf83…d8a3c2",`}</span>{`
-  `}<span className="tok-comment">{`//     solana:   "4Nd1mYz7K8jM…",`}</span>{`
-  `}<span className="tok-comment">{`//     bitcoin:  "bc1qw508d6q…"`}</span>{`
-  `}<span className="tok-comment">{`//   }`}</span>{`
-  `}<span className="tok-comment">{`// }`}</span>
+    <figure className="min-w-0 overflow-hidden rounded-inset-xl border border-line bg-bg">
+      <figcaption className="flex justify-between gap-3 border-b border-line px-5 py-3 font-mono text-xs text-ink2">
+        <span>{file}</span>
+        <span>
+          <span className="text-accent">{status}</span> · {latency}
+        </span>
+      </figcaption>
+      {/* Focusable so keyboard users can scroll it on narrow screens. */}
+      <pre tabIndex={0} className="overflow-x-auto p-[22px] font-mono text-[13.5px] leading-[1.7] text-ink">
+        <code>
+          <span className="text-ink2">import</span> {'{ resolve } '}
+          <span className="text-ink2">from</span> <span className="text-accent">&quot;@paytagdev/sdk&quot;</span>;
+          {'\n\n'}
+          <span className="text-ink2">const</span> {'user = '}
+          <span className="text-ink2">await</span> {'resolve('}
+          <span className="text-accent">&quot;derrick&quot;</span>);
+          {'\n\n'}
+          <span className="text-ink3">
+            {`// { username: "derrick",
+//   addresses: {
+//     ethereum: "0x4f3edf83…d8a3c2",
+//     solana:   "4Nd1mYz7K8jM…",
+//     bitcoin:  "bc1qw508d6q…" } }`}
+          </span>
+        </code>
       </pre>
-    </div>
+    </figure>
   );
 }

@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { resolveRoute } from '@/lib/routes';
 
 const LINKS = [
-  { label: 'Docs', href: 'https://www.npmjs.com/package/@paytagdev/sdk' },
+  { label: 'Docs', href: 'https://github.com/ansah25/paytag/tree/main/packages/sdk#readme' },
   { label: 'Status', href: 'https://api.paytag.dev/health' },
   { label: 'GitHub', href: 'https://github.com/ansah25/paytag' },
   // TODO: add "Terms" once a terms page exists (spec: Docs · Status · GitHub · Terms).

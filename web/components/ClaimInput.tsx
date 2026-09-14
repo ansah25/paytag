@@ -13,15 +13,15 @@ export const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 
 export const normalizeUsername = (value: string) => value.trim().toLowerCase().replace(/^@/, '');
 
-type Status = 'idle' | 'checking' | 'available' | 'taken' | 'reserved' | 'invalid' | 'offline';
+export type ClaimStatus = 'idle' | 'checking' | 'available' | 'taken' | 'reserved' | 'invalid' | 'offline';
 
-const REASON_STATUS: Record<NonNullable<AvailabilityResponse['reason']>, Status> = {
+const REASON_STATUS: Record<NonNullable<AvailabilityResponse['reason']>, ClaimStatus> = {
   TAKEN: 'taken',
   RESERVED: 'reserved',
   INVALID_FORMAT: 'invalid',
 };
 
-const MESSAGE: Record<Status, string> = {
+const MESSAGE: Record<ClaimStatus, string> = {
   idle: '',
   checking: 'Checking…',
   available: 'Available — it’s yours.',
@@ -31,7 +31,7 @@ const MESSAGE: Record<Status, string> = {
   offline: 'Couldn’t check right now — try again in a moment.',
 };
 
-const FIELD_STATUS: Record<Status, FieldStatus> = {
+const FIELD_STATUS: Record<ClaimStatus, FieldStatus> = {
   idle: 'idle',
   checking: 'checking',
   available: 'valid',
@@ -52,6 +52,9 @@ interface Props {
   onSubmitName?: (name: string) => void;
   /** Normalized value on every change (e.g. to preview the name elsewhere). */
   onValueChange?: (name: string) => void;
+  /** Availability result for the current value. */
+  onStatusChange?: (status: ClaimStatus, name: string) => void;
+  suggestionsAlign?: 'start' | 'center';
   autoFocus?: boolean;
   id?: string;
   className?: string;
@@ -64,18 +67,22 @@ export function ClaimInput({
   submitLabel = 'Claim',
   onSubmitName,
   onValueChange,
+  onStatusChange,
+  suggestionsAlign = 'start',
   autoFocus,
   id,
   className,
 }: Props) {
   const router = useRouter();
   const [value, setValue] = useState('');
-  const [status, setStatus] = useState<Status>('idle');
+  const [status, setStatus] = useState<ClaimStatus>('idle');
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const abort = useRef<AbortController | null>(null);
   const onValueChangeRef = useRef(onValueChange);
   onValueChangeRef.current = onValueChange;
+  const onStatusChangeRef = useRef(onStatusChange);
+  onStatusChangeRef.current = onStatusChange;
 
   useEffect(() => {
     clearTimeout(timer.current);
@@ -118,6 +125,12 @@ export function ClaimInput({
     };
   }, [value]);
 
+  useEffect(() => {
+    onStatusChangeRef.current?.(status, normalizeUsername(value));
+    // `value` changes are reported once their status settles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (status !== 'available') return;
@@ -156,7 +169,10 @@ export function ClaimInput({
         }
       />
       {suggestions.length > 0 && (
-        <div className="flex flex-wrap gap-2 px-1" aria-label="Available alternatives">
+        <div
+          aria-label="Available alternatives"
+          className={cx('flex flex-wrap gap-2 px-1', suggestionsAlign === 'center' && 'justify-center')}
+        >
           {suggestions.map((s) => (
             <SuggestionChip key={s} onClick={() => setValue(s)}>
               @{s}

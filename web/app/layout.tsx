@@ -28,7 +28,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Paytag · Money has a name now',
+  title: 'Paytag · Get paid to a name, not an address',
   description:
     'A username layer for crypto. Send and receive across Ethereum, Solana, and Bitcoin with a single @paytag.',
 };
