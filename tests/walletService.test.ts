@@ -124,6 +124,7 @@ import {
   addAddress,
   removeAddress,
   resolveByUsername,
+  resolveForWallet,
   clearResolveCache,
 } from '../src/services/walletService';
 import { BadRequestError, NotFoundError } from '../src/utils/errors';
@@ -322,5 +323,38 @@ describe('walletService.resolveByUsername', () => {
     const result = await resolveByUsername('derrick');
     expect(result.addresses).toEqual({});
     expect(result.verified).toEqual({});
+  });
+
+  it('fresh reads bypass a stale cached copy and replace it', async () => {
+    seedUser('u1', 'derrick', '0xabc');
+    mappingStore.push({ user_id: 'u1', chain: 'ethereum', address: '0xold' });
+    await resolveByUsername('derrick'); // cached
+
+    // Simulate a write handled by another API instance (this cache not cleared).
+    mappingStore[0].address = '0xnew';
+
+    expect((await resolveByUsername('derrick')).addresses.ethereum).toBe('0xold');
+    expect((await resolveByUsername('derrick', { fresh: true })).addresses.ethereum).toBe('0xnew');
+    expect((await resolveByUsername('derrick')).addresses.ethereum).toBe('0xnew');
+  });
+});
+
+describe('walletService.resolveForWallet', () => {
+  it("returns the owner's resolution from the database", async () => {
+    const owner = ethers.Wallet.createRandom();
+    seedUser('u1', 'derrick', owner.address);
+    await resolveByUsername('derrick'); // warm the cache with no addresses
+
+    await addAddress(owner.address, 'solana', '4Nd1mYz7K8jM2QpRzWxV3Y5tF7gH9JkLm2NoP4Qr5SsT');
+    const result = await resolveForWallet(owner.address.toUpperCase().replace('0X', '0x'));
+
+    expect(result.username).toBe('derrick');
+    expect(result.addresses).toEqual({ solana: '4Nd1mYz7K8jM2QpRzWxV3Y5tF7gH9JkLm2NoP4Qr5SsT' });
+  });
+
+  it('404s for a wallet without a username', async () => {
+    await expect(resolveForWallet(ethers.Wallet.createRandom().address)).rejects.toMatchObject({
+      errorCode: 'USER_NOT_FOUND',
+    });
   });
 });

@@ -9,12 +9,15 @@ import { ChainDot } from '@/components/ui/ChainDot';
 import { Field } from '@/components/ui/Field';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, type ResolveResponse } from '@/lib/api';
 import type { PaytagChain } from '@/lib/chains';
 import { withArticle } from '@/lib/format';
 import { walletErrorMessage } from '@/lib/pay/errors';
 import { CHAIN_META, CHAIN_ORDER } from '@/lib/pay/meta';
 import { canVerifyChain, useAddressSigner, VerifyError } from '@/lib/verify';
+
+/** A fresh resolution from the server, or a change to apply to the current one. */
+export type ResolutionUpdate = ResolveResponse | ((current: ResolveResponse) => ResolveResponse);
 
 // Mirrors the server's validators (src/services/walletService.ts).
 const ADDRESS_META: Record<PaytagChain, { placeholder: string; help: string; pattern: RegExp }> = {
@@ -38,13 +41,26 @@ const ADDRESS_META: Record<PaytagChain, { placeholder: string; help: string; pat
 const sameAddress = (chain: PaytagChain, a: string, b?: string) =>
   !!b && (chain === 'ethereum' ? a.toLowerCase() === b.toLowerCase() : a === b);
 
+/** Drop a chain from a resolution — used when the server confirms it has no address. */
+const withoutChain = (chain: PaytagChain) => (current: ResolveResponse): ResolveResponse => {
+  const addresses = { ...current.addresses };
+  const verified = { ...current.verified };
+  delete addresses[chain];
+  delete verified[chain];
+  return { ...current, addresses, verified };
+};
+
 type Mode = { kind: 'idle' } | { kind: 'editing'; chain: PaytagChain } | { kind: 'confirming'; chain: PaytagChain };
 
 interface Props {
   addresses: Partial<Record<PaytagChain, string>>;
   verified: Partial<Record<PaytagChain, boolean>>;
   loading: boolean;
-  onChanged: () => Promise<void>;
+  /**
+   * Apply the server's updated resolution (from a mutation response), an update
+   * the server confirmed, or — with no argument — re-fetch.
+   */
+  onChanged: (next?: ResolutionUpdate) => Promise<void>;
 }
 
 const ROW_PADDING = 'px-[clamp(22px,3vw,32px)]';
@@ -89,12 +105,14 @@ export function AddressManager({ addresses, verified, loading, onChanged }: Prop
     setSaving(true);
     setSaveError(null);
     try {
-      await api.addAddress(chain, value);
-      await onChanged();
+      const result = await api.addAddress(chain, value);
+      await onChanged(result.resolution);
       reset();
       toast(`${label} address saved`);
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : 'Couldn’t save the address.');
+      // The server may hold different data than the rows show — re-sync.
+      if (err instanceof ApiError) await onChanged();
     } finally {
       setSaving(false);
     }
@@ -104,11 +122,19 @@ export function AddressManager({ addresses, verified, loading, onChanged }: Prop
     const label = CHAIN_META[chain].label;
     setRemoving(true);
     try {
-      await api.removeAddress(chain);
-      await onChanged();
+      const result = await api.removeAddress(chain);
+      await onChanged(result.resolution ?? withoutChain(chain));
       toast(`${label} address removed`);
     } catch (err) {
-      setRowError({ chain, message: err instanceof ApiError ? err.message : 'Couldn’t remove the address.' });
+      if (err instanceof ApiError && err.code === 'ADDRESS_NOT_FOUND') {
+        // Already gone (removed earlier or in another tab) — the outcome the
+        // user wanted. Apply it locally rather than re-reading a cached copy.
+        await onChanged(withoutChain(chain));
+        toast(`${label} address removed`);
+      } else {
+        setRowError({ chain, message: err instanceof ApiError ? err.message : 'Couldn’t remove the address.' });
+        if (err instanceof ApiError) await onChanged();
+      }
     } finally {
       setRemoving(false);
       setMode({ kind: 'idle' });
@@ -124,8 +150,8 @@ export function AddressManager({ addresses, verified, loading, onChanged }: Prop
     try {
       const { message } = await api.verifyAddressChallenge(chain);
       const signature = await signWith(chain, address, message);
-      await api.verifyAddress(chain, signature);
-      await onChanged();
+      const result = await api.verifyAddress(chain, signature);
+      await onChanged(result.resolution);
       toast(`${label} wallet verified`);
     } catch (err) {
       setRowError({
@@ -138,6 +164,8 @@ export function AddressManager({ addresses, verified, loading, onChanged }: Prop
                 fallback: 'Verification didn’t go through.',
               }),
       });
+      // e.g. ADDRESS_CHANGED: the mapping moved on the server — re-sync.
+      if (err instanceof ApiError) await onChanged();
     } finally {
       setVerifying(null);
     }

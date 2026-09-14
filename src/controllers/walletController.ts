@@ -27,6 +27,10 @@ export const verifyAddressBodySchema = z.object({
   signature: z.string().min(1).max(512),
 });
 
+// Address mutations return the owner's updated resolution. Re-reading
+// /resolve right after a write can return a stale copy (browser HTTP cache,
+// or another API instance's in-memory cache), so clients use this instead.
+
 export const addAddress: RequestHandler = async (req, res, next) => {
   try {
     if (!req.auth) {
@@ -34,7 +38,8 @@ export const addAddress: RequestHandler = async (req, res, next) => {
     }
     const { chain, address } = req.body as z.infer<typeof addAddressBodySchema>;
     const entry = await walletService.addAddress(req.auth.sub, chain, address);
-    res.status(201).json(entry);
+    const resolution = await walletService.resolveForWallet(req.auth.sub);
+    res.status(201).json({ ...entry, resolution });
   } catch (err) {
     next(err);
   }
@@ -47,7 +52,8 @@ export const removeAddress: RequestHandler = async (req, res, next) => {
     }
     const { chain } = req.params as z.infer<typeof chainParamsSchema>;
     const result = await walletService.removeAddress(req.auth.sub, chain);
-    res.json({ ...result, removed: true });
+    const resolution = await walletService.resolveForWallet(req.auth.sub);
+    res.json({ ...result, removed: true, resolution });
   } catch (err) {
     next(err);
   }
@@ -73,7 +79,8 @@ export const verifyAddress: RequestHandler = async (req, res, next) => {
     }
     const { chain, signature } = req.body as z.infer<typeof verifyAddressBodySchema>;
     const result = await verificationService.verifyAddress(req.auth.sub, chain, signature);
-    res.json(result);
+    const resolution = await walletService.resolveForWallet(req.auth.sub);
+    res.json({ ...result, resolution });
   } catch (err) {
     next(err);
   }

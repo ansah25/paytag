@@ -171,10 +171,21 @@ interface ResolveRow {
   wallet_mappings?: Array<{ chain: string; address: string; verified_at?: string | null }>;
 }
 
-export const resolveByUsername = async (rawUsername: string): Promise<Resolution> => {
+/** The owner's current resolution, read from the database. Used in mutation responses. */
+export const resolveForWallet = async (ownerWallet: string): Promise<Resolution> => {
+  const user = await findOwnedUser(ownerWallet);
+  return resolveByUsername(user.username, { fresh: true });
+};
+
+export const resolveByUsername = async (
+  rawUsername: string,
+  opts: { fresh?: boolean } = {},
+): Promise<Resolution> => {
   const username = normalizeUsername(rawUsername);
 
-  const cached = resolveCache.get(username);
+  // `fresh` skips the in-memory cache. The cache is per API instance, so a
+  // copy cached before a write on another machine can otherwise be returned.
+  const cached = opts.fresh ? undefined : resolveCache.get(username);
   if (cached) {
     logger.info('resolve.cache_hit', { username });
     return cached;
