@@ -14,7 +14,16 @@ import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { useCopy } from '@/lib/useCopy';
 
-const VARIANTS: ButtonVariant[] = ['accent', 'solid', 'outline', 'outline-muted', 'ghost', 'danger-outline'];
+const VARIANTS: ButtonVariant[] = [
+  'accent',
+  'solid',
+  'outline',
+  'outline-muted',
+  'outline-destructive',
+  'ghost',
+  'danger',
+  'danger-outline',
+];
 const SIZES: ButtonSize[] = [36, 40, 44, 48, 56];
 
 const CLAIM_STATES: Array<{

@@ -43,7 +43,12 @@ export interface UserRecord {
   username: string;
   owner_wallet: string;
   created_at: string;
+  display_name?: string | null;
+  bio?: string | null;
+  avatar_url?: string | null;
 }
+
+export const USER_COLUMNS = 'id, username, owner_wallet, created_at, display_name, bio, avatar_url';
 
 export const normalizeUsername = (username: string): string => username.trim().toLowerCase();
 
@@ -96,7 +101,7 @@ export const findByWallet = async (
   const wallet = ownerWallet.toLowerCase();
   const { data, error } = await supabase
     .from('users')
-    .select('id, username, owner_wallet, created_at')
+    .select(USER_COLUMNS)
     .eq('owner_wallet', wallet)
     .maybeSingle();
   if (error) {
@@ -147,12 +152,18 @@ export const registerUsername = async (
   }
 
   // Smart default: register the connected wallet as the user's ethereum address.
+  // It's verified from the start — the user just signed in with this wallet.
   // Best-effort — failure here doesn't fail the registration since the user
   // can still add the address manually.
   const { error: defaultErr } = await supabase
     .from('wallet_mappings')
     .upsert(
-      { user_id: (data as UserRecord).id, chain: 'ethereum', address: wallet },
+      {
+        user_id: (data as UserRecord).id,
+        chain: 'ethereum',
+        address: wallet,
+        verified_at: new Date().toISOString(),
+      },
       { onConflict: 'user_id,chain' },
     );
   if (defaultErr) {

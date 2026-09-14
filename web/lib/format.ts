@@ -2,6 +2,9 @@
 export const shortAddress = (address: string, head = 6, tail = 4): string =>
   address.length <= head + tail + 1 ? address : `${address.slice(0, head)}…${address.slice(-tail)}`;
 
+/** "an Ethereum", "a Solana". */
+export const withArticle = (word: string): string => `${/^[aeiou]/i.test(word) ? 'an' : 'a'} ${word}`;
+
 /** "$184.00", "$1,234", "<$0.01". */
 export const formatUsd = (value: number): string => {
   if (value > 0 && value < 0.01) return '<$0.01';

@@ -1,15 +1,17 @@
 import { Paytag, PaytagError } from '@paytagdev/sdk';
 import type {
+  ChainId,
   ResolveResponse as SdkResolveResponse,
   AvailabilityResponse as SdkAvailabilityResponse,
 } from '@paytagdev/sdk';
 import { clearAuth, getToken } from './auth';
+import { describeDevice } from './device';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
 
 // Single SDK client shared across the web app. Cache is enabled (30 s TTL) so
 // repeated resolves of the same username are free; we explicitly invalidate
-// after mutations (see `addAddress`).
+// after mutations (address, verification and profile writes).
 const sdk = new Paytag({ baseUrl: BASE_URL });
 
 export class ApiError extends Error {
@@ -40,7 +42,7 @@ const wrapPaytagError = (err: unknown): never => {
 };
 
 interface RequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   auth?: boolean;
   signal?: AbortSignal;
@@ -102,13 +104,45 @@ export interface AddAddressResponse {
   chain: string;
   address: string;
 }
-export interface MeResponse {
+export interface ProfileFields {
+  displayName: string | null;
+  bio: string | null;
+  avatarUrl: string | null;
+}
+export interface MeResponse extends Partial<ProfileFields> {
   wallet: string;
   username: string | null;
   createdAt: string | null;
 }
-export type ResolveResponse = SdkResolveResponse;
+/** Resolve plus the fields added with profiles and address verification. */
+export type ResolveResponse = SdkResolveResponse &
+  Partial<ProfileFields> & {
+    /** Chains whose mapped address was proven with a signature. */
+    verified?: Partial<Record<ChainId, boolean>>;
+  };
 export type AvailabilityResponse = SdkAvailabilityResponse;
+
+export interface VerificationChallenge {
+  chain: ChainId;
+  address: string;
+  message: string;
+}
+
+export interface ActivityItem {
+  chain: ChainId;
+  from: string;
+  amount: string;
+  when: string;
+  network: string;
+  status: string;
+}
+
+export interface SessionInfo {
+  id: string;
+  device: string;
+  meta: string;
+  current: boolean;
+}
 
 // Single-flight `/me`: useAuthState (in SiteHeader) and the dashboard at /app
 // both call /me on hydrate. Without this, every dashboard load fires two
@@ -153,6 +187,57 @@ export const api = {
     // resolve returns fresh data.
     sdk.invalidate();
     return result;
+  },
+  removeAddress: async (chain: ChainId) => {
+    const result = await request<{ chain: ChainId; removed: true }>(
+      `/address/${encodeURIComponent(chain)}`,
+      { method: 'DELETE', auth: true },
+    );
+    sdk.invalidate();
+    return result;
+  },
+  /** Ask the server for a one-time message proving control of the mapped address. */
+  verifyAddressChallenge: (chain: ChainId) =>
+    request<VerificationChallenge>('/verify-address/nonce', {
+      method: 'POST',
+      body: { chain },
+      auth: true,
+    }),
+  verifyAddress: async (chain: ChainId, signature: string) => {
+    const result = await request<{ chain: ChainId; verified: true; verifiedAt: string }>(
+      '/verify-address',
+      { method: 'POST', body: { chain, signature }, auth: true },
+    );
+    sdk.invalidate();
+    return result;
+  },
+  updateProfile: async (fields: { displayName: string | null; bio: string | null }) => {
+    const result = await request<ProfileFields & { username: string }>('/me/profile', {
+      method: 'PATCH',
+      body: fields,
+      auth: true,
+    });
+    sdk.invalidate();
+    return result;
+  },
+  // Stub: needs a storage bucket. The UI validates the file and shows this message.
+  uploadAvatar: async (_file: File): Promise<{ avatarUrl: string }> => {
+    throw new ApiError(501, 'NOT_IMPLEMENTED', 'Photo uploads are coming soon.');
+  },
+  // Stub: there is no payment indexer yet, so history is always empty.
+  activity: async (_username: string): Promise<ActivityItem[]> => [],
+  // Stub: JWTs are stateless, so only the current browser session is known.
+  sessions: async (): Promise<SessionInfo[]> => [
+    {
+      id: 'this-device',
+      device: describeDevice(typeof navigator === 'undefined' ? '' : navigator.userAgent),
+      meta: 'Active now',
+      current: true,
+    },
+  ],
+  /** Clears this browser's session. Tokens on other devices expire on their own. */
+  signOut: async () => {
+    clearAuth();
   },
   resolve: (username: string, signal?: AbortSignal): Promise<ResolveResponse> =>
     sdk.resolve(username, { signal }).catch(wrapPaytagError),

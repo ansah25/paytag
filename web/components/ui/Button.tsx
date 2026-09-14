@@ -8,7 +8,9 @@ export type ButtonVariant =
   | 'solid'
   | 'outline'
   | 'outline-muted'
+  | 'outline-destructive'
   | 'ghost'
+  | 'danger'
   | 'danger-outline';
 
 export type ButtonSize = 36 | 40 | 44 | 48 | 56;
@@ -20,9 +22,13 @@ const VARIANTS: Record<ButtonVariant, string> = {
   accent: 'bg-accent font-bold text-on-accent hover:bg-btn hover:text-on-btn',
   solid: 'bg-btn font-bold text-on-btn hover:bg-accent hover:text-on-accent',
   outline: 'border border-line2 font-semibold text-ink hover:border-ink',
-  // Small in-row actions (Copy, Remove) — hairline border, secondary ink.
+  // Small in-row actions (Copy, Keep) — hairline border, secondary ink.
   'outline-muted': 'border border-line font-semibold text-ink2 hover:border-ink hover:text-ink',
+  // Quiet until hovered: Disconnect, Remove, per-session Sign out.
+  'outline-destructive': 'border border-line font-semibold text-ink2 hover:border-danger hover:text-danger',
   ghost: 'font-semibold text-ink2 hover:bg-surface2 hover:text-ink',
+  // Page background as text: passes contrast on --danger in both themes.
+  danger: 'bg-danger font-bold text-bg hover:opacity-90',
   'danger-outline': 'border border-danger font-bold text-danger hover:bg-danger-bg',
 };
 

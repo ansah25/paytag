@@ -33,11 +33,39 @@ router.post(
 
 router.get('/me', requireAuth, userController.me);
 
+router.patch(
+  '/me/profile',
+  requireAuth,
+  validate(userController.updateProfileBodySchema),
+  userController.updateProfile,
+);
+
 router.post(
   '/add-address',
   requireAuth,
   validate(walletController.addAddressBodySchema),
   walletController.addAddress,
+);
+
+router.delete(
+  '/address/:chain',
+  requireAuth,
+  validate(walletController.chainParamsSchema, 'params'),
+  walletController.removeAddress,
+);
+
+router.post(
+  '/verify-address/nonce',
+  requireAuth,
+  validate(walletController.verificationChallengeBodySchema),
+  walletController.createVerificationChallenge,
+);
+
+router.post(
+  '/verify-address',
+  requireAuth,
+  validate(walletController.verifyAddressBodySchema),
+  walletController.verifyAddress,
 );
 
 router.get(

@@ -11,6 +11,16 @@ export type Chain = (typeof SUPPORTED_CHAINS)[number];
 export const isSupportedChain = (chain: string): chain is Chain =>
   (SUPPORTED_CHAINS as readonly string[]).includes(chain);
 
+export const assertSupportedChain = (chain: string): Chain => {
+  if (!isSupportedChain(chain)) {
+    throw new BadRequestError(
+      `Unsupported chain. Supported: ${SUPPORTED_CHAINS.join(', ')}`,
+      'UNSUPPORTED_CHAIN',
+    );
+  }
+  return chain;
+};
+
 const SOLANA_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const BITCOIN_LEGACY_REGEX = /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/;
 const BITCOIN_BECH32_REGEX = /^bc1[ac-hj-np-z02-9]{8,87}$/i;
@@ -22,19 +32,14 @@ const validators: Record<Chain, (address: string) => boolean> = {
 };
 
 export const validateChainAddress = (chain: string, address: string): Chain => {
-  if (!isSupportedChain(chain)) {
-    throw new BadRequestError(
-      `Unsupported chain. Supported: ${SUPPORTED_CHAINS.join(', ')}`,
-      'UNSUPPORTED_CHAIN',
-    );
-  }
-  if (!validators[chain](address)) {
+  const supported = assertSupportedChain(chain);
+  if (!validators[supported](address)) {
     throw new BadRequestError(
       `Invalid address format for chain "${chain}"`,
       'INVALID_ADDRESS',
     );
   }
-  return chain;
+  return supported;
 };
 
 const canonicalizeAddress = (chain: Chain, address: string): string =>
@@ -48,6 +53,11 @@ export interface AddressEntry {
 export interface Resolution {
   username: string;
   addresses: Partial<Record<Chain, string>>;
+  /** Chains whose mapped address was proven with a signature. */
+  verified: Partial<Record<Chain, boolean>>;
+  displayName: string | null;
+  bio: string | null;
+  avatarUrl: string | null;
 }
 
 const RESOLVE_TTL_MS = 30_000;
@@ -61,6 +71,28 @@ export const clearResolveCache = (): void => {
   resolveCache.clear();
 };
 
+export interface OwnedUser {
+  id: string;
+  username: string;
+}
+
+/** The user registered to this wallet, or 404. */
+export const findOwnedUser = async (ownerWallet: string): Promise<OwnedUser> => {
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('id, username')
+    .eq('owner_wallet', ownerWallet.toLowerCase())
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to look up user: ${error.message}`);
+  }
+  if (!user) {
+    throw new NotFoundError('No registered username for this wallet', 'USER_NOT_FOUND');
+  }
+  return user as OwnedUser;
+};
+
 export const addAddress = async (
   ownerWallet: string,
   rawChain: string,
@@ -69,24 +101,31 @@ export const addAddress = async (
   const chain = validateChainAddress(rawChain, rawAddress);
   const address = canonicalizeAddress(chain, rawAddress);
   const wallet = ownerWallet.toLowerCase();
+  const user = await findOwnedUser(wallet);
 
-  const { data: user, error: userErr } = await supabase
-    .from('users')
-    .select('id, username')
-    .eq('owner_wallet', wallet)
+  const { data: existing, error: existingErr } = await supabase
+    .from('wallet_mappings')
+    .select('address')
+    .eq('user_id', user.id)
+    .eq('chain', chain)
     .maybeSingle();
 
-  if (userErr) {
-    throw new Error(`Failed to look up user: ${userErr.message}`);
+  if (existingErr) {
+    throw new Error(`Failed to load address: ${existingErr.message}`);
   }
-  if (!user) {
-    throw new NotFoundError('No registered username for this wallet', 'USER_NOT_FOUND');
+  // Re-saving the same address must not throw away its verification.
+  if ((existing as { address?: string } | null)?.address === address) {
+    return { chain, address };
   }
+
+  // A new address starts unverified — except the owner wallet, which already
+  // proved control by signing in.
+  const verifiedAt = chain === 'ethereum' && address === wallet ? new Date().toISOString() : null;
 
   const { error: upsertErr } = await supabase
     .from('wallet_mappings')
     .upsert(
-      { user_id: user.id, chain, address },
+      { user_id: user.id, chain, address, verified_at: verifiedAt },
       { onConflict: 'user_id,chain' },
     );
 
@@ -94,9 +133,43 @@ export const addAddress = async (
     throw new Error(`Failed to save address: ${upsertErr.message}`);
   }
 
-  invalidateResolveCache(user.username as string);
+  invalidateResolveCache(user.username);
   return { chain, address };
 };
+
+export const removeAddress = async (
+  ownerWallet: string,
+  rawChain: string,
+): Promise<{ chain: Chain }> => {
+  const chain = assertSupportedChain(rawChain);
+  const user = await findOwnedUser(ownerWallet);
+
+  const { data, error } = await supabase
+    .from('wallet_mappings')
+    .delete()
+    .eq('user_id', user.id)
+    .eq('chain', chain)
+    .select('chain');
+
+  if (error) {
+    throw new Error(`Failed to remove address: ${error.message}`);
+  }
+  if (!data || data.length === 0) {
+    throw new NotFoundError('No address mapped for this chain', 'ADDRESS_NOT_FOUND');
+  }
+
+  invalidateResolveCache(user.username);
+  logger.info('address.removed', { username: user.username, chain });
+  return { chain };
+};
+
+interface ResolveRow {
+  username: string;
+  display_name?: string | null;
+  bio?: string | null;
+  avatar_url?: string | null;
+  wallet_mappings?: Array<{ chain: string; address: string; verified_at?: string | null }>;
+}
 
 export const resolveByUsername = async (rawUsername: string): Promise<Resolution> => {
   const username = normalizeUsername(rawUsername);
@@ -109,7 +182,7 @@ export const resolveByUsername = async (rawUsername: string): Promise<Resolution
 
   const { data, error } = await supabase
     .from('users')
-    .select('username, wallet_mappings(chain, address)')
+    .select('username, display_name, bio, avatar_url, wallet_mappings(chain, address, verified_at)')
     .eq('username', username)
     .maybeSingle();
 
@@ -120,15 +193,24 @@ export const resolveByUsername = async (rawUsername: string): Promise<Resolution
     throw new NotFoundError('Username not found', 'USER_NOT_FOUND');
   }
 
-  const mappings = (data.wallet_mappings ?? []) as Array<{ chain: string; address: string }>;
+  const row = data as ResolveRow;
   const addresses: Partial<Record<Chain, string>> = {};
-  for (const m of mappings) {
+  const verified: Partial<Record<Chain, boolean>> = {};
+  for (const m of row.wallet_mappings ?? []) {
     if (isSupportedChain(m.chain)) {
       addresses[m.chain] = m.address;
+      if (m.verified_at) verified[m.chain] = true;
     }
   }
 
-  const resolution: Resolution = { username: data.username, addresses };
+  const resolution: Resolution = {
+    username: row.username,
+    addresses,
+    verified,
+    displayName: row.display_name ?? null,
+    bio: row.bio ?? null,
+    avatarUrl: row.avatar_url ?? null,
+  };
   resolveCache.set(username, resolution);
   logger.info('resolve.miss', { username });
   return resolution;
