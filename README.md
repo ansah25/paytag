@@ -11,6 +11,8 @@ Replace `0x4f3edf83…d8a3c2` with `@derrick`. Paytag maps human-readable userna
 - **API:** <https://api.paytag.dev>
 - **dApp:** <https://www.paytag.dev>
 - **SDK:** [`@paytagdev/sdk`](https://www.npmjs.com/package/@paytagdev/sdk) on npm
+- **On-chain indexer:** <https://indexer.paytag.dev>. Try [`/resolve/derrick`](https://indexer.paytag.dev/resolve/derrick) or [`/status`](https://indexer.paytag.dev/status)
+- **Contracts (Base Sepolia):** [`PaytagRegistry`](https://sepolia.basescan.org/address/0xc465e47338d38bfe176c185b590ff0b064d15012#code) · [`PaytagResolver`](https://sepolia.basescan.org/address/0xdd088c3885ee68a9e1cdb16610c1689f21d29142#code)
 
 ## SDK
 
@@ -103,7 +105,7 @@ What I didn't change, and why: writes are dominated by the 22.1k cold `SSTORE`, 
 
 ### Indexer
 
-[`indexer/`](indexer) is a [Ponder](https://ponder.sh) 0.18 app that indexes `NameRegistered`, `Transfer`, `RecordSet` and `ReverseSet` from block 48118052 into Postgres, and serves a public read API. New on-chain writes show up within about 3 seconds.
+Live at **<https://indexer.paytag.dev>**, self-hosted on Coolify with Postgres. [`indexer/`](indexer) is a [Ponder](https://ponder.sh) 0.18 app that indexes `NameRegistered`, `Transfer`, `RecordSet` and `ReverseSet` from block 48118052 into Postgres, and serves a public read API. New on-chain writes show up within about 3 seconds.
 
 | Endpoint | Returns |
 |---|---|
