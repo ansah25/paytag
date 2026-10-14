@@ -1,5 +1,7 @@
 # Paytag
 
+[![CI](https://github.com/ansah25/paytag/actions/workflows/ci.yml/badge.svg)](https://github.com/ansah25/paytag/actions/workflows/ci.yml)
+
 > Username-to-wallet identity layer for multi-chain crypto payments.
 
 Replace `0x4f3edf83…d8a3c2` with `@derrick`. Paytag maps human-readable usernames to wallet addresses across Ethereum, Solana, and Bitcoin.
@@ -24,6 +26,42 @@ const user = await resolve('derrick');
 ```
 
 Zero config — the SDK ships with `https://api.paytag.dev` as the default base URL. See [`packages/sdk/README.md`](packages/sdk/README.md) for `resolveAddress`, `available`, custom clients, and error codes.
+
+## On-chain protocol (Base)
+
+> In progress — see [`docs/paytag-onchain-build-plan.md`](docs/paytag-onchain-build-plan.md).
+
+**Design:** Base is the canonical registry. Solana and Bitcoin addresses live as *records* on the EVM name (keyed by ENSIP-9 / SLIP-44 coin type), not as parallel deployments. One source of truth for ownership; every other chain is resolved through records. Both contracts are immutable and admin-free.
+
+### Contracts
+
+| Contract | Role |
+|---|---|
+| [`PaytagRegistry`](contracts/src/PaytagRegistry.sol) | Normalization, registration, ownership, transfer |
+| [`PaytagResolver`](contracts/src/PaytagResolver.sol) | Per-chain address records, forward-verified reverse resolution |
+
+### Deployed addresses
+
+_TBD — Base Sepolia._
+
+### Tests, coverage, gas
+
+_TBD — unit, fuzz and invariant suites; `forge coverage`; `forge snapshot`._
+
+### Indexer
+
+_TBD — Ponder._
+
+### Known trade-offs
+
+_TBD — free first-come registration (front-running / squatting), ASCII-only name policy._
+
+### Local setup
+
+```bash
+git submodule update --init --recursive
+cd contracts && forge test
+```
 
 ## API
 
@@ -127,6 +165,7 @@ npm run dev   # http://localhost:3000
 │   ├── utils/
 │   ├── app.ts
 │   └── index.ts
+├── contracts/            # Solidity registry + resolver (Foundry)
 ├── packages/sdk/         # @paytagdev/sdk (npm package)
 ├── web/                  # Next.js dApp (deployed at paytag.dev)
 ├── supabase/migrations/  # SQL schema
