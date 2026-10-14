@@ -42,6 +42,17 @@ export function TxStatus({ state, className }: { state: TxState; className?: str
     );
   }
 
+  if (state.status === 'indexed' && !state.caughtUp) {
+    return (
+      <p className={cx('text-[13px] font-semibold text-ok', className)} aria-live="polite">
+        ✓ Confirmed on-chain. The display may take a moment to catch up.{' '}
+        <a className="text-ink2 underline hover:text-ink" href={txUrl(state.hash)} target="_blank" rel="noreferrer">
+          Basescan ↗
+        </a>
+      </p>
+    );
+  }
+
   const current = ORDER.indexOf(state.status);
   const hash = 'hash' in state ? state.hash : undefined;
   return (

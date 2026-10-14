@@ -7,8 +7,10 @@ import type { TxError } from './errors';
 //                     │                      │                    │                │
 //                     └──────────────────────┴────────fail────────┴────────────────┴──▶ failed
 //
-// "confirmed" means the receipt succeeded; "indexed" means the indexer has caught up to that
-// block, so reads reflect the write. Any state can `reset` back to idle.
+// "confirmed" means the receipt succeeded and the app is waiting for the indexer to reach that
+// block; it still counts as in flight. "indexed" is terminal: `caughtUp` is false when the
+// indexer didn't catch up in time (the write is final on-chain; reads may lag). A new attempt
+// can start only from idle, failed or indexed. Any state can `reset` back to idle.
 
 export type TxStage = 'simulating' | 'signing' | 'pending' | 'confirmed';
 
@@ -18,7 +20,7 @@ export type TxState =
   | { status: 'signing' }
   | { status: 'pending'; hash: Hash }
   | { status: 'confirmed'; hash: Hash; blockNumber: bigint }
-  | { status: 'indexed'; hash: Hash; blockNumber: bigint }
+  | { status: 'indexed'; hash: Hash; blockNumber: bigint; caughtUp: boolean }
   | { status: 'failed'; error: TxError; stage: TxStage; hash?: Hash };
 
 export type TxAction =
@@ -26,7 +28,7 @@ export type TxAction =
   | { type: 'simulated' }
   | { type: 'submitted'; hash: Hash }
   | { type: 'mined'; blockNumber: bigint }
-  | { type: 'indexed' }
+  | { type: 'indexed'; caughtUp: boolean }
   | { type: 'fail'; error: TxError }
   | { type: 'reset' };
 
@@ -37,7 +39,6 @@ export function txReducer(state: TxState, action: TxAction): TxState {
     case 'reset':
       return IDLE;
     case 'start':
-      // A new attempt may start from rest or after a failure, never mid-flight.
       return state.status === 'idle' || state.status === 'failed' || state.status === 'indexed'
         ? { status: 'simulating' }
         : state;
@@ -50,7 +51,9 @@ export function txReducer(state: TxState, action: TxAction): TxState {
         ? { status: 'confirmed', hash: state.hash, blockNumber: action.blockNumber }
         : state;
     case 'indexed':
-      return state.status === 'confirmed' ? { status: 'indexed', hash: state.hash, blockNumber: state.blockNumber } : state;
+      return state.status === 'confirmed'
+        ? { status: 'indexed', hash: state.hash, blockNumber: state.blockNumber, caughtUp: action.caughtUp }
+        : state;
     case 'fail':
       switch (state.status) {
         case 'simulating':
@@ -65,5 +68,6 @@ export function txReducer(state: TxState, action: TxAction): TxState {
   }
 }
 
-/** True while a write is in flight: buttons stay disabled and the form is locked. */
-export const isBusy = (s: TxState) => s.status === 'simulating' || s.status === 'signing' || s.status === 'pending';
+/** True while a write is in flight (including the indexer wait): actions stay disabled. */
+export const isBusy = (s: TxState) =>
+  s.status === 'simulating' || s.status === 'signing' || s.status === 'pending' || s.status === 'confirmed';

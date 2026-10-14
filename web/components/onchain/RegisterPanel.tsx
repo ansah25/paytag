@@ -28,7 +28,7 @@ const DEBOUNCE_MS = 350;
  */
 export function RegisterPanel() {
   const tx = useOnchainTx();
-  const { connect, connecting } = useConnectWallet();
+  const { connect, connecting, error: connectError } = useConnectWallet();
   const [input, setInput] = useState('');
   const [check, setCheck] = useState<Check>({ kind: 'empty' });
   const [recheck, setRecheck] = useState(0);
@@ -80,8 +80,12 @@ export function RegisterPanel() {
     );
   };
 
-  const status: FieldStatus =
-    check.kind === 'checking'
+  // Once our own registration lands, the recheck says "taken"; that's the success, not an error.
+  const justRegistered = registered !== null && registered === name && tx.state.status === 'indexed';
+
+  const status: FieldStatus = justRegistered
+    ? 'valid'
+    : check.kind === 'checking'
       ? 'checking'
       : check.kind === 'invalid' || check.kind === 'reserved' || (check.kind === 'result' && !check.result.available)
         ? 'error'
@@ -90,6 +94,7 @@ export function RegisterPanel() {
           : 'idle';
 
   const message = (() => {
+    if (justRegistered) return undefined;
     switch (check.kind) {
       case 'invalid':
         return `Not a valid name: ${check.reason}.`;
@@ -110,7 +115,7 @@ export function RegisterPanel() {
     }
   })();
 
-  const suggestions = check.kind === 'result' ? check.result.suggestions : [];
+  const suggestions = check.kind === 'result' && !justRegistered ? check.result.suggestions : [];
   const action = !tx.connected ? (
     <Button size={48} onClick={connect} loading={connecting}>
       Connect wallet
@@ -160,6 +165,11 @@ export function RegisterPanel() {
           trailing={<span className="hidden sm:contents">{action}</span>}
         />
         <div className="grid sm:hidden">{action}</div>
+        {connectError && (
+          <p className="text-sm font-semibold text-danger" role="alert">
+            {connectError}
+          </p>
+        )}
         {suggestions.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="text-ink2">Try:</span>
@@ -178,7 +188,7 @@ export function RegisterPanel() {
             </span>
             {tx.state.status === 'indexed' && (
               <>
-                <Button variant="solid" size={36} href="/on-chain/manage">
+                <Button variant="solid" size={36} href="/on-chain/my-names">
                   Set up addresses
                 </Button>
                 <Button variant="outline" size={36} href={`/on-chain/${registered}`}>

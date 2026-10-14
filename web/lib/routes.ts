@@ -21,7 +21,7 @@ const DASHBOARD: NavItem = { href: '/app', label: 'Dashboard' };
 const DEVELOPERS: NavItem = { href: '/#developers', label: 'Developers' };
 const CLAIM_A_NAME: NavItem = { href: '/#claim', label: 'Claim a name' };
 const ONCHAIN: NavItem = { href: '/on-chain', label: 'On-chain' };
-const MANAGE_ONCHAIN: NavItem = { href: '/on-chain/manage', label: 'My names' };
+const MANAGE_ONCHAIN: NavItem = { href: '/on-chain/my-names', label: 'My names' };
 
 // First path segments owned by real routes. Any other single segment is a
 // public profile at /[username]. `on-chain` can never be a username (no hyphens allowed).
@@ -35,12 +35,14 @@ export function resolveRoute(pathname: string): RouteContext {
     return { kind: 'landing', section: null, nav: [SEND, ONCHAIN, DEVELOPERS], cta: CLAIM_A_NAME, hideSignIn: false };
   }
   if (first === 'on-chain') {
+    // Static sub-routes contain a hyphen ("my-names"), which no on-chain name can, so they can
+    // never shadow a name's page at /on-chain/[name].
     // The on-chain section has its own wallet connect; the off-chain "Sign in" doesn't apply.
     return {
       kind: 'onchain',
-      section: second === 'manage' ? 'On-chain · My names' : second ? `On-chain · @${second}` : 'On-chain',
-      nav: second === 'manage' ? [ONCHAIN, HOME] : [MANAGE_ONCHAIN, HOME],
-      cta: second === 'manage' ? { href: '/on-chain', label: 'Register a name' } : null,
+      section: second === 'my-names' ? 'On-chain · My names' : second ? `On-chain · @${second}` : 'On-chain',
+      nav: second === 'my-names' ? [ONCHAIN, HOME] : [MANAGE_ONCHAIN, HOME],
+      cta: second === 'my-names' ? { href: '/on-chain', label: 'Register a name' } : null,
       hideSignIn: true,
     };
   }

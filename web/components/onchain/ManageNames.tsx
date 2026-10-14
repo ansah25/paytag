@@ -9,7 +9,10 @@ import { useOnchainTx } from '@/lib/onchain/useOnchainTx';
 import { NameCard } from './NameCard';
 import { WalletBar, useConnectWallet } from './WalletBar';
 
-type Load = { kind: 'loading' } | { kind: 'ready'; names: OwnedName[]; primary: string | null } | { kind: 'error' };
+type Load =
+  | { kind: 'loading' }
+  | { kind: 'ready'; owner: string; names: OwnedName[]; primary: string | null }
+  | { kind: 'error' };
 
 /** The connected wallet's names, from the indexer. Reads work on any network; writes need Base Sepolia. */
 export function ManageNames() {
@@ -22,9 +25,10 @@ export function ManageNames() {
   useEffect(() => {
     if (!address) return;
     const controller = new AbortController();
-    setLoad((l) => (l.kind === 'ready' ? l : { kind: 'loading' }));
+    // Keep showing the list during a same-account refresh; never show another account's names.
+    setLoad((l) => (l.kind === 'ready' && l.owner === address ? l : { kind: 'loading' }));
     Promise.all([indexer.names(address, controller.signal), indexer.reverse(address, controller.signal)])
-      .then(([owned, rev]) => setLoad({ kind: 'ready', names: owned.names, primary: rev.username }))
+      .then(([owned, rev]) => setLoad({ kind: 'ready', owner: address, names: owned.names, primary: rev.username }))
       .catch((err) => {
         if ((err as Error)?.name !== 'AbortError') setLoad({ kind: 'error' });
       });

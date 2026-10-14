@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { ChainDot } from '@/components/ui/ChainDot';
 import { Field } from '@/components/ui/Field';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { encodeAddress } from '@/lib/onchain/generated/codec';
+import { encodeAddress, isEvmCoinType } from '@/lib/onchain/generated/codec';
 import { indexer, type OwnedName } from '@/lib/onchain/indexer';
 import { RECORD_SLOTS, type RecordSlot } from '@/lib/onchain/records';
 import { useOnchainTx } from '@/lib/onchain/useOnchainTx';
@@ -65,6 +65,21 @@ export function NameCard({
   }, [name, reload]);
 
   const refetch = useCallback(() => setReload((n) => n + 1), []);
+
+  // A "confirmed" overlay (write final on-chain, indexer was slow) stays until fresh data shows
+  // the same value, so a successful write never appears to revert.
+  useEffect(() => {
+    if (!data) return;
+    setOverlay((o) => {
+      const next = { ...o };
+      for (const [key, entry] of Object.entries(o)) {
+        if (entry.phase !== 'confirmed') continue;
+        const current = data.records.find((r) => r.coinType === key)?.address ?? null;
+        if ((current?.toLowerCase() ?? null) === (entry.value?.toLowerCase() ?? null)) delete next[key];
+      }
+      return next;
+    });
+  }, [data]);
   const record = (slot: RecordSlot) => data?.records.find((r) => r.coinType === slot.coinType.toString());
 
   const ethRecord = data?.records.find((r) => r.coinType === '60');
@@ -79,8 +94,10 @@ export function NameCard({
   };
 
   const saveRecord = (slot: RecordSlot, clear = false) => {
+    if (tx.busy || tx.wrongNetwork) return;
     const key = slot.coinType.toString();
     const input = clear ? '' : draft.trim();
+    if (!clear && !input) return; // an emptied field never clears; Clear is explicit
     let value: Hex = '0x';
     if (input) {
       try {
@@ -88,7 +105,8 @@ export function NameCard({
       } catch {
         return setFieldError(`That isn’t a valid ${slot.label} address.`);
       }
-      if (slot.coinType === 60n && value === ZERO_ADDRESS_HEX) {
+      // The contract only refuses it for ETH; for any EVM chain it would send payments to nobody.
+      if (isEvmCoinType(slot.coinType) && value === ZERO_ADDRESS_HEX) {
         return setFieldError('The zero address can’t be used. Clear the record instead.');
       }
     }
@@ -108,12 +126,18 @@ export function NameCard({
             const { [key]: _rolledBack, ...rest } = o;
             return rest;
           }),
-        onIndexed: () => {
-          setOverlay((o) => {
-            const { [key]: _done, ...rest } = o;
-            return rest;
-          });
-          refetch();
+        onIndexed: (caughtUp) => {
+          if (caughtUp) {
+            setOverlay((o) => {
+              const { [key]: _done, ...rest } = o;
+              return rest;
+            });
+            refetch();
+          } else {
+            // Final on-chain but the indexer lagged: keep showing the new value ("Confirmed,
+            // updating") and look again shortly; the reconcile effect drops it once data agrees.
+            setTimeout(refetch, 15_000);
+          }
           if (slot.coinType === 60n) onChanged(); // primary-name eligibility may have changed
         },
       },
@@ -121,11 +145,13 @@ export function NameCard({
   };
 
   const setPrimary = (clear: boolean) => {
+    if (tx.busy || tx.wrongNetwork) return;
     setAction(clear ? 'Clearing primary name' : 'Setting primary name');
     tx.run({ kind: 'setReverse', node: clear ? zeroHash : owned.node }, { context: { name }, onIndexed: () => onChanged() });
   };
 
   const transfer = () => {
+    if (tx.busy || tx.wrongNetwork) return;
     let to: Address;
     try {
       to = encodeAddress(60n, transferTo.trim()) as Address;
@@ -182,7 +208,7 @@ export function NameCard({
                 {!data && !loadError ? (
                   <Skeleton className="h-4 w-48" />
                 ) : (
-                  <span className={`min-w-0 flex-1 break-all font-mono text-[13px] ${shown ? 'text-ink' : 'text-ink3'}`}>
+                  <span className={`order-last min-w-0 basis-full break-all font-mono text-[13px] sm:order-none sm:basis-0 sm:flex-1 ${shown ? 'text-ink' : 'text-ink3'}`}>
                     {shown ?? 'Not set'}
                   </span>
                 )}

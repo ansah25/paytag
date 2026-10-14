@@ -63,6 +63,27 @@ describe('decodeTxError: contract reverts', () => {
   });
 });
 
+describe('decodeTxError: revert data nested in wallet RPC errors', () => {
+  const encoded = encodeErrorResult({ abi: PaytagRegistryAbi, errorName: 'NameTaken', args: [NODE] });
+
+  it.each([
+    ['MetaMask -32603 with data.originalError.data', { code: -32603, message: 'Internal JSON-RPC error.', data: { originalError: { code: 3, data: encoded } } }],
+    ['-32603 with data.data', { code: -32603, message: 'Internal JSON-RPC error.', data: { data: encoded } }],
+    ['code 3 with data as hex', { code: 3, message: 'execution reverted', data: encoded }],
+  ])('%s', (_label, rpcError) => {
+    const wrapped = new BaseError('The contract function "register" reverted with the following reason: Internal JSON-RPC error.', {
+      cause: rpcError as unknown as Error,
+    });
+    const result = decodeTxError(wrapped, { name: 'derrick' });
+    expect(result).toMatchObject({ kind: 'revert', errorName: 'NameTaken', message: '@derrick is already registered.' });
+  });
+
+  it('ignores revert data that is not one of our errors', () => {
+    const foreign = { code: 3, message: 'execution reverted', data: '0xdeadbeef00000000' };
+    expect(decodeTxError({ shortMessage: 'reverted', cause: foreign }).kind).toBe('unknown');
+  });
+});
+
 describe('decodeTxError: wallet and network', () => {
   it('recognises a wallet rejection', () => {
     const err = new UserRejectedRequestError(new Error('User rejected the request.'));

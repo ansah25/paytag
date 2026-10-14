@@ -91,9 +91,9 @@ export default async function OnchainNamePage({ params }: Props) {
           @{data.username}
         </h1>
         <div className="mt-3 flex flex-wrap items-center gap-2.5 text-sm text-ink2">
-          <span>
+          <span className="min-w-0">
             Owned by{' '}
-            <a className="font-mono text-ink underline" href={addressUrl(data.owner)} target="_blank" rel="noreferrer">
+            <a className="break-all font-mono text-ink underline" href={addressUrl(data.owner)} target="_blank" rel="noreferrer">
               {data.owner}
             </a>
           </span>
@@ -112,7 +112,7 @@ export default async function OnchainNamePage({ params }: Props) {
               <span className="w-24 shrink-0 text-sm font-semibold">{slot.label}</span>
               {record ? (
                 <>
-                  <span className="min-w-0 flex-1 break-all font-mono text-[13px] text-ink">{record.address ?? record.value}</span>
+                  <span className="order-last min-w-0 basis-full break-all font-mono text-[13px] text-ink sm:order-none sm:basis-0 sm:flex-1">{record.address ?? record.value}</span>
                   {record.stale && <Badge tone="warn">Set by previous owner</Badge>}
                   {!record.address && <Badge tone="muted">Unrecognised format</Badge>}
                   {usable && <CopyButton value={record.address!} label={slot.label} />}

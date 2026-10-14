@@ -106,19 +106,44 @@ export function useOnchainTx() {
 
         let blockNumber: bigint;
         try {
-          const receipt = await publicClient.waitForTransactionReceipt({ hash });
+          // viem resolves with the *replacement's* receipt when the wallet replaces the tx. Only a
+          // speed-up ("repriced": same call, higher fee) is our write; a cancel or a different tx
+          // in its place means our write never happened.
+          let replacedBy: 'cancelled' | 'replaced' | null = null;
+          const receipt = await publicClient.waitForTransactionReceipt({
+            hash,
+            onReplaced: (r) => {
+              if (r.reason !== 'repriced') replacedBy = r.reason;
+            },
+          });
+          if (replacedBy) {
+            return fail({
+              kind: replacedBy === 'cancelled' ? 'rejected' : 'unknown',
+              message:
+                replacedBy === 'cancelled'
+                  ? 'The transaction was cancelled in your wallet. Nothing changed.'
+                  : 'The transaction was replaced by a different one in your wallet. Nothing changed.',
+            });
+          }
           if (receipt.status !== 'success') {
             return fail({ kind: 'revert', message: 'The transaction reverted on-chain. Nothing changed.' });
           }
           blockNumber = receipt.blockNumber;
         } catch (err) {
+          if ((err as Error)?.name === 'WaitForTransactionReceiptTimeoutError') {
+            return fail({
+              kind: 'unknown',
+              message: 'Still waiting for the network. The transaction may yet confirm; check it on Basescan.',
+            });
+          }
           return fail(decodeTxError(err, cb.context));
         }
         dispatch({ type: 'mined', blockNumber });
         cb.onConfirmed?.(hash, blockNumber);
 
+        // Still "in flight" (busy) until this resolves; always ends in a terminal state.
         const caughtUp = await waitForIndexer(blockNumber);
-        if (caughtUp) dispatch({ type: 'indexed' });
+        dispatch({ type: 'indexed', caughtUp });
         cb.onIndexed?.(caughtUp);
       } finally {
         inFlight.current = false;

@@ -1,4 +1,6 @@
-import { hexToString, type Hex } from 'viem';
+import { decodeErrorResult, hexToString, type Abi, type Hex } from 'viem';
+import { PaytagRegistryAbi } from './generated/PaytagRegistryAbi';
+import { PaytagResolverAbi } from './generated/PaytagResolverAbi';
 
 // Turns anything thrown by simulate/write/receipt into one readable sentence. The contracts
 // revert with custom errors (see contracts/src), which viem decodes into
@@ -24,8 +26,29 @@ type ErrorLike = {
   shortMessage?: unknown;
   message?: unknown;
   cause?: unknown;
-  data?: { errorName?: unknown; args?: unknown };
+  data?: unknown;
 };
+
+type RevertedData = { errorName?: unknown; args?: unknown };
+
+const CONTRACT_ERRORS = [...PaytagRegistryAbi, ...PaytagResolverAbi].filter((item) => item.type === 'error') as Abi;
+
+const isRevertHex = (v: unknown): v is Hex => typeof v === 'string' && /^0x[0-9a-fA-F]{8,}$/.test(v);
+
+/**
+ * Raw revert data some wallets nest inside a generic "Internal JSON-RPC error" instead of letting
+ * viem decode it: `data`, `data.data`, or MetaMask's `data.originalError.data`.
+ */
+function rawRevertData(e: ErrorLike): Hex | null {
+  const d = e.data as { data?: unknown; originalError?: { data?: unknown } } | unknown;
+  if (isRevertHex(d)) return d;
+  if (d && typeof d === 'object') {
+    const nested = d as { data?: unknown; originalError?: { data?: unknown } };
+    if (isRevertHex(nested.data)) return nested.data;
+    if (isRevertHex(nested.originalError?.data)) return nested.originalError.data;
+  }
+  return null;
+}
 
 const MAX_FALLBACK = 160;
 
@@ -97,10 +120,25 @@ export function decodeTxError(err: unknown, ctx: ErrorContext = {}): TxError {
     return { kind: 'rejected', message: 'Rejected in your wallet.' };
   }
 
-  const reverted = chain.find((e) => e.name === 'ContractFunctionRevertedError' && e.data?.errorName);
-  if (reverted?.data && typeof reverted.data.errorName === 'string') {
-    const args = Array.isArray(reverted.data.args) ? reverted.data.args : [];
-    return { kind: 'revert', errorName: reverted.data.errorName, message: revertMessage(reverted.data.errorName, args, ctx) };
+  const reverted = chain.find(
+    (e) => e.name === 'ContractFunctionRevertedError' && typeof (e.data as RevertedData | undefined)?.errorName === 'string',
+  );
+  if (reverted) {
+    const data = reverted.data as RevertedData;
+    const args = Array.isArray(data.args) ? data.args : [];
+    return { kind: 'revert', errorName: data.errorName as string, message: revertMessage(data.errorName as string, args, ctx) };
+  }
+
+  // Fallback: decode raw revert bytes against both contracts' custom errors.
+  for (const e of chain) {
+    const raw = rawRevertData(e);
+    if (!raw) continue;
+    try {
+      const decoded = decodeErrorResult({ abi: CONTRACT_ERRORS, data: raw });
+      return { kind: 'revert', errorName: decoded.errorName, message: revertMessage(decoded.errorName, decoded.args ?? [], ctx) };
+    } catch {
+      // not one of ours; keep looking
+    }
   }
 
   if (names.includes('InsufficientFundsError') || /insufficient funds/i.test(text)) {
