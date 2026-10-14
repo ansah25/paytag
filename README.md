@@ -42,7 +42,14 @@ Zero config — the SDK ships with `https://api.paytag.dev` as the default base 
 
 ### Deployed addresses
 
-_TBD — Base Sepolia._
+Base Sepolia (chain 84532), verified on Basescan and Sourcify. Deployed at block 48117093 from the [`Deploy`](contracts/script/Deploy.s.sol) script; the full record is in [`contracts/broadcast/`](contracts/broadcast/Deploy.s.sol/84532/run-latest.json).
+
+| Contract | Address |
+|---|---|
+| `PaytagRegistry` | [`0xf082914be358F3c3D9371C035f41D2BE6c408721`](https://sepolia.basescan.org/address/0xf082914be358f3c3d9371c035f41d2be6c408721#code) |
+| `PaytagResolver` | [`0xa403F7B40B8634db46919ec2f1A642D629e2e828`](https://sepolia.basescan.org/address/0xa403f7b40b8634db46919ec2f1a642d629e2e828#code) |
+
+The ABI is frozen at tag `v0.1.0-contracts`.
 
 ### Tests, coverage, gas
 
