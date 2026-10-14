@@ -1,12 +1,12 @@
 {
   "addr ETH": "2824",
   "addr SOL": "5452",
-  "register (20 chars)": "53988",
-  "register (3 chars)": "49840",
+  "register (20 chars)": "54791",
+  "register (3 chars)": "50643",
   "reverse": "4763",
   "setRecord BTC 22B (new)": "53332",
-  "setRecord ETH (new)": "53083",
-  "setRecord ETH (overwrite)": "35983",
+  "setRecord ETH (new)": "53156",
+  "setRecord ETH (overwrite)": "36056",
   "setRecord SOL 32B (new)": "75725",
   "setReverse": "47772",
   "transfer": "29537"

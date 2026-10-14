@@ -35,11 +35,8 @@ contract PaytagResolverTest is Test {
         return abi.encodePacked(a);
     }
 
-    /// What `addr` should return after `setRecord(coinType, value)`: ETH stores an `address`, so
-    /// the 20-zero-byte record is indistinguishable from unset and reads back empty.
-    function _expected(uint256 coinType, bytes memory value) internal pure returns (bytes memory) {
-        if (coinType == ETH && value.length == 20 && bytes20(value) == bytes20(0)) return "";
-        return value;
+    function _isZeroEth(uint256 coinType, bytes memory value) internal pure returns (bool) {
+        return coinType == ETH && value.length == 20 && bytes20(value) == bytes20(0);
     }
 
     // ---------------------------------------------------------------- constructor
@@ -99,23 +96,21 @@ contract PaytagResolverTest is Test {
         assertEq(resolver.addr(node, ETH).length, 0);
     }
 
-    function test_setRecord_zeroEthAddressReadsAsUnset() public {
+    function test_setRecord_revertsOnZeroEthAddress() public {
         vm.startPrank(alice);
         resolver.setRecord(node, ETH, _eth(alice));
+        vm.expectRevert(PaytagResolver.ZeroEthAddress.selector);
         resolver.setRecord(node, ETH, _eth(address(0)));
         vm.stopPrank();
 
-        assertEq(resolver.addr(node, ETH).length, 0);
+        assertEq(resolver.addr(node, ETH), _eth(alice)); // unchanged
     }
 
-    function test_setRecord_zeroEthAddressDarkensReverse() public {
-        vm.startPrank(alice);
-        resolver.setRecord(node, ETH, _eth(alice));
-        resolver.setReverse(node);
-        resolver.setRecord(node, ETH, _eth(address(0)));
-        vm.stopPrank();
+    function test_setRecord_zeroBytesAllowedForOtherCoinTypes() public {
+        vm.prank(alice);
+        resolver.setRecord(node, BASE, _eth(address(0)));
 
-        assertEq(resolver.reverse(alice), bytes32(0));
+        assertEq(resolver.addr(node, BASE), _eth(address(0)));
     }
 
     function test_setRecord_ethClearEmitsEmptyValue() public {
@@ -370,15 +365,15 @@ contract PaytagResolverTest is Test {
         vm.prank(caller);
         try registry.register(string(raw)) returns (bytes32 n) {
             assertTrue(valid, "registered an invalid name");
+            assertFalse(Names.isReserved(Names.lower(raw)), "registered a reserved name");
             assertEq(n, keccak256(Names.lower(raw)));
-
-            vm.prank(caller);
-            resolver.setRecord(n, coinType, value);
-            assertEq(resolver.addr(n, coinType), _expected(coinType, value));
+            _setAndCheck(caller, n, coinType, value);
         } catch (bytes memory err) {
             bytes4 sel = bytes4(err);
             if (sel == PaytagRegistry.NameTaken.selector) {
                 assertEq(registry.owner(keccak256(Names.lower(raw))), alice); // only "derrick"
+            } else if (sel == PaytagRegistry.ReservedName.selector) {
+                assertTrue(valid && Names.isReserved(Names.lower(raw)), "spurious ReservedName");
             } else {
                 assertFalse(valid, "rejected a valid name");
             }
@@ -396,12 +391,24 @@ contract PaytagResolverTest is Test {
         vm.assume(keccak256(bytes(name)) != node);
         if (coinType == ETH) value = value.length >= 20 ? value[:20] : value[:0];
 
-        vm.startPrank(caller);
+        vm.prank(caller);
         bytes32 n = registry.register(name);
-        resolver.setRecord(n, coinType, value);
-        vm.stopPrank();
+        _setAndCheck(caller, n, coinType, value);
+    }
 
-        assertEq(resolver.addr(n, coinType), _expected(coinType, value));
+    /// Sets a record and checks it reads back verbatim, or that the zero ETH address is refused.
+    function _setAndCheck(address caller, bytes32 n, uint256 coinType, bytes memory value)
+        internal
+    {
+        vm.prank(caller);
+        if (_isZeroEth(coinType, value)) {
+            vm.expectRevert(PaytagResolver.ZeroEthAddress.selector);
+            resolver.setRecord(n, coinType, value);
+            assertEq(resolver.addr(n, coinType).length, 0);
+        } else {
+            resolver.setRecord(n, coinType, value);
+            assertEq(resolver.addr(n, coinType), value);
+        }
     }
 
     function testFuzz_ethRecordRejectsWrongLength(bytes calldata value) public {
@@ -423,6 +430,7 @@ contract PaytagResolverTest is Test {
     }
 
     function testFuzz_reverseRequiresForwardMatch(address claimant, address target) public {
+        vm.assume(target != address(0)); // rejected by setRecord; covered by its own test
         vm.prank(alice);
         resolver.setRecord(node, ETH, _eth(target));
 

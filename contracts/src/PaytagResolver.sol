@@ -19,9 +19,13 @@ import {PaytagRegistry} from "./PaytagRegistry.sol";
 ///      `reverse(addr(node)) == node` true whenever reverse returns non-zero.
 ///
 ///      Storage: ETH records live in a dedicated `address` mapping rather than as `bytes`, so the
-///      reverse check is one SLOAD with no memory decode. Consequence: an ETH record of 20 zero
-///      bytes is indistinguishable from unset and reads back empty (the zero address is never a
-///      meaningful payment destination).
+///      reverse check is one SLOAD with no memory decode. The zero address is used as "unset",
+///      so writing it is rejected: clearing has exactly one encoding (empty bytes) and every
+///      `RecordSet` payload equals what `addr` returns afterwards.
+///
+///      Indexers: reverse validity is not derivable from `ReverseSet` alone. A coin-60
+///      `RecordSet` silently darkens any reverse claim pointing at the old address, so compute
+///      `reverse(a) = claim[a]` only while `eth[claim[a]] == a`.
 contract PaytagResolver {
     uint256 public constant COIN_TYPE_ETH = 60;
 
@@ -36,6 +40,7 @@ contract PaytagResolver {
 
     error NotOwner(bytes32 node, address caller);
     error InvalidEthAddress(uint256 length);
+    error ZeroEthAddress();
     error ReverseMismatch(bytes32 node, address account);
 
     constructor(PaytagRegistry registry_) {
@@ -51,7 +56,9 @@ contract PaytagResolver {
             // casting to 'bytes20' is safe because length is exactly 20, or 0 which pads to zero
             // (the clear case)
             // forge-lint: disable-next-line(unsafe-typecast)
-            _ethRecords[node] = address(bytes20(value));
+            address eth = address(bytes20(value));
+            if (value.length == 20 && eth == address(0)) revert ZeroEthAddress();
+            _ethRecords[node] = eth;
         } else {
             _records[node][coinType] = value;
         }

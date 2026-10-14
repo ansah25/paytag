@@ -46,7 +46,10 @@ jobs:
         with:
           submodules: recursive
 
+      # Pinned: formatter and gas output can change between releases. Bump deliberately.
       - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.5
 
       - name: Check formatting
         run: forge fmt --check
@@ -56,6 +59,13 @@ jobs:
 
       - name: Test
         run: forge test -vvv
+
+      # Unit tests only: fuzz/invariant gas varies run to run. FORGE_SNAPSHOT_CHECK makes the
+      # snapshotGas cheatcodes in test/Gas.t.sol compare against snapshots/GasTest.json.
+      - name: Check gas snapshots
+        env:
+          FORGE_SNAPSHOT_CHECK: true
+        run: forge snapshot --check --no-match-test "testFuzz|invariant"
 
   web:
     name: Web

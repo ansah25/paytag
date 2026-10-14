@@ -163,6 +163,53 @@ contract PaytagRegistryTest is Test {
         registry.register("-!");
     }
 
+    function test_register_revertsOnEveryReservedName() public {
+        string[] memory names = Names.reserved();
+        for (uint256 i; i < names.length; ++i) {
+            bytes32 n = keccak256(bytes(names[i]));
+            vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.ReservedName.selector, n));
+            registry.register(names[i]);
+        }
+    }
+
+    function test_register_revertsOnReservedCaseVariant() public {
+        vm.expectRevert(
+            abi.encodeWithSelector(PaytagRegistry.ReservedName.selector, keccak256("paytag"))
+        );
+        registry.register("PayTag");
+    }
+
+    function test_register_allowsNearMissOfReserved() public {
+        vm.startPrank(alice);
+        registry.register("paytag_");
+        registry.register("admin1");
+        registry.register("apis");
+        vm.stopPrank();
+    }
+
+    function test_isReserved_matchesIndependentList() public view {
+        string[] memory names = Names.reserved();
+        assertEq(names.length, 28);
+        for (uint256 i; i < names.length; ++i) {
+            assertTrue(registry.isReserved(keccak256(bytes(names[i]))), names[i]);
+        }
+        assertFalse(registry.isReserved(keccak256("derrick")));
+        assertFalse(registry.isReserved(bytes32(0)));
+    }
+
+    /// No hash outside the independent list is reserved.
+    function testFuzz_isReservedMatchesReference(bytes32 node) public view {
+        assertEq(registry.isReserved(node), _inReservedList(node));
+    }
+
+    function _inReservedList(bytes32 node) internal pure returns (bool) {
+        string[] memory names = Names.reserved();
+        for (uint256 i; i < names.length; ++i) {
+            if (keccak256(bytes(names[i])) == node) return true;
+        }
+        return false;
+    }
+
     // ---------------------------------------------------------------- transfer
 
     function test_transfer_movesOwnership() public {
@@ -282,22 +329,39 @@ contract PaytagRegistryTest is Test {
 
     // ---------------------------------------------------------------- fuzz
 
-    /// normalize(normalize(x)) == normalize(x) for every accepted input.
-    function testFuzz_normalizeIsIdempotent(bytes calldata raw) public view {
-        try registry.normalize(string(raw)) returns (string memory once) {
-            assertEq(registry.normalize(once), once);
-        } catch {}
+    /// normalize(normalize(x)) == normalize(x) for every accepted input; every other input is
+    /// rejected. Random bytes are almost never valid, so the valid-shaped variant below carries
+    /// most of the idempotence weight.
+    function testFuzz_normalizeIsIdempotent(bytes calldata raw) public {
+        if (!Names.isValid(raw)) {
+            vm.expectRevert();
+            registry.normalize(string(raw));
+            return;
+        }
+        string memory once = registry.normalize(string(raw));
+        assertEq(registry.normalize(once), once);
+    }
+
+    function testFuzz_normalizeIsIdempotent_validShaped(uint256 seed, uint256 caseMask)
+        public
+        view
+    {
+        bytes memory raw = _mixedCase(Names.fromSeed(seed), caseMask);
+        string memory once = registry.normalize(string(raw));
+        assertEq(registry.normalize(once), once);
     }
 
     /// The contract agrees with an independent reference model on every byte string: it accepts
-    /// exactly the valid ones and returns their ASCII lowercase.
+    /// exactly the valid ones, returns their ASCII lowercase, and rejects the rest with exactly
+    /// the error (selector and arguments) the model predicts.
     function testFuzz_normalizeMatchesReference(bytes calldata raw) public view {
         bool valid = Names.isValid(raw);
         try registry.normalize(string(raw)) returns (string memory out) {
             assertTrue(valid, "accepted an invalid name");
             assertEq(bytes(out), Names.lower(raw));
-        } catch {
+        } catch (bytes memory err) {
             assertFalse(valid, "rejected a valid name");
+            assertEq(err, Names.expectedError(raw), "wrong revert reason");
         }
     }
 
@@ -306,13 +370,18 @@ contract PaytagRegistryTest is Test {
         public
         view
     {
-        bytes memory raw = bytes(Names.fromSeed(seed));
+        bytes memory raw = _mixedCase(Names.fromSeed(seed), caseMask);
+        assertEq(bytes(registry.normalize(string(raw))), Names.lower(raw));
+    }
+
+    function _mixedCase(string memory name, uint256 caseMask) internal pure returns (bytes memory) {
+        bytes memory raw = bytes(name);
         for (uint256 i; i < raw.length; ++i) {
             if ((caseMask >> i) & 1 == 1 && raw[i] >= "a" && raw[i] <= "z") {
                 raw[i] = bytes1(uint8(raw[i]) - 32);
             }
         }
-        assertEq(bytes(registry.normalize(string(raw))), Names.lower(raw));
+        return raw;
     }
 
     function testFuzz_registerSetsOwner(uint256 seed, address caller) public {

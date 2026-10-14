@@ -13,6 +13,15 @@ describe('userService - username validation', () => {
     expect(normalizeUsername('ALICE_99')).toBe('alice_99');
   });
 
+  it('does not fold non-ASCII lookalikes into valid names', () => {
+    // U+212A KELVIN SIGN lowercases to ASCII "k" under String#toLowerCase.
+    const kelvin = 'Kelvin';
+    expect(normalizeUsername(kelvin)).toBe('Kelvin');
+    expect(() => validateUsername(normalizeUsername(kelvin))).toThrow(BadRequestError);
+    // U+0130 LATIN CAPITAL I WITH DOT lowercases to "i" + combining dot.
+    expect(() => validateUsername(normalizeUsername('İnfo'))).toThrow(BadRequestError);
+  });
+
   it('accepts valid usernames', () => {
     for (const name of ['abc', 'derrick', 'alice_99', 'a_b_c', '123abc', 'a'.repeat(20)]) {
       expect(USERNAME_REGEX.test(name)).toBe(true);
