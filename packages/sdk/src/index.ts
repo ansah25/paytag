@@ -2,6 +2,7 @@ import { Paytag, AvailableOptions, ResolveOptions } from './client';
 import {
   AvailabilityResponse,
   ChainId,
+  OnchainResolveResponse,
   ResolveResponse,
 } from './types';
 
@@ -14,10 +15,12 @@ export type {
 } from './client';
 export { PaytagError } from './errors';
 export type { PaytagErrorCode } from './errors';
-export { SUPPORTED_CHAINS, DEFAULT_BASE_URL } from './types';
+export { SUPPORTED_CHAINS, DEFAULT_BASE_URL, DEFAULT_INDEXER_URL } from './types';
 export type {
   ChainId,
   ResolveResponse,
+  OnchainResolveResponse,
+  OnchainRecord,
   AvailabilityResponse,
   UnavailableReason,
 } from './types';
@@ -50,6 +53,12 @@ export const resolveAddress = (
   opts?: ResolveOptions,
 ): Promise<string | null> =>
   getDefaultClient().resolveAddress(username, chain, opts);
+
+/** Resolve a username from on-chain state via the default indexer client. */
+export const resolveViaIndexer = (
+  username: string,
+  opts?: ResolveOptions,
+): Promise<OnchainResolveResponse> => getDefaultClient().resolveViaIndexer(username, opts);
 
 /** Check username availability via the default client. */
 export const available = (

@@ -4,6 +4,8 @@ import {
   AvailabilityResponse,
   ChainId,
   DEFAULT_BASE_URL,
+  DEFAULT_INDEXER_URL,
+  OnchainResolveResponse,
   ResolveResponse,
 } from './types';
 
@@ -22,6 +24,11 @@ export interface PaytagOptions {
    * SDK works zero-config; override only when self-hosting or running tests.
    */
   baseUrl?: string;
+  /**
+   * Base URL of the on-chain indexer used by `resolveViaIndexer`. Defaults to
+   * `https://indexer.paytag.dev`.
+   */
+  indexerUrl?: string;
   /**
    * Cache configuration. `true` (default) enables an in-memory cache with a 30s TTL.
    * Pass `false` to disable, a number to set the TTL in ms, or a custom `Cache` impl.
@@ -46,6 +53,7 @@ const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
 
 export class Paytag {
   private readonly baseUrl: string;
+  private readonly indexerUrl: string;
   private readonly cache: Cache<ResolveResponse> | null;
   private readonly fetchImpl: FetchLike;
 
@@ -55,6 +63,11 @@ export class Paytag {
         ? options.baseUrl
         : DEFAULT_BASE_URL;
     this.baseUrl = rawBaseUrl.replace(/\/+$/, '');
+    this.indexerUrl = (
+      typeof options.indexerUrl === 'string' && options.indexerUrl.trim() !== ''
+        ? options.indexerUrl
+        : DEFAULT_INDEXER_URL
+    ).replace(/\/+$/, '');
 
     const fetchImpl =
       options.fetch ??
@@ -95,6 +108,37 @@ export class Paytag {
   }
 
   /**
+   * Resolve a username from on-chain state (the Base registry), via the Paytag indexer.
+   * Returns the same `addresses` map as `resolve`, plus the on-chain owner and every raw
+   * record. Records written by a previous owner are flagged `stale` and left out of
+   * `addresses`.
+   *
+   * Never falls back to the API: if the indexer is unreachable this throws `NETWORK_ERROR`,
+   * so callers always know which source answered.
+   *
+   * @throws {PaytagError} with `code = 'USER_NOT_FOUND'` if the name isn't registered on-chain.
+   */
+  async resolveViaIndexer(
+    username: string,
+    opts: ResolveOptions = {},
+  ): Promise<OnchainResolveResponse> {
+    const normalized = normalizeUsername(username);
+    const cacheKey = onchainCacheKey(normalized);
+
+    if (this.cache && !opts.fresh) {
+      const cached = this.cache.get(cacheKey);
+      if (cached) return cached as OnchainResolveResponse;
+    }
+
+    const url = `${this.indexerUrl}/resolve/${encodeURIComponent(normalized)}`;
+    const result = await this.requestJson(url, opts.signal);
+    const parsed = parseOnchainResolveResponse(result);
+
+    this.cache?.set(cacheKey, parsed);
+    return parsed;
+  }
+
+  /**
    * Convenience: resolve a single chain. Returns `null` if the user has no
    * address registered for that chain. Throws `USER_NOT_FOUND` if the user
    * doesn't exist at all.
@@ -127,7 +171,9 @@ export class Paytag {
   invalidate(username?: string): void {
     if (!this.cache) return;
     if (username) {
-      this.cache.delete(normalizeUsername(username));
+      const normalized = normalizeUsername(username);
+      this.cache.delete(normalized);
+      this.cache.delete(onchainCacheKey(normalized));
     } else {
       this.cache.clear();
     }
@@ -219,6 +265,28 @@ function parseResolveResponse(body: unknown): ResolveResponse {
     throw new PaytagError('Unexpected response shape from /resolve', 'INVALID_RESPONSE');
   }
   return body as ResolveResponse;
+}
+
+// Prefixed so API and on-chain results for the same name never collide in a shared cache.
+// "onchain:" can't be a username ([a-z0-9_] only), so the namespaces are disjoint.
+function onchainCacheKey(normalized: string): string {
+  return `onchain:${normalized}`;
+}
+
+function parseOnchainResolveResponse(body: unknown): OnchainResolveResponse {
+  const parsed = parseResolveResponse(body) as OnchainResolveResponse;
+  if (
+    parsed.source !== 'onchain' ||
+    typeof parsed.owner !== 'string' ||
+    typeof parsed.node !== 'string' ||
+    !Array.isArray(parsed.records)
+  ) {
+    throw new PaytagError(
+      'Unexpected response shape from indexer /resolve',
+      'INVALID_RESPONSE',
+    );
+  }
+  return parsed;
 }
 
 function parseAvailabilityResponse(body: unknown): AvailabilityResponse {
