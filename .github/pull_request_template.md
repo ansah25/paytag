@@ -11,6 +11,7 @@ Required before merging to `main`. Reviewers are independent agents that did not
 - [ ] Every finding fixed or dismissed with a reason (below)
 - [ ] Fix verification by a second independent agent
 - [ ] CI green
+- [ ] After merge: branch deleted (remote and local)
 
 ### Review findings
 

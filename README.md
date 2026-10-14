@@ -25,11 +25,15 @@ const user = await resolve('derrick');
 // { username: 'derrick', addresses: { ethereum: '0x4f3edf83…', … } }
 ```
 
-Zero config — the SDK ships with `https://api.paytag.dev` as the default base URL. See [`packages/sdk/README.md`](packages/sdk/README.md) for `resolveAddress`, `available`, custom clients, and error codes.
+Zero config — the SDK ships with `https://api.paytag.dev` as the default base URL. To read on-chain state instead, use `resolveViaIndexer('derrick')`; it has the same shape plus `owner`, raw `records` and `source: 'onchain'`. See [`packages/sdk/README.md`](packages/sdk/README.md) for `resolveAddress`, `available`, custom clients, and error codes.
 
 ## On-chain protocol (Base)
 
-> In progress — see [`docs/paytag-onchain-build-plan.md`](docs/paytag-onchain-build-plan.md).
+> In progress. The contracts and indexer are live on Base Sepolia; the app integration is next.
+
+```
+PaytagRegistry + PaytagResolver (Base) ──events──▶ Ponder indexer ──HTTP──▶ @paytagdev/sdk ──▶ app
+```
 
 **Design:** Base is the canonical registry. Solana and Bitcoin addresses live as *records* on the EVM name (keyed by ENSIP-9 / SLIP-44 coin type), not as parallel deployments. One source of truth for ownership; every other chain is resolved through records. Both contracts are immutable and admin-free.
 
@@ -99,10 +103,37 @@ What I didn't change, and why: writes are dominated by the 22.1k cold `SSTORE`, 
 
 ### Indexer
 
-_TBD — Ponder._ Design constraints already fixed by the contracts:
+[`indexer/`](indexer) is a [Ponder](https://ponder.sh) 0.18 app that indexes `NameRegistered`, `Transfer`, `RecordSet` and `ReverseSet` from block 48118052 into Postgres, and serves a public read API. New on-chain writes show up within about 3 seconds.
 
-- Every `RecordSet` payload equals what `addr` returns afterwards. An empty value means cleared; the zero ETH address can't be written.
-- Reverse validity is not derivable from `ReverseSet` alone. A coin-60 `RecordSet` silently invalidates any reverse claim pointing at the old address, so the indexer stores claims and serves `reverse(a) = claim[a]` only while `eth[claim[a]] == a`, which mirrors the contract.
+| Endpoint | Returns |
+|---|---|
+| `GET /resolve/:name` | `{ username, node, owner, registeredAt, addresses, records, source: "onchain" }`. Same base shape as the API's `/resolve`; `records` holds every raw record with its decoded address and a `stale` flag |
+| `GET /reverse/:address` | `{ address, username }`. `username` is null unless the claim is still forward-verified and current |
+| `GET /available/:name` | `{ available, reason?, suggestions }`. Format, the registry's reserved list, then taken |
+| `GET /names?owner=0x…` | Names currently owned by an address |
+| `POST /graphql` | Ponder's generated GraphQL over the raw tables. It has no `stale` field: compare `records.updatedOrdinal < names.lastTransferOrdinal` yourself |
+| `GET /status`, `/ready` | Synced block per chain; 200 once backfill is complete |
+
+Until backfill completes, every route above answers `503 { code: "NOT_READY" }` rather than serving partial data (which would claim registered names are free). Readiness is read from the deployment's own database, the same flag as `/ready`. Route errors return a generic `{ code: "INTERNAL_ERROR" }`, and GraphQL masks error details when `NODE_ENV=production` (the Docker image sets it).
+
+Read-model rules the indexer enforces:
+
+- Every `RecordSet` payload equals what `addr` returns afterwards. An empty value deletes the record; the zero ETH address can't be written.
+- **Stale records**: a record written before the name's latest change of owner was set by a previous owner. It's listed in `records` with `stale: true` but left out of `addresses`, so payment flows never pay a former owner. Self-transfers don't count; a transfer away and back (A → B → A) does, so A rewrites their records after reclaiming the name. This is stricter than the contract, which keeps serving such records.
+- **Reverse validity**: not derivable from `ReverseSet` alone (a coin-60 `RecordSet` silently invalidates claims on the old address). `/reverse` serves `claim[a]` only while `eth[claim[a]] == a` (mirroring `PaytagResolver.reverse()`) and that ETH record isn't stale, so a former owner's address stops resolving to the name at transfer time. That second condition is stricter than the contract.
+- **Reserved names** are answered locally from the registry's hard-coded hashes (generated into `indexer/abis/reservedNodes.ts` and drift-checked in CI), with no RPC call per request.
+- Records use ENSIP-9 encodings: SOL is the raw 32-byte key, BTC is the `scriptPubKey`, EVM chains are 20 address bytes. Test vectors are in [`indexer/test/vectors.json`](indexer/test/vectors.json).
+
+Run it locally (Node ≥ 22.12; uses embedded PGlite, no Postgres needed):
+
+```bash
+cd indexer && npm install
+PONDER_RPC_URL_84532=<base-sepolia-rpc> npm run dev
+```
+
+Production runs the [`Dockerfile`](indexer/Dockerfile) with `DATABASE_URL`, `DATABASE_SCHEMA` and `PONDER_RPC_URL_84532` set; it uses about 200 MB of RAM.
+
+Operational note: Ponder's own logs print the full RPC URL when an RPC request fails, and with Alchemy that includes the API key. The key never reaches HTTP clients, but treat the indexer's logs as secret, or use a key restricted to this app.
 
 ### Known trade-offs
 
@@ -221,6 +252,7 @@ npm run dev   # http://localhost:3000
 │   ├── app.ts
 │   └── index.ts
 ├── contracts/            # Solidity registry + resolver (Foundry)
+├── indexer/              # Ponder indexer + read API for the on-chain registry
 ├── packages/sdk/         # @paytagdev/sdk (npm package)
 ├── web/                  # Next.js dApp (deployed at paytag.dev)
 ├── supabase/migrations/  # SQL schema

@@ -31,14 +31,15 @@ No setup, no API key. The top-level `resolve` helper points at the public Paytag
 ## Top-level helpers
 
 ```ts
-import { resolve, resolveAddress, available } from '@paytagdev/sdk';
+import { resolve, resolveAddress, resolveViaIndexer, available } from '@paytagdev/sdk';
 
 await resolve('derrick');                       // → ResolveResponse
 await resolveAddress('derrick', 'ethereum');    // → '0x4f3edf…' | null
+await resolveViaIndexer('derrick');             // → OnchainResolveResponse (Base registry)
 await available('newname');                     // → AvailabilityResponse
 ```
 
-All three accept the same username forms — `'derrick'`, `'@derrick'`, `'DERRICK'` — and normalize to lowercase with the leading `@` stripped.
+All of them accept the same username forms — `'derrick'`, `'@derrick'`, `'DERRICK'` — and normalize to lowercase with the leading `@` stripped.
 
 ## Custom client
 
@@ -59,6 +60,7 @@ await client.resolve('derrick');
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `baseUrl` | `string` | `https://api.paytag.dev` | API origin |
+| `indexerUrl` | `string` | `https://indexer.paytag.dev` | On-chain indexer origin, used by `resolveViaIndexer` |
 | `cache` | `boolean \| number \| Cache` | `true` (30 s TTL) | `false` disables, a `number` sets the TTL in ms, or pass a custom `Cache` |
 | `fetch` | `FetchLike` | `globalThis.fetch` | Inject a custom fetch (e.g. for testing or a Node ≤17 polyfill) |
 
@@ -89,6 +91,30 @@ const eth = await resolveAddress('derrick', 'ethereum');
 if (eth) { /* … */ }
 ```
 
+### `resolveViaIndexer(username, opts?)` → `Promise<OnchainResolveResponse>`
+
+Resolve a name from **on-chain state**, the Paytag registry on Base, via the Paytag indexer. The result extends `ResolveResponse`, so code that reads `addresses` works unchanged:
+
+```ts
+type OnchainResolveResponse = ResolveResponse & {
+  node: string;          // keccak256 of the normalized name
+  owner: string;         // current on-chain owner (checksummed)
+  registeredAt: number;  // unix seconds
+  records: {
+    coinType: string;    // ENSIP-9 coin type: '60' ETH, '0' BTC, '501' SOL, …
+    value: string;       // raw record bytes (hex)
+    address: string | null;
+    stale: boolean;      // set by a previous owner; excluded from `addresses`
+  }[];
+  source: 'onchain';
+};
+```
+
+- **Stale records:** a record written before the name's latest transfer was set by a previous owner. It appears in `records` with `stale: true` but never in `addresses`, so payment code can't pay a former owner by accident.
+- **No fallback:** if the indexer is unreachable this throws `NETWORK_ERROR` rather than silently asking the API, so you always know which source answered.
+- **Syncing:** while a freshly deployed indexer backfills, it answers 503 and this throws `HTTP_ERROR` with `status: 503`, never a false `USER_NOT_FOUND`.
+- **Caching:** results share the client's cache but use a separate key namespace from `resolve`, and `invalidate(name)` clears both.
+
 ### `available(username, opts?)` → `Promise<AvailabilityResponse>`
 
 Check whether a username is free to claim. Unlike `resolve`, this does **not** validate the input locally — invalid formats come back as `reason: 'INVALID_FORMAT'` so you can render targeted UI feedback.
@@ -114,7 +140,7 @@ All thrown errors are instances of `PaytagError` with a typed `code`:
 | `code` | Meaning |
 |---|---|
 | `USER_NOT_FOUND` | The username is not registered |
-| `INVALID_USERNAME` | Argument failed format validation (3–20 chars, `[a-z0-9_]` for `resolve`; non-empty for `available`) |
+| `INVALID_USERNAME` | Argument failed format validation (3–20 chars, `[a-z0-9_]` for `resolve` and `resolveViaIndexer`; non-empty for `available`) |
 | `NETWORK_ERROR` | The fetch itself failed (DNS, TLS, connection refused, …) |
 | `HTTP_ERROR` | The API responded with a non-2xx status other than 404 |
 | `INVALID_RESPONSE` | The API responded 2xx but the body was not in the expected shape |

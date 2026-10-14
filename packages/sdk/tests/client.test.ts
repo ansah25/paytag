@@ -5,7 +5,10 @@ import {
   ResolveResponse,
   AvailabilityResponse,
   DEFAULT_BASE_URL,
+  DEFAULT_INDEXER_URL,
+  OnchainResolveResponse,
   resolve,
+  resolveViaIndexer,
   resolveAddress,
   available,
   __resetDefaultClient,
@@ -349,6 +352,110 @@ describe('Paytag.available', () => {
   });
 });
 
+const indexerUrl = 'https://indexer.paytag.test';
+
+const okOnchain = (overrides?: Partial<OnchainResolveResponse>): OnchainResolveResponse => ({
+  username: 'derrick',
+  node: '0x2209a34bc4a111dcc71330ec4d9d1b6e134efb0c184da8e95f7da20375fa46ae',
+  owner: '0x3Dbc9C0Bef8b7bFBcf0a7cc4041b3962B126F865',
+  registeredAt: 1792007394,
+  addresses: { ethereum: '0x3Dbc9C0Bef8b7bFBcf0a7cc4041b3962B126F865' },
+  records: [
+    {
+      coinType: '60',
+      value: '0x3dbc9c0bef8b7bfbcf0a7cc4041b3962b126f865',
+      address: '0x3Dbc9C0Bef8b7bFBcf0a7cc4041b3962B126F865',
+      stale: false,
+    },
+  ],
+  source: 'onchain',
+  ...overrides,
+});
+
+describe('Paytag.resolveViaIndexer', () => {
+  it('hits the indexer URL and returns the on-chain body', async () => {
+    const fetchMock = jest.fn(async () => mockResponse(true, 200, okOnchain()));
+    const client = new Paytag({ baseUrl, indexerUrl: `${indexerUrl}/`, fetch: fetchMock });
+    const result = await client.resolveViaIndexer('@Derrick');
+    expect(result).toEqual(okOnchain());
+    expect(fetchMock).toHaveBeenCalledWith(`${indexerUrl}/resolve/derrick`, expect.any(Object));
+  });
+
+  it('defaults to the hosted indexer', async () => {
+    const fetchMock = jest.fn(async () => mockResponse(true, 200, okOnchain()));
+    await new Paytag({ fetch: fetchMock }).resolveViaIndexer('derrick');
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${DEFAULT_INDEXER_URL}/resolve/derrick`,
+      expect.any(Object),
+    );
+  });
+
+  it('caches separately from resolve() so the two sources never mix', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(mockResponse(true, 200, okPayload()))
+      .mockResolvedValueOnce(mockResponse(true, 200, okOnchain()));
+    const client = new Paytag({ baseUrl, indexerUrl, fetch: fetchMock });
+
+    const offchain = await client.resolve('derrick');
+    const onchain = await client.resolveViaIndexer('derrick');
+    expect(offchain).toEqual(okPayload());
+    expect(onchain.source).toBe('onchain');
+
+    await client.resolveViaIndexer('derrick'); // cached
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('invalidate(name) drops the on-chain entry too', async () => {
+    const fetchMock = jest.fn(async () => mockResponse(true, 200, okOnchain()));
+    const client = new Paytag({ indexerUrl, fetch: fetchMock });
+    await client.resolveViaIndexer('derrick');
+    client.invalidate('derrick');
+    await client.resolveViaIndexer('derrick');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('throws USER_NOT_FOUND when the name is not on-chain', async () => {
+    const fetchMock = jest.fn(async () =>
+      mockResponse(false, 404, { error: 'not registered', code: 'USER_NOT_FOUND' }),
+    );
+    const client = new Paytag({ indexerUrl, fetch: fetchMock });
+    await expect(client.resolveViaIndexer('nobody')).rejects.toMatchObject({
+      code: 'USER_NOT_FOUND',
+      status: 404,
+    });
+  });
+
+  it('throws NETWORK_ERROR and does not fall back to the API', async () => {
+    const fetchMock = jest.fn(async () => {
+      throw new Error('ECONNREFUSED');
+    });
+    const client = new Paytag({ baseUrl, indexerUrl, fetch: fetchMock });
+    await expect(client.resolveViaIndexer('derrick')).rejects.toMatchObject({
+      code: 'NETWORK_ERROR',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(`${indexerUrl}/resolve/derrick`, expect.any(Object));
+  });
+
+  it('throws INVALID_RESPONSE when the body is an off-chain shape', async () => {
+    const fetchMock = jest.fn(async () => mockResponse(true, 200, okPayload()));
+    const client = new Paytag({ indexerUrl, fetch: fetchMock });
+    await expect(client.resolveViaIndexer('derrick')).rejects.toMatchObject({
+      code: 'INVALID_RESPONSE',
+    });
+  });
+
+  it('validates the username locally', async () => {
+    const fetchMock = jest.fn();
+    const client = new Paytag({ indexerUrl, fetch: fetchMock });
+    await expect(client.resolveViaIndexer('a')).rejects.toMatchObject({
+      code: 'INVALID_USERNAME',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('top-level helpers', () => {
   beforeEach(() => {
     __resetDefaultClient();
@@ -364,6 +471,22 @@ describe('top-level helpers', () => {
       expect(result.username).toBe('derrick');
       expect(fetchMock).toHaveBeenCalledWith(
         `${DEFAULT_BASE_URL}/resolve/derrick`,
+        expect.any(Object),
+      );
+    } finally {
+      g.fetch = original;
+    }
+  });
+
+  it('resolveViaIndexer() uses the default singleton + indexer URL', async () => {
+    const fetchMock = jest.fn(async () => mockResponse(true, 200, okOnchain()));
+    const g = globalThis as { fetch?: unknown };
+    const original = g.fetch;
+    g.fetch = fetchMock;
+    try {
+      await expect(resolveViaIndexer('derrick')).resolves.toMatchObject({ source: 'onchain' });
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${DEFAULT_INDEXER_URL}/resolve/derrick`,
         expect.any(Object),
       );
     } finally {
