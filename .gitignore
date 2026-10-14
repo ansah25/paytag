@@ -54,3 +54,6 @@ web/.env.local.example
 # UI redesign handoff bundle — local reference only, never commit
 design_handoff_paytag_redesign/
 Paytag UI Redesign.zip
+
+# Playwright MCP browser-test output (screenshots, snapshots, console logs)
+.playwright-mcp/

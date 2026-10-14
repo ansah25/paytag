@@ -3,7 +3,7 @@ export interface NavItem {
   label: string;
 }
 
-export type RouteKind = 'landing' | 'send' | 'dashboard' | 'claim' | 'profile' | 'other';
+export type RouteKind = 'landing' | 'send' | 'dashboard' | 'claim' | 'profile' | 'onchain' | 'other';
 
 export interface RouteContext {
   kind: RouteKind;
@@ -20,17 +20,29 @@ const SEND: NavItem = { href: '/send', label: 'Send' };
 const DASHBOARD: NavItem = { href: '/app', label: 'Dashboard' };
 const DEVELOPERS: NavItem = { href: '/#developers', label: 'Developers' };
 const CLAIM_A_NAME: NavItem = { href: '/#claim', label: 'Claim a name' };
+const ONCHAIN: NavItem = { href: '/on-chain', label: 'On-chain' };
+const MANAGE_ONCHAIN: NavItem = { href: '/on-chain/manage', label: 'My names' };
 
 // First path segments owned by real routes. Any other single segment is a
-// public profile at /[username].
-const STATIC_SEGMENTS = new Set(['send', 'app', 'claim', 'welcome', 'pay', 'ui-kit']);
+// public profile at /[username]. `on-chain` can never be a username (no hyphens allowed).
+const STATIC_SEGMENTS = new Set(['send', 'app', 'claim', 'welcome', 'pay', 'ui-kit', 'on-chain']);
 
 export function resolveRoute(pathname: string): RouteContext {
   const segments = pathname.toLowerCase().split('/').filter(Boolean);
   const [first, second] = segments;
 
   if (!first) {
-    return { kind: 'landing', section: null, nav: [SEND, DEVELOPERS], cta: CLAIM_A_NAME, hideSignIn: false };
+    return { kind: 'landing', section: null, nav: [SEND, ONCHAIN, DEVELOPERS], cta: CLAIM_A_NAME, hideSignIn: false };
+  }
+  if (first === 'on-chain') {
+    // The on-chain section has its own wallet connect; the off-chain "Sign in" doesn't apply.
+    return {
+      kind: 'onchain',
+      section: second === 'manage' ? 'On-chain · My names' : second ? `On-chain · @${second}` : 'On-chain',
+      nav: second === 'manage' ? [ONCHAIN, HOME] : [MANAGE_ONCHAIN, HOME],
+      cta: second === 'manage' ? { href: '/on-chain', label: 'Register a name' } : null,
+      hideSignIn: true,
+    };
   }
   if (first === 'send') {
     return { kind: 'send', section: 'Send', nav: [DASHBOARD, HOME], cta: CLAIM_A_NAME, hideSignIn: false };
