@@ -33,6 +33,40 @@ jobs:
       - name: Build SDK
         run: npm run sdk:build
 
+  contracts:
+    name: Contracts
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    env:
+      FOUNDRY_PROFILE: ci
+      # Job-wide so no step can rewrite snapshots/GasTest.json: the snapshotGas cheatcodes in
+      # test/Gas.t.sol compare against the committed file instead of overwriting it.
+      FORGE_SNAPSHOT_CHECK: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Pinned: formatter and gas output can change between releases. Bump deliberately.
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.5
+
+      - name: Check formatting
+        run: forge fmt --check
+
+      - name: Build
+        run: forge build --sizes
+
+      - name: Test
+        run: forge test -vvv
+
+      # Unit tests only: fuzz/invariant gas varies run to run.
+      - name: Check gas snapshots
+        run: forge snapshot --check --no-match-test "testFuzz|invariant"
+
   web:
     name: Web
     runs-on: ubuntu-latest
