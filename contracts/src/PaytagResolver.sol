@@ -17,11 +17,17 @@ import {PaytagRegistry} from "./PaytagRegistry.sol";
 ///      record points back at it, and `reverse` re-checks that on every read. A reverse entry
 ///      therefore goes dark (returns zero) the moment the forward record changes, which keeps
 ///      `reverse(addr(node)) == node` true whenever reverse returns non-zero.
+///
+///      Storage: ETH records live in a dedicated `address` mapping rather than as `bytes`, so the
+///      reverse check is one SLOAD with no memory decode. Consequence: an ETH record of 20 zero
+///      bytes is indistinguishable from unset and reads back empty (the zero address is never a
+///      meaningful payment destination).
 contract PaytagResolver {
     uint256 public constant COIN_TYPE_ETH = 60;
 
     PaytagRegistry public immutable registry;
 
+    mapping(bytes32 node => address eth) private _ethRecords;
     mapping(bytes32 node => mapping(uint256 coinType => bytes addr)) private _records;
     mapping(address account => bytes32 node) private _reverse;
 
@@ -40,23 +46,31 @@ contract PaytagResolver {
     function setRecord(bytes32 node, uint256 coinType, bytes calldata value) external {
         address nodeOwner = registry.owner(node);
         if (nodeOwner == address(0) || nodeOwner != msg.sender) revert NotOwner(node, msg.sender);
-        if (coinType == COIN_TYPE_ETH && value.length != 0 && value.length != 20) {
-            revert InvalidEthAddress(value.length);
+        if (coinType == COIN_TYPE_ETH) {
+            if (value.length != 0 && value.length != 20) revert InvalidEthAddress(value.length);
+            // casting to 'bytes20' is safe because length is exactly 20, or 0 which pads to zero
+            // (the clear case)
+            // forge-lint: disable-next-line(unsafe-typecast)
+            _ethRecords[node] = address(bytes20(value));
+        } else {
+            _records[node][coinType] = value;
         }
-
-        _records[node][coinType] = value;
         emit RecordSet(node, coinType, value);
     }
 
     /// @notice Raw record bytes for `node` on `coinType`, or empty if unset.
     function addr(bytes32 node, uint256 coinType) external view returns (bytes memory) {
+        if (coinType == COIN_TYPE_ETH) {
+            address eth = _ethRecords[node];
+            return eth == address(0) ? bytes("") : abi.encodePacked(eth);
+        }
         return _records[node][coinType];
     }
 
     /// @notice Points the caller's reverse record at `node`. Requires `node`'s ETH record to be
     ///         the caller. Pass `bytes32(0)` to clear.
     function setReverse(bytes32 node) external {
-        if (node != bytes32(0) && !_ethRecordIs(node, msg.sender)) {
+        if (node != bytes32(0) && _ethRecords[node] != msg.sender) {
             revert ReverseMismatch(node, msg.sender);
         }
 
@@ -67,14 +81,7 @@ contract PaytagResolver {
     /// @notice Node `account` has claimed, or zero if unset or no longer forward-verified.
     function reverse(address account) external view returns (bytes32) {
         bytes32 node = _reverse[account];
-        if (node == bytes32(0) || !_ethRecordIs(node, account)) return bytes32(0);
+        if (node == bytes32(0) || _ethRecords[node] != account) return bytes32(0);
         return node;
-    }
-
-    function _ethRecordIs(bytes32 node, address account) private view returns (bool) {
-        bytes memory rec = _records[node][COIN_TYPE_ETH];
-        // casting to 'bytes20' is safe because the length is checked to be exactly 20 first
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return rec.length == 20 && address(bytes20(rec)) == account;
     }
 }

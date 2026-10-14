@@ -38,12 +38,13 @@ contract PaytagRegistry {
     /// @notice Registers `name` to the caller.
     /// @return node The node the normalized name hashes to.
     function register(string calldata name) external returns (bytes32 node) {
-        string memory normalized = normalize(name);
-        node = keccak256(bytes(normalized));
+        bytes memory normalized = bytes(name); // calldata -> fresh memory copy
+        _normalizeInPlace(normalized);
+        node = keccak256(normalized);
         if (_owners[node] != address(0)) revert NameTaken(node);
 
         _owners[node] = msg.sender;
-        emit NameRegistered(node, normalized, msg.sender);
+        emit NameRegistered(node, string(normalized), msg.sender);
         emit Transfer(node, address(0), msg.sender);
     }
 
@@ -66,28 +67,36 @@ contract PaytagRegistry {
 
     /// @notice Node for `name` after normalization. Reverts on invalid names.
     function nodeOf(string calldata name) external pure returns (bytes32) {
-        return keccak256(bytes(normalize(name)));
+        bytes memory b = bytes(name);
+        _normalizeInPlace(b);
+        return keccak256(b);
     }
 
     /// @notice Validates `name` and lowercases ASCII A-Z. Reverts on anything else outside
     ///         `[a-z0-9_]` or outside the length bounds. Idempotent.
-    function normalize(string memory name) public pure returns (string memory) {
+    function normalize(string calldata name) external pure returns (string memory) {
         bytes memory b = bytes(name);
+        _normalizeInPlace(b);
+        return string(b);
+    }
+
+    /// @dev Mutates `b`. Only ever called on a fresh copy of calldata. The unsigned-wraparound
+    ///      range checks (`c - 0x61 < 26`) test `a <= c <= z` with one comparison.
+    function _normalizeInPlace(bytes memory b) private pure {
         uint256 len = b.length;
         if (len < MIN_LENGTH || len > MAX_LENGTH) revert InvalidLength(len);
 
-        bytes memory out = new bytes(len);
-        for (uint256 i; i < len; ++i) {
-            bytes1 c = b[i];
-            if (uint8(c) >= 0x80) revert NonAsciiName(i);
+        unchecked {
+            for (uint256 i; i < len; ++i) {
+                uint8 c = uint8(b[i]);
+                if (c >= 0x80) revert NonAsciiName(i);
 
-            if (c >= "A" && c <= "Z") {
-                c = bytes1(uint8(c) + 32);
-            } else if (!((c >= "a" && c <= "z") || (c >= "0" && c <= "9") || c == "_")) {
-                revert InvalidCharacter(i, c);
+                if (uint8(c - 0x41) < 26) {
+                    b[i] = bytes1(c + 32); // A-Z -> a-z
+                } else if (!(uint8(c - 0x61) < 26 || uint8(c - 0x30) < 10 || c == 0x5f)) {
+                    revert InvalidCharacter(i, bytes1(c));
+                }
             }
-            out[i] = c;
         }
-        return string(out);
     }
 }

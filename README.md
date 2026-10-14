@@ -60,7 +60,31 @@ _TBD — Base Sepolia._
 | `PaytagRegistry.sol` | 100% (31/31) | 100% (42/42) | 100% (8/8) | 100% (5/5) |
 | `PaytagResolver.sol` | 100% (23/23) | 100% (33/33) | 100% (4/4) | 100% (6/6) |
 
-Gas snapshot: _TBD — `forge snapshot`._
+#### Gas
+
+Per-call gas from fixed scenarios in [`contracts/test/Gas.t.sol`](contracts/test/Gas.t.sol) (written to [`contracts/snapshots/GasTest.json`](contracts/snapshots/GasTest.json); excludes the 21k base transaction cost). The full per-test snapshot is [`contracts/.gas-snapshot`](contracts/.gas-snapshot).
+
+One optimization pass, before → after:
+
+| Call | Before | After | Δ |
+|---|---|---|---|
+| `register` (20 chars) | 57,433 | 53,988 | −6.0% |
+| `register` (3 chars) | 50,497 | 49,840 | −1.3% |
+| `transfer` | 29,537 | 29,537 | — |
+| `setRecord` ETH (new) | 53,396 | 53,083 | −0.6% |
+| `setRecord` ETH (overwrite) | 36,296 | 35,983 | −0.9% |
+| `setRecord` SOL 32 B (new) | 75,764 | 75,725 | −0.1% |
+| `setRecord` BTC 22 B (new) | 53,371 | 53,332 | −0.1% |
+| `setReverse` | 48,670 | 47,772 | −1.8% |
+| `addr` ETH | 3,372 | 2,824 | −16.3% |
+| `reverse` | 5,649 | 4,763 | −15.7% |
+
+What changed:
+
+1. **In-place normalization.** `register` used to allocate a second buffer and copy byte by byte. It now lowercases the calldata copy in place inside an `unchecked` loop, with single-comparison range checks (`uint8(c - 0x61) < 26`). The saving scales with name length. Registry runtime bytecode also dropped from 2,793 to 1,964 bytes.
+2. **Packed ETH records.** Coin type 60 moved out of `mapping(… => bytes)` into a dedicated `mapping(bytes32 => address)`. Reverse checks are now one `SLOAD` with no memory decode. Trade-off: an all-zero ETH record reads back as unset.
+
+What I didn't change, and why: writes are dominated by the 22.1k cold `SSTORE`, which no layout trick avoids. A 32-byte Solana key costs two slots (length + data) because Solidity only inlines `bytes` of up to 31 bytes. Packing it into one `bytes32` would need a coin-type-specific layout, adding complexity for about 20k gas once per record. I wasn't willing to make that trade.
 
 ### Indexer
 

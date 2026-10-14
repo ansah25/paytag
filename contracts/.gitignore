@@ -3,3 +3,5 @@ cache/
 broadcast/*/31337/
 lcov.info
 .env
+broadcast/**/dry-run/
+broadcast/**/*.lock
