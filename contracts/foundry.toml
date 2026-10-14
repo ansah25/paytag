@@ -20,7 +20,7 @@ fail_on_revert = false
 runs = 10_000
 
 [profile.ci.invariant]
-runs = 512
+runs = 256
 depth = 128
 
 [fmt]

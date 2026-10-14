@@ -38,7 +38,8 @@ contract PaytagResolver {
 
     /// @notice Sets the `coinType` record for `node`. Empty `value` clears it.
     function setRecord(bytes32 node, uint256 coinType, bytes calldata value) external {
-        if (registry.owner(node) != msg.sender) revert NotOwner(node, msg.sender);
+        address nodeOwner = registry.owner(node);
+        if (nodeOwner == address(0) || nodeOwner != msg.sender) revert NotOwner(node, msg.sender);
         if (coinType == COIN_TYPE_ETH && value.length != 0 && value.length != 20) {
             revert InvalidEthAddress(value.length);
         }

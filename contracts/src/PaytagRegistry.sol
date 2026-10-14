@@ -51,7 +51,8 @@ contract PaytagRegistry {
     ///         the new owner can overwrite them.
     function transfer(bytes32 node, address to) external {
         address current = _owners[node];
-        if (current != msg.sender) revert NotOwner(node, msg.sender);
+        // `current == address(0)` covers unregistered nodes even if msg.sender were zero.
+        if (current == address(0) || current != msg.sender) revert NotOwner(node, msg.sender);
         if (to == address(0)) revert ZeroAddress();
 
         _owners[node] = to;

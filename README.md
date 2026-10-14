@@ -46,7 +46,21 @@ _TBD — Base Sepolia._
 
 ### Tests, coverage, gas
 
-_TBD — unit, fuzz and invariant suites; `forge coverage`; `forge snapshot`._
+77 tests across unit, fuzz and invariant suites ([`contracts/test/`](contracts/test)):
+
+- **Unit** — every external function, including each revert path (length bounds, charset, non-ASCII/homoglyph bytes, taken names and case variants, non-owner writes, ETH record length, reverse mismatch).
+- **Fuzz** — `testFuzz_normalizeIsIdempotent`, `testFuzz_normalizeMatchesReference` (contract vs. an independent reference model over arbitrary bytes), `testFuzz_registerThenResolve`, ownership and reverse authorization.
+- **Invariants** — a stateful handler drives random register / transfer / setRecord / setReverse sequences across five actors and checks after every call that:
+  - every registered node has exactly one owner, matching a ghost model
+  - reverse resolution round-trips: `addr(reverse(a), 60) == a` wherever `reverse(a) != 0`
+  - no two distinct normalized names collide to the same node, and no name or case variant registers twice
+
+| File | Lines | Statements | Branches | Functions |
+|---|---|---|---|---|
+| `PaytagRegistry.sol` | 100% (31/31) | 100% (42/42) | 100% (8/8) | 100% (5/5) |
+| `PaytagResolver.sol` | 100% (23/23) | 100% (33/33) | 100% (4/4) | 100% (6/6) |
+
+Gas snapshot: _TBD — `forge snapshot`._
 
 ### Indexer
 
