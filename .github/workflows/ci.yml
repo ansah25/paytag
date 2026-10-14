@@ -41,6 +41,9 @@ jobs:
         working-directory: contracts
     env:
       FOUNDRY_PROFILE: ci
+      # Job-wide so no step can rewrite snapshots/GasTest.json: the snapshotGas cheatcodes in
+      # test/Gas.t.sol compare against the committed file instead of overwriting it.
+      FORGE_SNAPSHOT_CHECK: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -60,11 +63,8 @@ jobs:
       - name: Test
         run: forge test -vvv
 
-      # Unit tests only: fuzz/invariant gas varies run to run. FORGE_SNAPSHOT_CHECK makes the
-      # snapshotGas cheatcodes in test/Gas.t.sol compare against snapshots/GasTest.json.
+      # Unit tests only: fuzz/invariant gas varies run to run.
       - name: Check gas snapshots
-        env:
-          FORGE_SNAPSHOT_CHECK: true
         run: forge snapshot --check --no-match-test "testFuzz|invariant"
 
   web:

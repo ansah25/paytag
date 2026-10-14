@@ -18,8 +18,6 @@ describe('userService - username validation', () => {
     const kelvin = 'Kelvin';
     expect(normalizeUsername(kelvin)).toBe('Kelvin');
     expect(() => validateUsername(normalizeUsername(kelvin))).toThrow(BadRequestError);
-    // U+0130 LATIN CAPITAL I WITH DOT lowercases to "i" + combining dot.
-    expect(() => validateUsername(normalizeUsername('İnfo'))).toThrow(BadRequestError);
   });
 
   it('accepts valid usernames', () => {

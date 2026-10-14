@@ -1,3 +1,4 @@
+import './setup';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { keccak256, toUtf8Bytes } from 'ethers';

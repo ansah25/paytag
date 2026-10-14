@@ -107,7 +107,7 @@ _TBD — Ponder._ Design constraints already fixed by the contracts:
 ### Known trade-offs
 
 - **Free, first-come, permanent registration.** No fees, expiry or commit-reveal, so names can be front-run from the mempool and squatted. That's acceptable for a testnet demo; mainnet would need commit-reveal at minimum.
-- **Records survive a transfer.** Ownership moves, but the previous owner's records stay until the new owner overwrites them, so a payment to a just-transferred name goes to the old address. The app and indexer should flag records written before the latest `Transfer`. Reverse claims go dark automatically once the ETH record changes.
+- **Records survive a transfer.** Ownership moves, but the previous owner's records stay until the new owner overwrites them, so a payment to a just-transferred name goes to the old address. The same goes for the previous owner's reverse claim: `reverse(oldOwner)` keeps returning the name until the new owner changes the ETH record, at which point it goes dark automatically. The app and indexer should flag records and reverse claims that predate the latest `Transfer`. Before mainnet, the resolver could record each node's writer and stop serving records once the writer is no longer the owner, at the cost of one extra registry call per read.
 - **ASCII-only names.** This removes Unicode homoglyphs entirely. ASCII lookalikes (`0`/`o`, `1`/`l`) remain, so names are displayed in a monospace font.
 - **Fixed reserved list.** The contract has no admin, so the blocklist can't change after deployment. Adding a reserved name means a redeploy, and the drift test enforces that.
 
