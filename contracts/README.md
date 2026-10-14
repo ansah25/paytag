@@ -21,8 +21,8 @@ forge test
 forge build --sizes      # compile + bytecode sizes
 forge test -vvv          # unit / fuzz / invariant suites
 forge fmt                # format
-forge coverage           # coverage report
-forge snapshot           # gas snapshot -> .gas-snapshot
+forge coverage --no-match-coverage "(script|test)"  # src coverage (gas benchmarks auto-skip)
+forge snapshot --no-match-test "testFuzz|invariant"  # refresh .gas-snapshot + snapshots/GasTest.json
 ```
 
 ## Deploy
