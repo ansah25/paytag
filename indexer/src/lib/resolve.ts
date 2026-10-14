@@ -75,10 +75,19 @@ export function buildResolveBody(name: NameRow, rows: RecordRow[]): ResolveBody 
 }
 
 /**
- * Mirrors PaytagResolver.reverse(): a claim counts only while the claimed node's ETH record
- * still equals the claiming account. `ethRecordValue` is the raw coin-60 record of the claimed
- * node, or undefined if it has none.
+ * A reverse claim counts only while the claimed node's ETH record still equals the claiming
+ * account (mirroring PaytagResolver.reverse()) AND that record isn't stale. The second condition
+ * is stricter than the contract: after a transfer, the former owner's address must not keep
+ * resolving to a name they no longer own, the same reason stale records leave `addresses`.
  */
-export function isLiveReverseClaim(account: Hex, ethRecordValue: Hex | undefined): boolean {
-  return ethRecordValue !== undefined && ethRecordValue.toLowerCase() === account.toLowerCase();
+export function isLiveReverseClaim(
+  account: Hex,
+  ethRecord: Pick<RecordRow, "value" | "updatedOrdinal"> | undefined,
+  name: Pick<NameRow, "lastTransferOrdinal"> | undefined,
+): boolean {
+  if (!ethRecord || !name) return false;
+  return (
+    ethRecord.value.toLowerCase() === account.toLowerCase() &&
+    ethRecord.updatedOrdinal >= name.lastTransferOrdinal
+  );
 }

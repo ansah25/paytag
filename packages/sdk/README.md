@@ -112,6 +112,7 @@ type OnchainResolveResponse = ResolveResponse & {
 
 - **Stale records:** a record written before the name's latest transfer was set by a previous owner. It appears in `records` with `stale: true` but never in `addresses`, so payment code can't pay a former owner by accident.
 - **No fallback:** if the indexer is unreachable this throws `NETWORK_ERROR` rather than silently asking the API, so you always know which source answered.
+- **Syncing:** while a freshly deployed indexer backfills, it answers 503 and this throws `HTTP_ERROR` with `status: 503`, never a false `USER_NOT_FOUND`.
 - **Caching:** results share the client's cache but use a separate key namespace from `resolve`, and `invalidate(name)` clears both.
 
 ### `available(username, opts?)` → `Promise<AvailabilityResponse>`

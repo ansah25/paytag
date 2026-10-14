@@ -108,17 +108,20 @@ What I didn't change, and why: writes are dominated by the 22.1k cold `SSTORE`, 
 | Endpoint | Returns |
 |---|---|
 | `GET /resolve/:name` | `{ username, node, owner, registeredAt, addresses, records, source: "onchain" }`. Same base shape as the API's `/resolve`; `records` holds every raw record with its decoded address and a `stale` flag |
-| `GET /reverse/:address` | `{ address, username }`. `username` is null unless the claim is still forward-verified |
-| `GET /available/:name` | `{ available, reason?, suggestions }`. Format, the on-chain reserved list (`isReserved`), then taken |
+| `GET /reverse/:address` | `{ address, username }`. `username` is null unless the claim is still forward-verified and current |
+| `GET /available/:name` | `{ available, reason?, suggestions }`. Format, the registry's reserved list, then taken |
 | `GET /names?owner=0x…` | Names currently owned by an address |
-| `POST /graphql` | Ponder's generated GraphQL over the same tables |
+| `POST /graphql` | Ponder's generated GraphQL over the raw tables. It has no `stale` field: compare `records.updatedOrdinal < names.lastTransferOrdinal` yourself |
 | `GET /status`, `/ready` | Synced block per chain; 200 once backfill is complete |
+
+Until backfill completes, every route above answers `503 { code: "NOT_READY" }` rather than serving partial data (which would claim registered names are free). Errors never include internal details.
 
 Read-model rules the indexer enforces:
 
 - Every `RecordSet` payload equals what `addr` returns afterwards. An empty value deletes the record; the zero ETH address can't be written.
-- **Stale records**: a record written before the name's latest `Transfer` was set by a previous owner. It's listed in `records` with `stale: true` but left out of `addresses`, so payment flows never pay a former owner. This is stricter than the contract, which keeps serving such records.
-- **Reverse validity**: not derivable from `ReverseSet` alone (a coin-60 `RecordSet` silently invalidates claims on the old address). `/reverse` serves `claim[a]` only while `eth[claim[a]] == a`, mirroring `PaytagResolver.reverse()`.
+- **Stale records**: a record written before the name's latest change of owner was set by a previous owner. It's listed in `records` with `stale: true` but left out of `addresses`, so payment flows never pay a former owner. Self-transfers don't count. This is stricter than the contract, which keeps serving such records.
+- **Reverse validity**: not derivable from `ReverseSet` alone (a coin-60 `RecordSet` silently invalidates claims on the old address). `/reverse` serves `claim[a]` only while `eth[claim[a]] == a` (mirroring `PaytagResolver.reverse()`) and that ETH record isn't stale, so a former owner's address stops resolving to the name at transfer time. That second condition is stricter than the contract.
+- **Reserved names** are answered locally from the registry's hard-coded hashes (generated into `indexer/abis/reservedNodes.ts` and drift-checked in CI), with no RPC call per request.
 - Records use ENSIP-9 encodings: SOL is the raw 32-byte key, BTC is the `scriptPubKey`, EVM chains are 20 address bytes. Test vectors are in [`indexer/test/vectors.json`](indexer/test/vectors.json).
 
 Run it locally (Node ≥ 22.12; uses embedded PGlite, no Postgres needed):

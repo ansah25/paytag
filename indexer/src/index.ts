@@ -32,8 +32,9 @@ ponder.on("PaytagRegistry:Transfer", async ({ event, context }) => {
   });
 
   // The mint Transfer (from 0x0) directly follows NameRegistered in the same tx; the name row
-  // already reflects it. Only real transfers move ownership and invalidate earlier records.
-  if (from === zeroAddress) return;
+  // already reflects it. A self-transfer changes nothing. Only a real change of owner moves
+  // ownership and makes the previous owner's records stale.
+  if (from === zeroAddress || from.toLowerCase() === to.toLowerCase()) return;
   await context.db.update(schema.names, { node }).set({
     owner: to.toLowerCase() as `0x${string}`,
     lastTransferOrdinal: ordinal(event.block.number, event.log.logIndex),

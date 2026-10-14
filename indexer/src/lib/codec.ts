@@ -15,7 +15,10 @@ export const COIN_TYPE = {
   SOL: 501n,
 } as const;
 
+// ENSIP-11: coinType = 0x80000000 | chainId with chainId < 2^31, i.e. exactly bit 31 of a
+// 32-bit value.
 const EVM_CHAIN_FLAG = 0x80000000n;
+const EVM_CHAIN_MASK = ~0x7fffffffn;
 
 const base58check = createBase58check((data: Uint8Array) => sha256(data, "bytes"));
 
@@ -24,7 +27,7 @@ const P2SH_VERSION = 0x05;
 const BTC_HRP = "bc";
 
 export function isEvmCoinType(coinType: bigint): boolean {
-  return coinType === COIN_TYPE.ETH || (coinType & EVM_CHAIN_FLAG) !== 0n;
+  return coinType === COIN_TYPE.ETH || (coinType & EVM_CHAIN_MASK) === EVM_CHAIN_FLAG;
 }
 
 /** Decode record bytes to the chain's display address, or null if they don't decode. */
@@ -48,7 +51,12 @@ export function decodeAddress(coinType: bigint, value: Hex): string | null {
 /** Encode a display address to record bytes. Throws on an invalid address for the coin type. */
 export function encodeAddress(coinType: bigint, address: string): Hex {
   if (isEvmCoinType(coinType)) {
-    if (!isAddress(address, { strict: false })) throw new Error("invalid EVM address");
+    // EIP-55: all-lowercase or all-uppercase hex carries no checksum; mixed case must be valid.
+    const hex = address.slice(2);
+    const uncased = hex === hex.toLowerCase() || hex === hex.toUpperCase();
+    if (!isAddress(address, { strict: !uncased })) {
+      throw new Error("invalid EVM address or checksum");
+    }
     return address.toLowerCase() as Hex;
   }
   if (coinType === COIN_TYPE.SOL) {
@@ -82,7 +90,11 @@ function decodeBitcoinScript(s: Uint8Array): string | null {
 
 function encodeBitcoinScript(address: string): Uint8Array {
   if (address.toLowerCase().startsWith(`${BTC_HRP}1`)) {
-    // Version 0 must be bech32 and version 1+ bech32m (BIP-350); each decoder rejects the other.
+    // BIP-173: all-lowercase or all-uppercase only. Version 0 must be bech32 and version 1+
+    // bech32m (BIP-350); each decoder rejects the other.
+    if (address !== address.toLowerCase() && address !== address.toUpperCase()) {
+      throw new Error("mixed-case bech32 address");
+    }
     const lower = address.toLowerCase();
     const v0 = bech32.decodeUnsafe(lower);
     if (v0 && v0.prefix === BTC_HRP && v0.words[0] === 0) {

@@ -1,11 +1,10 @@
-import { db, publicClients } from "ponder:api";
+import { db } from "ponder:api";
 import schema from "ponder:schema";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { and, eq, graphql } from "ponder";
 import { type Hex, getAddress, isAddress } from "viem";
-import { PaytagRegistryAbi } from "../../abis/PaytagRegistryAbi";
-import { REGISTRY_ADDRESS } from "../../deployment";
+import { RESERVED_NODES } from "../../abis/reservedNodes";
 import { COIN_TYPE } from "../lib/codec";
 import { normalizeName } from "../lib/names";
 import { buildResolveBody, isLiveReverseClaim } from "../lib/resolve";
@@ -16,7 +15,42 @@ import { buildResolveBody, isLiveReverseClaim } from "../lib/resolve";
 
 const app = new Hono();
 
+// Never let an internal error message reach a client: Ponder's default handler echoes
+// error.message, which for an RPC failure includes the RPC URL and its API key. A sub-app's
+// onError takes precedence over Ponder's for these routes.
+app.onError((err, c) => {
+  console.error(`indexer api: ${c.req.method} ${c.req.path} failed:`, err.name);
+  return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
+});
+
 app.use("*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"] }));
+
+// Until historical sync completes, tables are partial and every answer would be confidently
+// wrong ("not registered", "available"). Gate all routes on Ponder's own /ready, which flips
+// once and stays ready for the life of the process. Fails closed: if the probe can't reach
+// /ready (e.g. a --port flag that disagrees with PORT), routes keep answering 503.
+const PORT = process.env.PORT ?? "42069";
+let ready = false;
+let lastProbe = 0;
+async function indexerReady(): Promise<boolean> {
+  if (ready) return true;
+  if (Date.now() - lastProbe < 2_000) return false;
+  lastProbe = Date.now();
+  try {
+    const res = await fetch(`http://127.0.0.1:${PORT}/ready`, { signal: AbortSignal.timeout(1_000) });
+    ready = res.ok;
+  } catch {
+    // stay not-ready
+  }
+  return ready;
+}
+
+app.use("*", async (c, next) => {
+  if (c.req.method === "OPTIONS" || (await indexerReady())) return next();
+  c.header("Retry-After", "10");
+  return c.json({ error: "Indexer is still syncing; retry shortly", code: "NOT_READY" }, 503);
+});
+
 app.use("/graphql", graphql({ db, schema }));
 
 // Indexed state moves every block; keep edge caching short.
@@ -50,42 +84,26 @@ app.get("/reverse/:address", async (c) => {
 
   let username: string | null = null;
   if (claim) {
-    const [eth] = await db
-      .select()
-      .from(schema.records)
-      .where(and(eq(schema.records.node, claim.node), eq(schema.records.coinType, COIN_TYPE.ETH)))
-      .limit(1);
-    if (isLiveReverseClaim(account, eth?.value)) {
-      const [name] = await db.select().from(schema.names).where(eq(schema.names.node, claim.node)).limit(1);
-      username = name?.name ?? null;
-    }
+    const [[eth], [name]] = await Promise.all([
+      db
+        .select()
+        .from(schema.records)
+        .where(and(eq(schema.records.node, claim.node), eq(schema.records.coinType, COIN_TYPE.ETH)))
+        .limit(1),
+      db.select().from(schema.names).where(eq(schema.names.node, claim.node)).limit(1),
+    ]);
+    if (isLiveReverseClaim(account, eth, name)) username = name?.name ?? null;
   }
 
   c.header("Cache-Control", CACHE_CONTROL);
   return c.json({ address: getAddress(account), username });
 });
 
-// The reserved list is a pure function of the node and fixed at deploy time, so each answer
-// from the registry is cached for the life of the process.
-const reservedCache = new Map<Hex, boolean>();
-async function isReserved(node: Hex): Promise<boolean> {
-  const cached = reservedCache.get(node);
-  if (cached !== undefined) return cached;
-  const reserved = await publicClients.baseSepolia.readContract({
-    address: REGISTRY_ADDRESS,
-    abi: PaytagRegistryAbi,
-    functionName: "isReserved",
-    args: [node],
-  });
-  reservedCache.set(node, reserved);
-  return reserved;
-}
-
 app.get("/available/:name", async (c) => {
   const parsed = normalizeName(c.req.param("name"));
   if (!parsed.ok) return c.json({ available: false, reason: "INVALID_FORMAT", suggestions: [] });
 
-  if (await isReserved(parsed.node)) {
+  if (RESERVED_NODES.has(parsed.node)) {
     return c.json({ available: false, reason: "RESERVED", suggestions: await suggest(parsed.name) });
   }
   const [taken] = await db.select().from(schema.names).where(eq(schema.names.node, parsed.node)).limit(1);

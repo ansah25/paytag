@@ -65,10 +65,23 @@ describe("buildResolveBody", () => {
 });
 
 describe("isLiveReverseClaim", () => {
-  it("is live only while the claimed node's ETH record is the account", () => {
-    expect(isLiveReverseClaim(ALICE, ALICE)).toBe(true);
-    expect(isLiveReverseClaim(ALICE, "0x3DBC9C0BEF8B7BFBCF0A7CC4041B3962B126F865" as Hex)).toBe(true);
-    expect(isLiveReverseClaim(ALICE, BOB)).toBe(false);
-    expect(isLiveReverseClaim(ALICE, undefined)).toBe(false);
+  const transferredAt = { lastTransferOrdinal: ordinal(5n, 3) };
+  const eth = (value: Hex, updatedOrdinal: bigint) => ({ value, updatedOrdinal });
+
+  it("is live while the claimed node's current ETH record is the account", () => {
+    expect(isLiveReverseClaim(ALICE, eth(ALICE, ordinal(6n, 0)), transferredAt)).toBe(true);
+    expect(
+      isLiveReverseClaim(ALICE, eth("0x3DBC9C0BEF8B7BFBCF0A7CC4041B3962B126F865" as Hex, ordinal(6n, 0)), transferredAt),
+    ).toBe(true);
+  });
+
+  it("is dead when the ETH record points elsewhere or is missing", () => {
+    expect(isLiveReverseClaim(ALICE, eth(BOB, ordinal(6n, 0)), transferredAt)).toBe(false);
+    expect(isLiveReverseClaim(ALICE, undefined, transferredAt)).toBe(false);
+    expect(isLiveReverseClaim(ALICE, eth(ALICE, ordinal(6n, 0)), undefined)).toBe(false);
+  });
+
+  it("is dead when the ETH record predates the latest transfer (stricter than the contract)", () => {
+    expect(isLiveReverseClaim(ALICE, eth(ALICE, ordinal(5n, 2)), transferredAt)).toBe(false);
   });
 });
