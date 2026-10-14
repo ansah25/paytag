@@ -2,7 +2,7 @@ import { db } from "ponder:api";
 import schema from "ponder:schema";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { and, eq, graphql } from "ponder";
+import { and, eq, graphql, sql } from "ponder";
 import { type Hex, getAddress, isAddress } from "viem";
 import { RESERVED_NODES } from "../../abis/reservedNodes";
 import { COIN_TYPE } from "../lib/codec";
@@ -26,10 +26,11 @@ app.onError((err, c) => {
 app.use("*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"] }));
 
 // Until historical sync completes, tables are partial and every answer would be confidently
-// wrong ("not registered", "available"). Gate all routes on Ponder's own /ready, which flips
-// once and stays ready for the life of the process. Fails closed: if the probe can't reach
-// /ready (e.g. a --port flag that disagrees with PORT), routes keep answering 503.
-const PORT = process.env.PORT ?? "42069";
+// wrong ("not registered", "available"). Gate all routes on the same flag Ponder's /ready reads:
+// `is_ready` in this deployment's own _ponder_meta table (the API's connection is scoped to the
+// deployment schema). Reading it from the database, not over HTTP, ties the check to this
+// instance even when another process holds the expected port. The flag flips once and stays set
+// for the life of the process; while unset it's re-read at most every 2s. Fails closed.
 let ready = false;
 let lastProbe = 0;
 async function indexerReady(): Promise<boolean> {
@@ -37,8 +38,12 @@ async function indexerReady(): Promise<boolean> {
   if (Date.now() - lastProbe < 2_000) return false;
   lastProbe = Date.now();
   try {
-    const res = await fetch(`http://127.0.0.1:${PORT}/ready`, { signal: AbortSignal.timeout(1_000) });
-    ready = res.ok;
+    const result = await db.execute(sql`SELECT value FROM _ponder_meta`);
+    const rows = (result as unknown as { rows?: { value: unknown }[] }).rows ?? [];
+    ready = rows.some((row) => {
+      const value = typeof row.value === "string" ? JSON.parse(row.value) : row.value;
+      return (value as { is_ready?: number } | null)?.is_ready === 1;
+    });
   } catch {
     // stay not-ready
   }

@@ -114,12 +114,12 @@ What I didn't change, and why: writes are dominated by the 22.1k cold `SSTORE`, 
 | `POST /graphql` | Ponder's generated GraphQL over the raw tables. It has no `stale` field: compare `records.updatedOrdinal < names.lastTransferOrdinal` yourself |
 | `GET /status`, `/ready` | Synced block per chain; 200 once backfill is complete |
 
-Until backfill completes, every route above answers `503 { code: "NOT_READY" }` rather than serving partial data (which would claim registered names are free). Errors never include internal details.
+Until backfill completes, every route above answers `503 { code: "NOT_READY" }` rather than serving partial data (which would claim registered names are free). Readiness is read from the deployment's own database, the same flag as `/ready`. Route errors return a generic `{ code: "INTERNAL_ERROR" }`, and GraphQL masks error details when `NODE_ENV=production` (the Docker image sets it).
 
 Read-model rules the indexer enforces:
 
 - Every `RecordSet` payload equals what `addr` returns afterwards. An empty value deletes the record; the zero ETH address can't be written.
-- **Stale records**: a record written before the name's latest change of owner was set by a previous owner. It's listed in `records` with `stale: true` but left out of `addresses`, so payment flows never pay a former owner. Self-transfers don't count. This is stricter than the contract, which keeps serving such records.
+- **Stale records**: a record written before the name's latest change of owner was set by a previous owner. It's listed in `records` with `stale: true` but left out of `addresses`, so payment flows never pay a former owner. Self-transfers don't count; a transfer away and back (A → B → A) does, so A rewrites their records after reclaiming the name. This is stricter than the contract, which keeps serving such records.
 - **Reverse validity**: not derivable from `ReverseSet` alone (a coin-60 `RecordSet` silently invalidates claims on the old address). `/reverse` serves `claim[a]` only while `eth[claim[a]] == a` (mirroring `PaytagResolver.reverse()`) and that ETH record isn't stale, so a former owner's address stops resolving to the name at transfer time. That second condition is stricter than the contract.
 - **Reserved names** are answered locally from the registry's hard-coded hashes (generated into `indexer/abis/reservedNodes.ts` and drift-checked in CI), with no RPC call per request.
 - Records use ENSIP-9 encodings: SOL is the raw 32-byte key, BTC is the `scriptPubKey`, EVM chains are 20 address bytes. Test vectors are in [`indexer/test/vectors.json`](indexer/test/vectors.json).
@@ -132,6 +132,8 @@ PONDER_RPC_URL_84532=<base-sepolia-rpc> npm run dev
 ```
 
 Production runs the [`Dockerfile`](indexer/Dockerfile) with `DATABASE_URL`, `DATABASE_SCHEMA` and `PONDER_RPC_URL_84532` set; it uses about 200 MB of RAM.
+
+Operational note: Ponder's own logs print the full RPC URL when an RPC request fails, and with Alchemy that includes the API key. The key never reaches HTTP clients, but treat the indexer's logs as secret, or use a key restricted to this app.
 
 ### Known trade-offs
 
