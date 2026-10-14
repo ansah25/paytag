@@ -58,8 +58,11 @@ export function RegisterPanel() {
   }, [parsed, recheck]);
 
   const name = parsed?.ok ? parsed.name : null;
+  // Once our own registration lands, the recheck says "taken"; that's the success, not an error.
+  // It may also still say "available" if the indexer lagged, so Register stays off either way.
+  const justRegistered = registered !== null && registered === name && tx.state.status === 'indexed';
   const canRegister =
-    !!name && (check.kind === 'unreachable' || (check.kind === 'result' && check.result.available));
+    !!name && !justRegistered && (check.kind === 'unreachable' || (check.kind === 'result' && check.result.available));
 
   const register = () => {
     if (!name) return;
@@ -79,9 +82,6 @@ export function RegisterPanel() {
       },
     );
   };
-
-  // Once our own registration lands, the recheck says "taken"; that's the success, not an error.
-  const justRegistered = registered !== null && registered === name && tx.state.status === 'indexed';
 
   const status: FieldStatus = justRegistered
     ? 'valid'

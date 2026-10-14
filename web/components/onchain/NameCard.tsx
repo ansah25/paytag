@@ -74,12 +74,23 @@ export function NameCard({
       const next = { ...o };
       for (const [key, entry] of Object.entries(o)) {
         if (entry.phase !== 'confirmed') continue;
-        const current = data.records.find((r) => r.coinType === key)?.address ?? null;
-        if ((current?.toLowerCase() ?? null) === (entry.value?.toLowerCase() ?? null)) delete next[key];
+        const record = data.records.find((r) => r.coinType === key);
+        const current = record?.address ?? null;
+        // Same value written by a previous owner (stale) doesn't count: that's the pre-write row.
+        const matches = (current?.toLowerCase() ?? null) === (entry.value?.toLowerCase() ?? null) && !record?.stale;
+        if (matches) delete next[key];
       }
       return next;
     });
   }, [data]);
+
+  // While any confirmed write is still unreflected, keep re-reading every 10s until it is.
+  const awaitingIndexer = Object.values(overlay).some((o) => o.phase === 'confirmed');
+  useEffect(() => {
+    if (!awaitingIndexer) return;
+    const timer = setTimeout(refetch, 10_000);
+    return () => clearTimeout(timer);
+  }, [awaitingIndexer, data, refetch]);
   const record = (slot: RecordSlot) => data?.records.find((r) => r.coinType === slot.coinType.toString());
 
   const ethRecord = data?.records.find((r) => r.coinType === '60');
@@ -133,11 +144,9 @@ export function NameCard({
               return rest;
             });
             refetch();
-          } else {
-            // Final on-chain but the indexer lagged: keep showing the new value ("Confirmed,
-            // updating") and look again shortly; the reconcile effect drops it once data agrees.
-            setTimeout(refetch, 15_000);
           }
+          // Otherwise the write is final on-chain but the indexer lagged: the overlay stays
+          // ("Confirmed, updating") and the polling effect above re-reads until data agrees.
           if (slot.coinType === 60n) onChanged(); // primary-name eligibility may have changed
         },
       },
@@ -220,7 +229,12 @@ export function NameCard({
                       {r ? 'Edit' : 'Add'}
                     </Button>
                     {r && (
-                      <Button variant="outline-destructive" size={36} onClick={() => saveRecord(slot, true)} disabled={tx.busy}>
+                      <Button
+                        variant="outline-destructive"
+                        size={36}
+                        onClick={() => saveRecord(slot, true)}
+                        disabled={tx.busy || tx.wrongNetwork}
+                      >
                         Clear
                       </Button>
                     )}
