@@ -28,11 +28,6 @@ export interface OnchainRecord {
   value: string;
   /** Decoded display address, or null when the bytes don't decode for the coin type. */
   address: string | null;
-  /**
-   * Written by a previous owner (before the name's latest transfer). Stale records are
-   * excluded from `addresses` so payment flows never pay a former owner.
-   */
-  stale: boolean;
 }
 
 /** `resolveViaIndexer` result: the `resolve` shape plus on-chain ownership and raw records. */
@@ -41,6 +36,16 @@ export interface OnchainResolveResponse extends ResolveResponse {
   owner: string;
   /** Registration time, unix seconds. */
   registeredAt: number;
+  /**
+   * Transfers to a different owner so far. A transfer starts a new epoch on-chain and every
+   * earlier record stops resolving, so all `records` were set by the current owner.
+   */
+  epoch: number;
+  /**
+   * True when the name has changed owner and the current owner hasn't set any record since,
+   * as opposed to a name that never had records.
+   */
+  recordsReset: boolean;
   records: OnchainRecord[];
   source: 'onchain';
 }

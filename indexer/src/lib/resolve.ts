@@ -14,7 +14,7 @@ export type NameRow = {
   name: string;
   owner: Hex;
   registeredAt: bigint;
-  lastTransferOrdinal: bigint;
+  epoch: bigint;
 };
 
 export type RecordRow = {
@@ -32,8 +32,15 @@ export type ResolveBody = {
   node: Hex;
   owner: string;
   registeredAt: number;
+  /** Transfers to a different owner so far. Records only exist for the current epoch. */
+  epoch: number;
+  /**
+   * True when the name has changed owner and the current owner hasn't set any record since:
+   * "unconfigured after a transfer", as opposed to a name that never had records.
+   */
+  recordsReset: boolean;
   addresses: ChainAddresses;
-  records: { coinType: string; value: Hex; address: string | null; stale: boolean }[];
+  records: { coinType: string; value: Hex; address: string | null }[];
   source: "onchain";
 };
 
@@ -44,23 +51,18 @@ const CHAIN_FOR_COIN: Record<string, keyof ChainAddresses> = {
 };
 
 /**
- * A record is stale when it was written before the name's latest transfer: it was set by a
- * previous owner, and paying it would pay them (README "Known trade-offs"). Stale records are
- * listed in `records` but deliberately left out of `addresses`, which payment flows consume.
+ * The records rows are exactly the name's current-epoch records: the indexer deletes a name's
+ * rows when it changes owner, as the contract's epoch makes them unreachable. So every record
+ * here was set by the current owner and is safe to pay.
  */
-export function isStale(record: RecordRow, name: NameRow): boolean {
-  return record.updatedOrdinal < name.lastTransferOrdinal;
-}
-
 export function buildResolveBody(name: NameRow, rows: RecordRow[]): ResolveBody {
   const addresses: ChainAddresses = {};
   const records = [...rows]
     .sort((a, b) => (a.coinType < b.coinType ? -1 : a.coinType > b.coinType ? 1 : 0))
     .map((r) => {
-      const stale = isStale(r, name);
       const chain = CHAIN_FOR_COIN[r.coinType.toString()];
-      if (chain && r.address && !stale) addresses[chain] = r.address;
-      return { coinType: r.coinType.toString(), value: r.value, address: r.address, stale };
+      if (chain && r.address) addresses[chain] = r.address;
+      return { coinType: r.coinType.toString(), value: r.value, address: r.address };
     });
 
   return {
@@ -68,6 +70,8 @@ export function buildResolveBody(name: NameRow, rows: RecordRow[]): ResolveBody 
     node: name.node,
     owner: getAddress(name.owner),
     registeredAt: Number(name.registeredAt),
+    epoch: Number(name.epoch),
+    recordsReset: name.epoch > 0n && records.length === 0,
     addresses,
     records,
     source: "onchain",
@@ -75,19 +79,10 @@ export function buildResolveBody(name: NameRow, rows: RecordRow[]): ResolveBody 
 }
 
 /**
- * A reverse claim counts only while the claimed node's ETH record still equals the claiming
- * account (mirroring PaytagResolver.reverse()) AND that record isn't stale. The second condition
- * is stricter than the contract: after a transfer, the former owner's address must not keep
- * resolving to a name they no longer own, the same reason stale records leave `addresses`.
+ * A reverse claim counts only while the claimed node's current ETH record equals the claiming
+ * account, exactly as PaytagResolver.reverse() checks it. A transfer deletes the old epoch's
+ * records, so a previous owner's claim goes dark at the transfer, as on-chain.
  */
-export function isLiveReverseClaim(
-  account: Hex,
-  ethRecord: Pick<RecordRow, "value" | "updatedOrdinal"> | undefined,
-  name: Pick<NameRow, "lastTransferOrdinal"> | undefined,
-): boolean {
-  if (!ethRecord || !name) return false;
-  return (
-    ethRecord.value.toLowerCase() === account.toLowerCase() &&
-    ethRecord.updatedOrdinal >= name.lastTransferOrdinal
-  );
+export function isLiveReverseClaim(account: Hex, ethRecord: Pick<RecordRow, "value"> | undefined): boolean {
+  return !!ethRecord && ethRecord.value.toLowerCase() === account.toLowerCase();
 }

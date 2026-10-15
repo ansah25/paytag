@@ -14,17 +14,25 @@ import { useHydratedAccount } from './useHydratedAccount';
 
 export const ONCHAIN_CHAIN = baseSepolia;
 
-/** The four writes the app makes. Built into contract calls by `buildWrite`. */
+/** The writes the app makes. Built into contract calls by `buildWrite`. */
 export type OnchainWrite =
-  | { kind: 'register'; name: string }
+  | { kind: 'commit'; commitment: Hex }
+  | { kind: 'register'; name: string; secret: Hex }
   | { kind: 'setRecord'; node: Hex; coinType: bigint; value: Hex }
   | { kind: 'transfer'; node: Hex; to: Address }
   | { kind: 'setReverse'; node: Hex };
 
 export function buildWrite(write: OnchainWrite) {
   switch (write.kind) {
+    case 'commit':
+      return { address: REGISTRY_ADDRESS as Address, abi: PaytagRegistryAbi, functionName: 'commit', args: [write.commitment] } as const;
     case 'register':
-      return { address: REGISTRY_ADDRESS as Address, abi: PaytagRegistryAbi, functionName: 'register', args: [write.name] } as const;
+      return {
+        address: REGISTRY_ADDRESS as Address,
+        abi: PaytagRegistryAbi,
+        functionName: 'register',
+        args: [write.name, write.secret],
+      } as const;
     case 'transfer':
       return { address: REGISTRY_ADDRESS as Address, abi: PaytagRegistryAbi, functionName: 'transfer', args: [write.node, write.to] } as const;
     case 'setRecord':
@@ -41,6 +49,8 @@ export function buildWrite(write: OnchainWrite) {
 
 export interface RunCallbacks {
   context?: ErrorContext;
+  /** Don't wait for the indexer after the receipt (for writes it doesn't index, like a commit). */
+  skipIndexer?: boolean;
   /** Signed and broadcast: apply the optimistic UI change here. */
   onSubmitted?: (hash: Hash) => void;
   /** Receipt succeeded. */
@@ -143,7 +153,7 @@ export function useOnchainTx() {
         cb.onConfirmed?.(hash, blockNumber);
 
         // Still "in flight" (busy) until this resolves; always ends in a terminal state.
-        const caughtUp = await waitForIndexer(blockNumber);
+        const caughtUp = cb.skipIndexer ? true : await waitForIndexer(blockNumber);
         dispatch({ type: 'indexed', caughtUp });
         cb.onIndexed?.(caughtUp);
       } finally {
@@ -158,7 +168,19 @@ export function useOnchainTx() {
 
   // Hydrating, or wagmi restoring a previous session: don't offer "Connect wallet" yet.
   const checking = status === 'reconnecting';
-  return { state, run, reset, busy: isBusy(state), connected, checking, address, wrongNetwork, switchToBase, switching };
+  return {
+    state,
+    run,
+    reset,
+    busy: isBusy(state),
+    connected,
+    checking,
+    address,
+    wrongNetwork,
+    switchToBase,
+    switching,
+    publicClient,
+  };
 }
 
 export type { TxState };

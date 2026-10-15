@@ -101,11 +101,18 @@ export default async function OnchainNamePage({ params }: Props) {
         </div>
       </div>
 
+      {data.recordsReset && (
+        <p className="rounded-inset-sm bg-warn-bg px-4 py-3 text-sm font-semibold text-warn">
+          @{data.username} changed owner recently and the new owner hasn’t set any addresses yet. Don’t send to it until
+          they do.
+        </p>
+      )}
+
       <Card className="grid gap-1" padding="compact">
         <h2 className="mb-2 font-display text-lg font-semibold">Addresses</h2>
         {RECORD_SLOTS.map((slot) => {
           const record = bySlot.get(slot.coinType.toString());
-          const usable = record && record.address && !record.stale;
+          const usable = record && record.address;
           return (
             <div key={slot.label} className="flex flex-wrap items-center gap-3 border-t border-line py-3 first:border-t-0">
               {slot.chain ? <ChainDot chain={slot.chain} muted={!usable} /> : <span className="h-2.5 w-2.5 rounded-full bg-ink3" aria-hidden />}
@@ -113,7 +120,6 @@ export default async function OnchainNamePage({ params }: Props) {
               {record ? (
                 <>
                   <span className="order-last min-w-0 basis-full break-all font-mono text-[13px] text-ink sm:order-none sm:basis-0 sm:flex-1">{record.address ?? record.value}</span>
-                  {record.stale && <Badge tone="warn">Set by previous owner</Badge>}
                   {!record.address && <Badge tone="muted">Unrecognised format</Badge>}
                   {usable && <CopyButton value={record.address!} label={slot.label} />}
                 </>
@@ -131,7 +137,8 @@ export default async function OnchainNamePage({ params }: Props) {
         ))}
       </Card>
       <p className="text-[13px] text-ink2">
-        Read from the Paytag indexer. Records written by a previous owner are shown but never used for payments.
+        Read from the Paytag indexer. A transfer clears every record on-chain, so these were all set by the current
+        owner.
       </p>
     </section>
   );

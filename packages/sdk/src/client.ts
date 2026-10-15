@@ -110,8 +110,8 @@ export class Paytag {
   /**
    * Resolve a username from on-chain state (the Base registry), via the Paytag indexer.
    * Returns the same `addresses` map as `resolve`, plus the on-chain owner and every raw
-   * record. Records written by a previous owner are flagged `stale` and left out of
-   * `addresses`.
+   * record. Every record was set by the current owner: a transfer clears them on-chain
+   * (see `epoch` and `recordsReset`).
    *
    * Never falls back to the API: if the indexer is unreachable this throws `NETWORK_ERROR`,
    * so callers always know which source answered.
@@ -289,6 +289,8 @@ function parseOnchainResolveResponse(body: unknown): OnchainResolveResponse {
     parsed.source !== 'onchain' ||
     typeof parsed.owner !== 'string' ||
     typeof parsed.node !== 'string' ||
+    typeof parsed.epoch !== 'number' ||
+    typeof parsed.recordsReset !== 'boolean' ||
     !Array.isArray(parsed.records)
   ) {
     throw new PaytagError(

@@ -12,7 +12,8 @@ export const names = onchainTable(
     owner: t.hex().notNull(),
     registeredBlock: t.bigint().notNull(),
     registeredAt: t.bigint().notNull(), // unix seconds
-    lastTransferOrdinal: t.bigint().notNull(),
+    epoch: t.bigint().notNull(), // transfers to a different owner, as in the registry
+    lastTransferAt: t.bigint(), // unix seconds of the latest such transfer; null if none
   }),
   (table) => ({
     ownerIdx: index().on(table.owner),

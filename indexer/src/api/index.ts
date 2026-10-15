@@ -118,7 +118,7 @@ app.get("/reverse/:address", async (c) => {
         .limit(1),
       db.select().from(schema.names).where(eq(schema.names.node, claim.node)).limit(1),
     ]);
-    if (isLiveReverseClaim(account, eth, name)) username = name?.name ?? null;
+    if (name && isLiveReverseClaim(account, eth)) username = name.name;
   }
 
   c.header("Cache-Control", CACHE_CONTROL);

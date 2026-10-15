@@ -380,9 +380,10 @@ const okOnchain = (overrides?: Partial<OnchainResolveResponse>): OnchainResolveR
       coinType: '60',
       value: '0x3dbc9c0bef8b7bfbcf0a7cc4041b3962b126f865',
       address: '0x3Dbc9C0Bef8b7bFBcf0a7cc4041b3962B126F865',
-      stale: false,
     },
   ],
+  epoch: 0,
+  recordsReset: false,
   source: 'onchain',
   ...overrides,
 });

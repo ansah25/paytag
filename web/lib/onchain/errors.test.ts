@@ -38,6 +38,9 @@ const CASES: [string, Abi, readonly unknown[], string, RegExp][] = [
   ['InvalidEthAddress', PaytagResolverAbi as Abi, [19n], 'setRecord', /exactly 20 bytes \(got 19\)/],
   ['ZeroEthAddress', PaytagResolverAbi as Abi, [], 'setRecord', /zero address can’t be used/],
   ['ReverseMismatch', PaytagResolverAbi as Abi, [NODE, ME], 'setReverse', /@derrick’s Ethereum record must point at your connected wallet/],
+  ['CommitmentNotFound', PaytagRegistryAbi as Abi, [NODE], 'register', /No reservation for @derrick from this wallet\. Reservations only work from the wallet that made them/],
+  ['CommitmentTooNew', PaytagRegistryAbi as Abi, [NODE, 0n], 'register', /reservation isn’t ready yet/],
+  ['CommitmentTooOld', PaytagRegistryAbi as Abi, [NODE, 0n], 'register', /reservation expired/],
 ];
 
 describe('decodeTxError: contract reverts', () => {

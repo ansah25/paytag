@@ -88,19 +88,19 @@ export interface PointingName {
 /** At most this many names are shown. */
 export const POINTING_LIMIT = 50;
 /**
- * Rows fetched per query (Ponder's maximum page size). Far above POINTING_LIMIT because owned and
- * stale records are filtered out after the query, and anyone can point stale records at a wallet.
+ * Rows fetched per query (Ponder's maximum page size). Far above POINTING_LIMIT because names the
+ * wallet owns are filtered out after the query.
  */
 const FETCH_LIMIT = 1000;
 
-type GqlRecord = { node: string; updatedOrdinal: string };
-type GqlName = { node: string; name: string; owner: string; lastTransferOrdinal: string };
+type GqlRecord = { node: string };
+type GqlName = { node: string; name: string; owner: string };
 
 const RECORDS_POINTING_AT = `query RecordsPointingAt($value: String!) {
-  recordss(where: { coinType: "60", value: $value }, limit: ${FETCH_LIMIT}) { items { node updatedOrdinal } }
+  recordss(where: { coinType: "60", value: $value }, limit: ${FETCH_LIMIT}) { items { node } }
 }`;
 const NAMES_BY_NODE = `query NamesByNode($nodes: [String!]!) {
-  namess(where: { node_in: $nodes }, limit: ${FETCH_LIMIT}) { items { node name owner lastTransferOrdinal } }
+  namess(where: { node_in: $nodes }, limit: ${FETCH_LIMIT}) { items { node name owner } }
 }`;
 
 async function gql<T>(query: string, variables: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
@@ -125,9 +125,9 @@ async function gql<T>(query: string, variables: Record<string, unknown>, signal?
 }
 
 /**
- * Joins the two GraphQL results into the names `account` can claim but doesn't own. A record
- * written before the name's latest transfer is stale: the indexer's /reverse ignores it (stricter
- * than the contract), so offering it would set a primary name that never shows up.
+ * Joins the two GraphQL results into the names `account` can claim but doesn't own. Every
+ * indexed record is current (a transfer clears a name's records on-chain and in the indexer),
+ * so a name whose ETH record is `account` is one `account` can make its primary name.
  */
 export function pointingNames(records: GqlRecord[], names: GqlName[], account: string): PointingName[] {
   const me = account.toLowerCase();
@@ -136,17 +136,12 @@ export function pointingNames(records: GqlRecord[], names: GqlName[], account: s
   for (const r of records) {
     const n = byNode.get(r.node.toLowerCase());
     if (!n || n.owner.toLowerCase() === me) continue;
-    try {
-      if (BigInt(r.updatedOrdinal) < BigInt(n.lastTransferOrdinal)) continue;
-    } catch {
-      continue; // malformed ordinal: don't offer it
-    }
     out.push({ name: n.name, node: n.node.toLowerCase() as `0x${string}`, owner: n.owner });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Names whose (non-stale) Ethereum record is `account`, excluding names `account` owns. */
+/** Names whose Ethereum record is `account`, excluding names `account` owns. */
 export async function namesPointingAt(account: string, signal?: AbortSignal): Promise<PointingName[]> {
   const { recordss } = await gql<{ recordss: { items: GqlRecord[] } }>(
     RECORDS_POINTING_AT,

@@ -5,19 +5,11 @@ const ME = '0x6aD631F215393f9635231de985081B1ccDDC7C11';
 const DEPLOYER = '0x3dbc9c0bef8b7bfbcf0a7cc4041b3962b126f865';
 const node = (b: string) => `0x${b.repeat(32)}`;
 
-const name = (n: string, b: string, owner: string, lastTransferOrdinal = '100') => ({
-  node: node(b),
-  name: n,
-  owner,
-  lastTransferOrdinal,
-});
+const name = (n: string, b: string, owner: string) => ({ node: node(b), name: n, owner });
 
 describe('pointingNames', () => {
-  it('lists names owned by others whose record is current, sorted by name', () => {
-    const records = [
-      { node: node('22'), updatedOrdinal: '200' },
-      { node: node('11'), updatedOrdinal: '100' }, // same ordinal as the transfer: still current
-    ];
+  it('lists names owned by others whose ETH record is the account, sorted by name', () => {
+    const records = [{ node: node('22') }, { node: node('11') }];
     const names = [name('zed', '22', DEPLOYER), name('derrick', '11', DEPLOYER)];
     expect(pointingNames(records, names, ME)).toEqual([
       { name: 'derrick', node: node('11'), owner: DEPLOYER },
@@ -26,21 +18,11 @@ describe('pointingNames', () => {
   });
 
   it('leaves out names the account owns (they have their own card), any case', () => {
-    const records = [{ node: node('11'), updatedOrdinal: '200' }];
-    expect(pointingNames(records, [name('mine', '11', ME.toLowerCase())], ME)).toEqual([]);
+    expect(pointingNames([{ node: node('11') }], [name('mine', '11', ME.toLowerCase())], ME)).toEqual([]);
   });
 
-  it('leaves out records set by a previous owner, which /reverse ignores', () => {
-    const records = [{ node: node('11'), updatedOrdinal: '99' }];
-    expect(pointingNames(records, [name('old', '11', DEPLOYER, '100')], ME)).toEqual([]);
-  });
-
-  it('skips records with no matching name or malformed ordinals', () => {
-    const records = [
-      { node: node('33'), updatedOrdinal: '200' },
-      { node: node('11'), updatedOrdinal: 'oops' },
-    ];
-    expect(pointingNames(records, [name('bad', '11', DEPLOYER)], ME)).toEqual([]);
+  it('skips records with no matching name', () => {
+    expect(pointingNames([{ node: node('33') }], [name('other', '11', DEPLOYER)], ME)).toEqual([]);
   });
 });
 
@@ -53,7 +35,7 @@ describe('namesPointingAt', () => {
   it('queries records by the lowercased address, then names by node', async () => {
     const fetchMock = vi
       .fn()
-      .mockImplementationOnce(() => respond({ data: { recordss: { items: [{ node: node('11'), updatedOrdinal: '200' }] } } }))
+      .mockImplementationOnce(() => respond({ data: { recordss: { items: [{ node: node('11') }] } } }))
       .mockImplementationOnce(() => respond({ data: { namess: { items: [name('derrick', '11', DEPLOYER)] } } }));
     vi.stubGlobal('fetch', fetchMock);
 

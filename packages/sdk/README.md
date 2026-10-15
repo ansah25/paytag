@@ -100,17 +100,18 @@ type OnchainResolveResponse = ResolveResponse & {
   node: string;          // keccak256 of the normalized name
   owner: string;         // current on-chain owner (checksummed)
   registeredAt: number;  // unix seconds
+  epoch: number;         // transfers to a different owner so far
+  recordsReset: boolean; // changed owner, and no record set since
   records: {
     coinType: string;    // ENSIP-9 coin type: '60' ETH, '0' BTC, '501' SOL, …
     value: string;       // raw record bytes (hex)
     address: string | null;
-    stale: boolean;      // set by a previous owner; excluded from `addresses`
   }[];
   source: 'onchain';
 };
 ```
 
-- **Stale records:** a record written before the name's latest transfer was set by a previous owner. It appears in `records` with `stale: true` but never in `addresses`, so payment code can't pay a former owner by accident.
+- **Transfers clear records:** a transfer to a different owner starts a new epoch on-chain, and every earlier record stops resolving. So every record here was set by the current owner, and payment code can't pay a former owner. After a transfer, `recordsReset` is `true` until the new owner sets a record, so you can tell "unconfigured after a transfer" from "never configured".
 - **No fallback:** if the indexer is unreachable this throws `NETWORK_ERROR` rather than silently asking the API, so you always know which source answered.
 - **Syncing:** while a freshly deployed indexer backfills, it answers 503 and this throws `HTTP_ERROR` with `status: 503`, never a false `USER_NOT_FOUND`.
 - **Caching:** results share the client's cache but use a separate key namespace from `resolve`, and `invalidate(name)` clears both.

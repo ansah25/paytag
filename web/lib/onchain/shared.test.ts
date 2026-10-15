@@ -33,10 +33,16 @@ describe('buildWrite', () => {
   const node = ('0x' + '11'.repeat(32)) as Hex;
 
   it('targets the right contract and function for each write', () => {
-    expect(buildWrite({ kind: 'register', name: 'derrick' })).toMatchObject({
+    const secret = ('0x' + '33'.repeat(32)) as Hex;
+    expect(buildWrite({ kind: 'commit', commitment: node })).toMatchObject({
+      address: REGISTRY_ADDRESS,
+      functionName: 'commit',
+      args: [node],
+    });
+    expect(buildWrite({ kind: 'register', name: 'derrick', secret })).toMatchObject({
       address: REGISTRY_ADDRESS,
       functionName: 'register',
-      args: ['derrick'],
+      args: ['derrick', secret],
     });
     expect(buildWrite({ kind: 'transfer', node, to: RESOLVER_ADDRESS })).toMatchObject({
       address: REGISTRY_ADDRESS,
