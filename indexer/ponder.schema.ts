@@ -1,7 +1,8 @@
 import { index, onchainTable, primaryKey } from "ponder";
 
-// Ordinals are `(blockNumber << 32) | logIndex`: a total order over events, so "was this record
-// written before the latest transfer?" is a single comparison, even within one block.
+// Ordinals are `(blockNumber << 32) | logIndex`, a total order over events. `records.updatedOrdinal`
+// records when a value was last written; a transfer to a different owner deletes the name's
+// records (contracts v0.2 epochs), so every stored record belongs to the current owner.
 
 /** One row per registered name. `owner` is current; `transfers` holds the history. */
 export const names = onchainTable(

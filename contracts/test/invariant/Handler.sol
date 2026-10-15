@@ -96,7 +96,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
             // A griefer re-commits the (public) hash just before it matures. It must not delay
             // the actor's registration: a miss shows up as missedRegistrations.
             vm.warp(block.timestamp + registry.MIN_COMMITMENT_AGE() - 1);
-            vm.prank(_actor(actorSeed + 1));
+            vm.prank(_actor(actorSeed % 5 + 1));
             registry.commit(commitment);
             vm.warp(block.timestamp + 1);
         }
@@ -130,7 +130,7 @@ contract Handler is CommonBase, StdCheats, StdUtils {
             secret = NEVER_COMMITTED;
         } else if (kind % 3 == 1) {
             address other = _actor(otherSeed);
-            if (other == actor) other = _actor(otherSeed + 1);
+            if (other == actor) other = _actor(otherSeed % 5 + 1);
             // Secret derived from the committer, so the revealer can never hold a matching
             // commitment of its own from an earlier call where it was the committer.
             secret = keccak256(abi.encode(FOREIGN_SECRET, other));

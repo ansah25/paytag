@@ -13,7 +13,12 @@ export interface Reservation {
   owner: string; // lowercase
   secret: Hex;
   commitment: Hex;
+  /** When the commit was sent (ms since epoch), so a commit still pending isn't mistaken for a missing one. */
+  savedAt: number;
 }
+
+/** How long a saved reservation whose commit isn't on-chain yet is kept waiting for it. */
+export const PENDING_COMMIT_GRACE_MS = 10 * 60 * 1000;
 
 /** 32 random bytes from the browser's CSPRNG. */
 export function makeSecret(): Hex {
@@ -61,7 +66,9 @@ export function loadReservation(owner: string, name: string): Reservation | null
     const raw = localStorage.getItem(key(owner, name));
     if (!raw) return null;
     const r = JSON.parse(raw) as Reservation;
-    return r && r.name === name && r.owner === owner.toLowerCase() && /^0x[0-9a-f]{64}$/i.test(r.secret) ? r : null;
+    return r && r.name === name && r.owner === owner.toLowerCase() && /^0x[0-9a-f]{64}$/i.test(r.secret)
+      ? { ...r, savedAt: typeof r.savedAt === 'number' ? r.savedAt : 0 }
+      : null;
   } catch {
     return null;
   }

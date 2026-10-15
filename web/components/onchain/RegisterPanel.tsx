@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Address } from 'viem';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -12,6 +12,7 @@ import { RESERVED_NODES } from '@/lib/onchain/generated/reservedNodes';
 import { indexer, type Availability } from '@/lib/onchain/indexer';
 import {
   MIN_COMMITMENT_AGE,
+  PENDING_COMMIT_GRACE_MS,
   clearReservation,
   commitmentFor,
   loadReservation,
@@ -36,7 +37,12 @@ type Check =
 const DEBOUNCE_MS = 350;
 
 /** Where the current name's two-step registration stands. */
-type Step = { kind: 'none' } | { kind: 'checking' } | { kind: 'reserved'; reservation: Reservation; phase: ReservationPhase };
+type Step =
+  | { kind: 'none' }
+  | { kind: 'checking' }
+  // Saved and sent, but the commit isn't visible on-chain yet (e.g. the page was refreshed mid-tx).
+  | { kind: 'confirming'; reservation: Reservation }
+  | { kind: 'reserved'; reservation: Reservation; phase: ReservationPhase };
 
 /**
  * Search and register. Format and the reserved list are checked locally (same rules as the
@@ -62,6 +68,8 @@ export function RegisterPanel() {
   const [chainOffset, setChainOffset] = useState(0);
   const [, setTick] = useState(0);
   const { publicClient, address } = tx;
+  // The wallet + name the panel shows right now, for async callbacks that outlive a change.
+  const currentKey = useRef('');
 
   const parsed = useMemo(() => (input.trim() ? normalizeName(input.trim()) : null), [input]);
 
@@ -87,6 +95,8 @@ export function RegisterPanel() {
   }, [parsed, recheck]);
 
   const name = parsed?.ok ? parsed.name : null;
+  currentKey.current = `${address?.toLowerCase() ?? ''}:${name ?? ''}`;
+  const isCurrent = (r: Reservation) => currentKey.current === `${r.owner}:${r.name}`;
 
   const chainNow = useCallback(async () => {
     if (!publicClient) return Math.floor(Date.now() / 1000);
@@ -107,11 +117,16 @@ export function RegisterPanel() {
             address: REGISTRY_ADDRESS as Address,
             abi: PaytagRegistryAbi,
             functionName: 'commitmentTime',
-            args: [reservation.commitment],
+            args: [reservation.owner as Address, reservation.commitment],
           }),
           chainNow(),
         ]);
+        if (!isCurrent(reservation)) return; // the user moved on while this was loading
         const phase = reservationPhase(Number(committedAt), now);
+        if (phase.kind === 'missing' && Date.now() - reservation.savedAt < PENDING_COMMIT_GRACE_MS) {
+          setStep({ kind: 'confirming', reservation }); // its commit may still be on the way
+          return;
+        }
         if (phase.kind === 'missing' || phase.kind === 'expired') {
           clearReservation(reservation.owner, reservation.name);
           setStepNote(phase.kind === 'expired' ? 'Your earlier reservation expired. Reserve again to continue.' : null);
@@ -121,11 +136,20 @@ export function RegisterPanel() {
         setStep({ kind: 'reserved', reservation, phase });
       } catch {
         // Can't read the chain right now: keep the stored reservation and let Register try it.
-        setStep({ kind: 'reserved', reservation, phase: { kind: 'ready', expiresAt: 0 } });
+        if (isCurrent(reservation)) setStep({ kind: 'reserved', reservation, phase: { kind: 'ready', expiresAt: 0 } });
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- isCurrent reads a ref
     [publicClient, chainNow],
   );
+
+  // While a commit is on its way, look again every few seconds.
+  const confirming = step.kind === 'confirming' ? step.reservation : null;
+  useEffect(() => {
+    if (!confirming) return;
+    const timer = setTimeout(() => void refreshStep(confirming), 4000);
+    return () => clearTimeout(timer);
+  }, [confirming, refreshStep]);
 
   // A reservation stored for this wallet + name (e.g. before a refresh) picks up where it left off.
   useEffect(() => {
@@ -165,6 +189,7 @@ export function RegisterPanel() {
       owner: address.toLowerCase(),
       secret,
       commitment: commitmentFor(name, address, secret),
+      savedAt: Date.now(),
     };
     saveReservation(reservation);
     setTxLabel('Step 1 of 2: reserve');
@@ -178,6 +203,8 @@ export function RegisterPanel() {
             try {
               const block = await publicClient!.getBlock({ blockNumber });
               setChainOffset(Number(block.timestamp) - Date.now() / 1000);
+              // Switched name or wallet meanwhile: the reservation stays saved for when they return.
+              if (!isCurrent(reservation)) return;
               setStep({
                 kind: 'reserved',
                 reservation,
@@ -188,22 +215,33 @@ export function RegisterPanel() {
             }
           })();
         },
-        onFailed: () => clearReservation(reservation.owner, reservation.name),
+        // Drop the secret only when the commit certainly didn't land (rejected, or reverted).
+        // After a receipt timeout it may still confirm, so keep it and keep looking.
+        onFailed: (error) => {
+          if (error.kind === 'rejected' || error.kind === 'revert') {
+            clearReservation(reservation.owner, reservation.name);
+          } else if (isCurrent(reservation)) {
+            setStep({ kind: 'confirming', reservation });
+          }
+        },
       },
     );
   };
 
   const register = () => {
-    if (!name || step.kind !== 'reserved') return;
+    if (step.kind !== 'reserved') return;
     const { reservation } = step;
+    // Only ever reveal the reservation for the name and wallet on screen.
+    if (!isCurrent(reservation)) return;
+    const regName = reservation.name;
     setRegistered(null);
     setTxLabel('Step 2 of 2: register');
     tx.run(
-      { kind: 'register', name, secret: reservation.secret },
+      { kind: 'register', name: regName, secret: reservation.secret },
       {
-        context: { name },
+        context: { name: regName },
         // Optimistic: the name reads as registered as soon as the tx is broadcast…
-        onSubmitted: () => setRegistered(name),
+        onSubmitted: () => setRegistered(regName),
         // …and is rolled back with the reason if anything fails. An expired or missing
         // commitment can't be retried, so its secret is dropped and the flow starts over.
         onFailed: (error) => {
@@ -276,7 +314,7 @@ export function RegisterPanel() {
     <Button
       size={48}
       onClick={act}
-      disabled={!canRegister || tx.busy || step.kind === 'checking'}
+      disabled={!canRegister || tx.busy || step.kind === 'checking' || step.kind === 'confirming'}
       loading={tx.busy}
       loadingLabel={ready ? 'Registering…' : 'Reserving…'}
     >
@@ -311,7 +349,15 @@ export function RegisterPanel() {
             if (!tx.busy) tx.reset();
           }}
           onKeyDown={(e) =>
-            e.key === 'Enter' && canRegister && tx.connected && !tx.wrongNetwork && !tx.busy && (!reserved || ready) && act()
+            e.key === 'Enter' &&
+            canRegister &&
+            tx.connected &&
+            !tx.wrongNetwork &&
+            !tx.busy &&
+            step.kind !== 'checking' &&
+            step.kind !== 'confirming' &&
+            (!reserved || ready) &&
+            act()
           }
           disabled={tx.busy}
           status={status}
@@ -342,6 +388,11 @@ export function RegisterPanel() {
             {ready
               ? `Step 2 of 2: @${name} is reserved for this wallet. Register it within 24 hours.`
               : `Step 1 of 2 done: reserved. You can register in ${secondsLeft}s.`}
+          </p>
+        )}
+        {step.kind === 'confirming' && (
+          <p className="text-[13px] font-semibold text-ink2" aria-live="polite">
+            Waiting for your reservation to confirm on-chain…
           </p>
         )}
         {stepNote && <p className="text-[13px] font-semibold text-ink2">{stepNote}</p>}

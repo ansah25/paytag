@@ -70,6 +70,11 @@ export const PaytagRegistryAbi = [
     "name": "commitmentTime",
     "inputs": [
       {
+        "name": "committer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
         "name": "commitment",
         "type": "bytes32",
         "internalType": "bytes32"
