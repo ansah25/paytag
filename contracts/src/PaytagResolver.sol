@@ -13,26 +13,33 @@ import {PaytagRegistry} from "./PaytagRegistry.sol";
 ///        - 0x80000000 | chainId for other EVM chains (ENSIP-11), e.g. Base = 2147492101
 ///      Base is the canonical registry; other chains are records, never parallel deployments.
 ///
-///      Reverse resolution is forward-verified: an address can only claim a node whose ETH
-///      record points back at it, and `reverse` re-checks that on every read. A reverse entry
-///      therefore goes dark (returns zero) the moment the forward record changes, which keeps
-///      `reverse(addr(node)) == node` true whenever reverse returns non-zero.
+///      Epochs: records live under (node, epoch), where the epoch comes from the registry and
+///      increments on every transfer to a different owner. Reads use the current epoch, so a
+///      transfer makes the previous owner's records unreachable at once. A direct `addr` call
+///      is therefore safe to pay: it never returns an address set by a previous owner.
+///
+///      Reverse resolution is forward-verified: an address can only claim a node whose current
+///      ETH record points back at it, and `reverse` re-checks that on every read. A reverse
+///      entry goes dark (returns zero) as soon as the forward record changes or the name is
+///      transferred, which keeps `reverse(addr(node)) == node` true whenever reverse returns
+///      non-zero, and ties it to the current owner's records.
 ///
 ///      Storage: ETH records live in a dedicated `address` mapping rather than as `bytes`, so the
 ///      reverse check is one SLOAD with no memory decode. The zero address is used as "unset",
 ///      so writing it is rejected: clearing has exactly one encoding (empty bytes) and every
 ///      `RecordSet` payload equals what `addr` returns afterwards.
 ///
-///      Indexers: reverse validity is not derivable from `ReverseSet` alone. A coin-60
-///      `RecordSet` silently darkens any reverse claim pointing at the old address, so compute
-///      `reverse(a) = claim[a]` only while `eth[claim[a]] == a`.
+///      Indexers: a record is current while no transfer to a different owner has followed its
+///      `RecordSet`; reverse validity is not derivable from `ReverseSet` alone, so compute
+///      `reverse(a) = claim[a]` only while the current ETH record of `claim[a]` equals `a`.
 contract PaytagResolver {
     uint256 public constant COIN_TYPE_ETH = 60;
 
     PaytagRegistry public immutable registry;
 
-    mapping(bytes32 node => address eth) private _ethRecords;
-    mapping(bytes32 node => mapping(uint256 coinType => bytes addr)) private _records;
+    mapping(bytes32 node => mapping(uint256 epoch => address eth)) private _ethRecords;
+    mapping(bytes32 node => mapping(uint256 epoch => mapping(uint256 coinType => bytes addr)))
+        private _records;
     mapping(address account => bytes32 node) private _reverse;
 
     event RecordSet(bytes32 indexed node, uint256 indexed coinType, bytes addr);
@@ -47,9 +54,10 @@ contract PaytagResolver {
         registry = registry_;
     }
 
-    /// @notice Sets the `coinType` record for `node`. Empty `value` clears it.
+    /// @notice Sets the `coinType` record for `node` in its current epoch. Empty `value` clears
+    ///         it.
     function setRecord(bytes32 node, uint256 coinType, bytes calldata value) external {
-        address nodeOwner = registry.owner(node);
+        (address nodeOwner, uint256 epoch) = registry.ownerAndEpoch(node);
         if (nodeOwner == address(0) || nodeOwner != msg.sender) revert NotOwner(node, msg.sender);
         if (coinType == COIN_TYPE_ETH) {
             if (value.length != 0 && value.length != 20) revert InvalidEthAddress(value.length);
@@ -58,26 +66,29 @@ contract PaytagResolver {
             // forge-lint: disable-next-line(unsafe-typecast)
             address eth = address(bytes20(value));
             if (value.length == 20 && eth == address(0)) revert ZeroEthAddress();
-            _ethRecords[node] = eth;
+            _ethRecords[node][epoch] = eth;
         } else {
-            _records[node][coinType] = value;
+            _records[node][epoch][coinType] = value;
         }
         emit RecordSet(node, coinType, value);
     }
 
-    /// @notice Raw record bytes for `node` on `coinType`, or empty if unset.
+    /// @notice Raw record bytes for `node` on `coinType` in its current epoch, or empty if
+    ///         unset (including after a transfer, until the new owner writes it).
     function addr(bytes32 node, uint256 coinType) external view returns (bytes memory) {
+        uint256 epoch = registry.epoch(node);
         if (coinType == COIN_TYPE_ETH) {
-            address eth = _ethRecords[node];
+            address eth = _ethRecords[node][epoch];
             return eth == address(0) ? bytes("") : abi.encodePacked(eth);
         }
-        return _records[node][coinType];
+        return _records[node][epoch][coinType];
     }
 
-    /// @notice Points the caller's reverse record at `node`. Requires `node`'s ETH record to be
-    ///         the caller. Pass `bytes32(0)` to clear.
+    /// @notice Points the caller's reverse record at `node`. Requires `node`'s current ETH
+    ///         record to be the caller (owning the name isn't required). Pass `bytes32(0)` to
+    ///         clear.
     function setReverse(bytes32 node) external {
-        if (node != bytes32(0) && _ethRecords[node] != msg.sender) {
+        if (node != bytes32(0) && _ethRecords[node][registry.epoch(node)] != msg.sender) {
             revert ReverseMismatch(node, msg.sender);
         }
 
@@ -85,10 +96,13 @@ contract PaytagResolver {
         emit ReverseSet(msg.sender, node);
     }
 
-    /// @notice Node `account` has claimed, or zero if unset or no longer forward-verified.
+    /// @notice Node `account` has claimed, or zero if unset or no longer forward-verified
+    ///         against the node's current ETH record.
     function reverse(address account) external view returns (bytes32) {
         bytes32 node = _reverse[account];
-        if (node == bytes32(0) || _ethRecords[node] != account) return bytes32(0);
+        if (node == bytes32(0) || _ethRecords[node][registry.epoch(node)] != account) {
+            return bytes32(0);
+        }
         return node;
     }
 }

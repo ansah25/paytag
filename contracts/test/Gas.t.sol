@@ -3,12 +3,12 @@ pragma solidity 0.8.26;
 
 import {PaytagRegistry} from "../src/PaytagRegistry.sol";
 import {PaytagResolver} from "../src/PaytagResolver.sol";
-import {Test} from "forge-std/Test.sol";
+import {PaytagTest} from "./utils/PaytagTest.sol";
 import {VmSafe} from "forge-std/Vm.sol";
 
 /// @notice Fixed scenarios for per-call gas, written to `snapshots/GasTest.json`. Each test measures
 ///         exactly one external call so the numbers are comparable across optimization passes.
-contract GasTest is Test {
+contract GasTest is PaytagTest {
     PaytagRegistry registry;
     PaytagResolver resolver;
 
@@ -29,19 +29,27 @@ contract GasTest is Test {
     function setUp() public {
         registry = new PaytagRegistry();
         resolver = new PaytagResolver(registry);
-        vm.prank(alice);
-        node = registry.register("derrick");
+        node = _register(registry, alice, "derrick");
+    }
+
+    function test_gas_commit() public notUnderCoverage {
+        bytes32 commitment = registry.makeCommitment("abc", bob, SECRET);
+        vm.prank(bob);
+        registry.commit(commitment);
+        vm.snapshotGasLastFrame("commit");
     }
 
     function test_gas_register_3chars() public notUnderCoverage {
+        _commitAndWait(registry, bob, "abc");
         vm.prank(bob);
-        registry.register("abc");
+        registry.register("abc", SECRET);
         vm.snapshotGasLastFrame("register (3 chars)");
     }
 
     function test_gas_register_20chars() public notUnderCoverage {
+        _commitAndWait(registry, bob, "abcdefghijklmnopqrst");
         vm.prank(bob);
-        registry.register("abcdefghijklmnopqrst");
+        registry.register("abcdefghijklmnopqrst", SECRET);
         vm.snapshotGasLastFrame("register (20 chars)");
     }
 

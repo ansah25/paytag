@@ -3,9 +3,9 @@ pragma solidity 0.8.26;
 
 import {PaytagRegistry} from "../src/PaytagRegistry.sol";
 import {Names} from "./utils/Names.sol";
-import {Test} from "forge-std/Test.sol";
+import {PaytagTest} from "./utils/PaytagTest.sol";
 
-contract PaytagRegistryTest is Test {
+contract PaytagRegistryTest is PaytagTest {
     PaytagRegistry registry;
 
     address alice = makeAddr("alice");
@@ -21,8 +21,7 @@ contract PaytagRegistryTest is Test {
     // ---------------------------------------------------------------- register
 
     function test_register_setsOwnerAndReturnsNode() public {
-        vm.prank(alice);
-        bytes32 node = registry.register("derrick");
+        bytes32 node = _register(registry, alice, "derrick");
 
         assertEq(node, keccak256("derrick"));
         assertEq(registry.owner(node), alice);
@@ -30,6 +29,7 @@ contract PaytagRegistryTest is Test {
 
     function test_register_emitsEvents() public {
         bytes32 node = keccak256("derrick");
+        _commitAndWait(registry, alice, "derrick");
 
         vm.expectEmit(address(registry));
         emit NameRegistered(node, "derrick", alice);
@@ -37,88 +37,81 @@ contract PaytagRegistryTest is Test {
         emit Transfer(node, address(0), alice);
 
         vm.prank(alice);
-        registry.register("derrick");
+        registry.register("derrick", SECRET);
     }
 
     function test_register_normalizesUppercase() public {
-        vm.prank(alice);
-        bytes32 node = registry.register("DeRRick_01");
+        bytes32 node = _register(registry, alice, "DeRRick_01");
 
         assertEq(node, keccak256("derrick_01"));
     }
 
     function test_register_emitsNormalizedName() public {
+        _commitAndWait(registry, alice, "DERRICK");
         vm.expectEmit(address(registry));
         emit NameRegistered(keccak256("derrick"), "derrick", alice);
 
         vm.prank(alice);
-        registry.register("DERRICK");
+        registry.register("DERRICK", SECRET);
     }
 
     function test_register_acceptsLengthBounds() public {
-        vm.startPrank(alice);
-        registry.register("abc");
-        registry.register("abcdefghijklmnopqrst");
-        vm.stopPrank();
+        _register(registry, alice, "abc");
+        _register(registry, alice, "abcdefghijklmnopqrst");
 
         assertEq(registry.owner(keccak256("abc")), alice);
         assertEq(registry.owner(keccak256("abcdefghijklmnopqrst")), alice);
     }
 
     function test_register_acceptsFullCharset() public {
-        vm.startPrank(alice);
-        registry.register("abcdefghijklm");
-        registry.register("nopqrstuvwxyz");
-        registry.register("0123456789_");
-        vm.stopPrank();
+        _register(registry, alice, "abcdefghijklm");
+        _register(registry, alice, "nopqrstuvwxyz");
+        _register(registry, alice, "0123456789_");
     }
 
     function test_register_revertsWhenTaken() public {
-        vm.prank(alice);
-        bytes32 node = registry.register("derrick");
+        bytes32 node = _register(registry, alice, "derrick");
 
         vm.prank(bob);
         vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.NameTaken.selector, node));
-        registry.register("derrick");
+        registry.register("derrick", SECRET);
     }
 
     function test_register_revertsWhenTakenByCaseVariant() public {
-        vm.prank(alice);
-        bytes32 node = registry.register("derrick");
+        bytes32 node = _register(registry, alice, "derrick");
 
         vm.prank(bob);
         vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.NameTaken.selector, node));
-        registry.register("Derrick");
+        registry.register("Derrick", SECRET);
     }
 
     function test_register_revertsWhenOwnerReRegisters() public {
-        vm.startPrank(alice);
-        bytes32 node = registry.register("derrick");
+        bytes32 node = _register(registry, alice, "derrick");
+        vm.prank(alice);
         vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.NameTaken.selector, node));
-        registry.register("derrick");
-        vm.stopPrank();
+        registry.register("derrick", SECRET);
     }
 
     function test_register_revertsOnEmpty() public {
         vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.InvalidLength.selector, 0));
-        registry.register("");
+        registry.register("", SECRET);
     }
 
     function test_register_revertsTooShort() public {
         vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.InvalidLength.selector, 2));
-        registry.register("ab");
+        registry.register("ab", SECRET);
     }
 
     function test_register_revertsTooLong() public {
         vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.InvalidLength.selector, 21));
-        registry.register("abcdefghijklmnopqrstu");
+        registry.register("abcdefghijklmnopqrstu", SECRET);
     }
 
     function test_register_revertsOnSpace() public {
         vm.expectRevert(
             abi.encodeWithSelector(PaytagRegistry.InvalidCharacter.selector, 3, bytes1(" "))
         );
-        registry.register("der rick");
+        registry.register("der rick", SECRET);
     }
 
     function test_register_revertsOnPunctuation() public {
@@ -128,7 +121,7 @@ contract PaytagRegistryTest is Test {
             vm.expectRevert(
                 abi.encodeWithSelector(PaytagRegistry.InvalidCharacter.selector, 2, bad[i])
             );
-            registry.register(string(name));
+            registry.register(string(name), SECRET);
         }
     }
 
@@ -136,31 +129,31 @@ contract PaytagRegistryTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(PaytagRegistry.InvalidCharacter.selector, 1, bytes1(0x00))
         );
-        registry.register(string(hex"610062"));
+        registry.register(string(hex"610062"), SECRET);
     }
 
     function test_register_revertsOnCyrillicHomoglyph() public {
         // "pаypal" with a Cyrillic "а" (U+0430, UTF-8 0xD0 0xB0) at byte index 1.
         vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.NonAsciiName.selector, 1));
-        registry.register(string(hex"70d0b07970616c"));
+        registry.register(string(hex"70d0b07970616c"), SECRET);
     }
 
     function test_register_revertsOnZeroWidthJoiner() public {
         // "abc" + U+200D (0xE2 0x80 0x8D) appended.
         vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.NonAsciiName.selector, 3));
-        registry.register(string(hex"616263e2808d"));
+        registry.register(string(hex"616263e2808d"), SECRET);
     }
 
     function test_register_reportsFirstInvalidIndex() public {
         vm.expectRevert(
             abi.encodeWithSelector(PaytagRegistry.InvalidCharacter.selector, 1, bytes1("-"))
         );
-        registry.register("a-b c");
+        registry.register("a-b c", SECRET);
     }
 
     function test_register_lengthCheckedBeforeCharset() public {
         vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.InvalidLength.selector, 2));
-        registry.register("-!");
+        registry.register("-!", SECRET);
     }
 
     function test_register_revertsOnEveryReservedName() public {
@@ -168,7 +161,7 @@ contract PaytagRegistryTest is Test {
         for (uint256 i; i < names.length; ++i) {
             bytes32 n = keccak256(bytes(names[i]));
             vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.ReservedName.selector, n));
-            registry.register(names[i]);
+            registry.register(names[i], SECRET);
         }
     }
 
@@ -176,15 +169,13 @@ contract PaytagRegistryTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(PaytagRegistry.ReservedName.selector, keccak256("paytag"))
         );
-        registry.register("PayTag");
+        registry.register("PayTag", SECRET);
     }
 
     function test_register_allowsNearMissOfReserved() public {
-        vm.startPrank(alice);
-        registry.register("paytag_");
-        registry.register("admin1");
-        registry.register("apis");
-        vm.stopPrank();
+        _register(registry, alice, "paytag_");
+        _register(registry, alice, "admin1");
+        _register(registry, alice, "apis");
     }
 
     function test_isReserved_matchesIndependentList() public view {
@@ -213,8 +204,7 @@ contract PaytagRegistryTest is Test {
     // ---------------------------------------------------------------- transfer
 
     function test_transfer_movesOwnership() public {
-        vm.prank(alice);
-        bytes32 node = registry.register("derrick");
+        bytes32 node = _register(registry, alice, "derrick");
 
         vm.prank(alice);
         registry.transfer(node, bob);
@@ -223,8 +213,7 @@ contract PaytagRegistryTest is Test {
     }
 
     function test_transfer_emitsEvent() public {
-        vm.prank(alice);
-        bytes32 node = registry.register("derrick");
+        bytes32 node = _register(registry, alice, "derrick");
 
         vm.expectEmit(address(registry));
         emit Transfer(node, alice, bob);
@@ -234,8 +223,7 @@ contract PaytagRegistryTest is Test {
     }
 
     function test_transfer_newOwnerCanTransferAgain() public {
-        vm.prank(alice);
-        bytes32 node = registry.register("derrick");
+        bytes32 node = _register(registry, alice, "derrick");
         vm.prank(alice);
         registry.transfer(node, bob);
 
@@ -246,17 +234,15 @@ contract PaytagRegistryTest is Test {
     }
 
     function test_transfer_toSelfIsAllowed() public {
-        vm.startPrank(alice);
-        bytes32 node = registry.register("derrick");
+        bytes32 node = _register(registry, alice, "derrick");
+        vm.prank(alice);
         registry.transfer(node, alice);
-        vm.stopPrank();
 
         assertEq(registry.owner(node), alice);
     }
 
     function test_transfer_revertsForNonOwner() public {
-        vm.prank(alice);
-        bytes32 node = registry.register("derrick");
+        bytes32 node = _register(registry, alice, "derrick");
 
         vm.prank(bob);
         vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.NotOwner.selector, node, bob));
@@ -264,8 +250,7 @@ contract PaytagRegistryTest is Test {
     }
 
     function test_transfer_revertsForPreviousOwner() public {
-        vm.prank(alice);
-        bytes32 node = registry.register("derrick");
+        bytes32 node = _register(registry, alice, "derrick");
         vm.prank(alice);
         registry.transfer(node, bob);
 
@@ -283,11 +268,10 @@ contract PaytagRegistryTest is Test {
     }
 
     function test_transfer_revertsForZeroAddress() public {
-        vm.startPrank(alice);
-        bytes32 node = registry.register("derrick");
+        bytes32 node = _register(registry, alice, "derrick");
+        vm.prank(alice);
         vm.expectRevert(PaytagRegistry.ZeroAddress.selector);
         registry.transfer(node, address(0));
-        vm.stopPrank();
     }
 
     function test_transfer_zeroCallerCannotClaimUnregistered() public {
@@ -299,6 +283,172 @@ contract PaytagRegistryTest is Test {
         registry.transfer(node, alice);
     }
 
+    // ---------------------------------------------------------------- commit-reveal
+
+    address mallory = makeAddr("mallory");
+
+    function test_commit_recordsTime() public {
+        bytes32 c = registry.makeCommitment("derrick", alice, SECRET);
+        vm.prank(alice);
+        registry.commit(c);
+        assertEq(registry.commitmentTime(c), block.timestamp);
+    }
+
+    function test_register_consumesCommitment() public {
+        bytes32 c = registry.makeCommitment("derrick", alice, SECRET);
+        _register(registry, alice, "derrick");
+        assertEq(registry.commitmentTime(c), 0);
+    }
+
+    function test_register_revertsWithoutCommitment() public {
+        bytes32 c = registry.makeCommitment("derrick", alice, SECRET);
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.CommitmentNotFound.selector, c));
+        registry.register("derrick", SECRET);
+    }
+
+    function test_register_revertsWithWrongSecret() public {
+        _commitAndWait(registry, alice, "derrick");
+        bytes32 c = registry.makeCommitment("derrick", alice, bytes32(uint256(1)));
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.CommitmentNotFound.selector, c));
+        registry.register("derrick", bytes32(uint256(1)));
+    }
+
+    function test_register_revertsWhenRevealedFromAnotherWallet() public {
+        // The owner is bound into the hash: Alice's commitment doesn't exist for Bob.
+        _commitAndWait(registry, alice, "derrick");
+        bytes32 c = registry.makeCommitment("derrick", bob, SECRET);
+        vm.prank(bob);
+        vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.CommitmentNotFound.selector, c));
+        registry.register("derrick", SECRET);
+    }
+
+    function test_register_revertsWhenTooNew() public {
+        _commit(registry, alice, "derrick");
+        bytes32 c = registry.makeCommitment("derrick", alice, SECRET);
+        uint256 revealableAt = block.timestamp + registry.MIN_COMMITMENT_AGE();
+        vm.warp(revealableAt - 1);
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(PaytagRegistry.CommitmentTooNew.selector, c, revealableAt)
+        );
+        registry.register("derrick", SECRET);
+    }
+
+    function test_register_sameBlockRevealRejected() public {
+        _commit(registry, alice, "derrick");
+        vm.prank(alice);
+        vm.expectPartialRevert(PaytagRegistry.CommitmentTooNew.selector);
+        registry.register("derrick", SECRET);
+    }
+
+    function test_register_acceptsExactMinAndMaxAge() public {
+        _commit(registry, alice, "derrick");
+        vm.warp(block.timestamp + registry.MIN_COMMITMENT_AGE());
+        vm.prank(alice);
+        registry.register("derrick", SECRET);
+
+        _commit(registry, alice, "derrick_2");
+        vm.warp(block.timestamp + registry.MAX_COMMITMENT_AGE());
+        vm.prank(alice);
+        registry.register("derrick_2", SECRET);
+        assertEq(registry.owner(keccak256("derrick_2")), alice);
+    }
+
+    function test_register_revertsWhenTooOld() public {
+        _commit(registry, alice, "derrick");
+        bytes32 c = registry.makeCommitment("derrick", alice, SECRET);
+        uint256 expiredAt = block.timestamp + registry.MAX_COMMITMENT_AGE();
+        vm.warp(expiredAt + 1);
+        vm.prank(alice);
+        vm.expectRevert(
+            abi.encodeWithSelector(PaytagRegistry.CommitmentTooOld.selector, c, expiredAt)
+        );
+        registry.register("derrick", SECRET);
+    }
+
+    function test_commit_recommitRestartsClock() public {
+        _commitAndWait(registry, alice, "derrick");
+        _commit(registry, alice, "derrick"); // same hash again: clock restarts
+        vm.prank(alice);
+        vm.expectPartialRevert(PaytagRegistry.CommitmentTooNew.selector);
+        registry.register("derrick", SECRET);
+    }
+
+    function test_register_pendingRevealCannotBeRaced() public {
+        // Mallory sees Alice's reveal (and so the name) pending, and commits to it herself.
+        _commitAndWait(registry, alice, "derrick");
+        _commit(registry, mallory, "derrick");
+
+        // Racing in the same window fails: her commitment is too new...
+        vm.prank(mallory);
+        vm.expectPartialRevert(PaytagRegistry.CommitmentTooNew.selector);
+        registry.register("derrick", SECRET);
+
+        // ...Alice's reveal lands, and once Mallory's matures the name is already taken.
+        vm.prank(alice);
+        bytes32 node = registry.register("derrick", SECRET);
+        vm.warp(block.timestamp + registry.MIN_COMMITMENT_AGE());
+        vm.prank(mallory);
+        vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.NameTaken.selector, node));
+        registry.register("derrick", SECRET);
+        assertEq(registry.owner(node), alice);
+    }
+
+    function test_makeCommitment_normalizes() public view {
+        assertEq(
+            registry.makeCommitment("DeRRick", alice, SECRET),
+            registry.makeCommitment("derrick", alice, SECRET)
+        );
+        assertEq(
+            registry.makeCommitment("derrick", alice, SECRET),
+            keccak256(abi.encode(keccak256("derrick"), alice, SECRET))
+        );
+    }
+
+    function test_makeCommitment_revertsOnInvalidName() public {
+        vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.InvalidLength.selector, 2));
+        registry.makeCommitment("ab", alice, SECRET);
+    }
+
+    // ---------------------------------------------------------------- epochs
+
+    function test_epoch_startsAtZero() public {
+        bytes32 node = _register(registry, alice, "derrick");
+        assertEq(registry.epoch(node), 0);
+        (address owner, uint256 epoch) = registry.ownerAndEpoch(node);
+        assertEq(owner, alice);
+        assertEq(epoch, 0);
+    }
+
+    function test_epoch_incrementsOnTransferToSomeoneElse() public {
+        bytes32 node = _register(registry, alice, "derrick");
+        vm.prank(alice);
+        registry.transfer(node, bob);
+        assertEq(registry.epoch(node), 1);
+        vm.prank(bob);
+        registry.transfer(node, alice);
+        (address owner, uint256 epoch) = registry.ownerAndEpoch(node);
+        assertEq(owner, alice);
+        assertEq(epoch, 2);
+    }
+
+    function test_epoch_unchangedBySelfTransfer() public {
+        bytes32 node = _register(registry, alice, "derrick");
+        vm.expectEmit(address(registry));
+        emit Transfer(node, alice, alice);
+        vm.prank(alice);
+        registry.transfer(node, alice);
+        assertEq(registry.epoch(node), 0);
+    }
+
+    function test_epoch_unregisteredIsZero() public view {
+        (address owner, uint256 epoch) = registry.ownerAndEpoch(keccak256("nobody"));
+        assertEq(owner, address(0));
+        assertEq(epoch, 0);
+    }
+
     // ---------------------------------------------------------------- views
 
     function test_owner_unregisteredIsZero() public view {
@@ -306,8 +456,7 @@ contract PaytagRegistryTest is Test {
     }
 
     function test_nodeOf_matchesRegister() public {
-        vm.prank(alice);
-        bytes32 node = registry.register("Derrick");
+        bytes32 node = _register(registry, alice, "Derrick");
 
         assertEq(registry.nodeOf("DERRICK"), node);
         assertEq(registry.nodeOf("derrick"), node);
@@ -325,6 +474,8 @@ contract PaytagRegistryTest is Test {
     function test_constants() public view {
         assertEq(registry.MIN_LENGTH(), 3);
         assertEq(registry.MAX_LENGTH(), 20);
+        assertEq(registry.MIN_COMMITMENT_AGE(), 15);
+        assertEq(registry.MAX_COMMITMENT_AGE(), 1 days);
     }
 
     // ---------------------------------------------------------------- fuzz
@@ -388,8 +539,7 @@ contract PaytagRegistryTest is Test {
         vm.assume(caller != address(0));
         string memory name = Names.fromSeed(seed);
 
-        vm.prank(caller);
-        bytes32 node = registry.register(name);
+        bytes32 node = _register(registry, caller, name);
 
         assertEq(node, keccak256(bytes(name)));
         assertEq(registry.owner(node), caller);
@@ -397,12 +547,11 @@ contract PaytagRegistryTest is Test {
 
     function testFuzz_caseVariantIsTaken(uint256 seed) public {
         string memory name = Names.fromSeed(seed);
-        vm.prank(alice);
-        bytes32 node = registry.register(name);
+        bytes32 node = _register(registry, alice, name);
 
         vm.prank(bob);
         vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.NameTaken.selector, node));
-        registry.register(Names.upper(name));
+        registry.register(Names.upper(name), SECRET);
     }
 
     function testFuzz_distinctNamesGetDistinctNodes(uint256 seedA, uint256 seedB) public {
@@ -410,10 +559,8 @@ contract PaytagRegistryTest is Test {
         string memory b = Names.fromSeed(seedB);
         vm.assume(keccak256(bytes(a)) != keccak256(bytes(b)));
 
-        vm.prank(alice);
-        bytes32 nodeA = registry.register(a);
-        vm.prank(bob);
-        bytes32 nodeB = registry.register(b);
+        bytes32 nodeA = _register(registry, alice, a);
+        bytes32 nodeB = _register(registry, bob, b);
 
         assertTrue(nodeA != nodeB);
         assertEq(registry.owner(nodeA), alice);
@@ -422,8 +569,7 @@ contract PaytagRegistryTest is Test {
 
     function testFuzz_transferOnlyByOwner(uint256 seed, address stranger, address to) public {
         vm.assume(stranger != alice && to != address(0));
-        vm.prank(alice);
-        bytes32 node = registry.register(Names.fromSeed(seed));
+        bytes32 node = _register(registry, alice, Names.fromSeed(seed));
 
         vm.prank(stranger);
         vm.expectRevert(abi.encodeWithSelector(PaytagRegistry.NotOwner.selector, node, stranger));

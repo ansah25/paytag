@@ -16,13 +16,14 @@ contract PaytagInvariantsTest is Test {
         resolver = new PaytagResolver(registry);
         handler = new Handler(registry, resolver);
 
-        bytes4[] memory selectors = new bytes4[](6);
+        bytes4[] memory selectors = new bytes4[](7);
         selectors[0] = Handler.register.selector;
         selectors[1] = Handler.transfer.selector;
         selectors[2] = Handler.setEthRecord.selector;
         selectors[3] = Handler.setOtherRecord.selector;
         selectors[4] = Handler.setReverse.selector;
         selectors[5] = Handler.register.selector; // weight registration 2x
+        selectors[6] = Handler.registerUnprepared.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
     }
@@ -41,7 +42,25 @@ contract PaytagInvariantsTest is Test {
         assertEq(handler.authorizedReverts(), 0, "owner write with valid input reverted");
     }
 
-    /// Every record the resolver serves equals the last value its owner wrote.
+    /// Every name's epoch equals the number of transfers to a different owner.
+    function invariant_epochsMatchModel() public view {
+        uint256 n = handler.nodeCount();
+        for (uint256 i; i < n; ++i) {
+            bytes32 node = handler.nodeAt(i);
+            assertEq(registry.epoch(node), handler.ghostEpoch(node), "epoch diverged from model");
+            (address owner, uint256 epoch) = registry.ownerAndEpoch(node);
+            assertEq(owner, registry.owner(node), "ownerAndEpoch owner disagrees");
+            assertEq(epoch, registry.epoch(node), "ownerAndEpoch epoch disagrees");
+        }
+    }
+
+    /// No registration ever succeeds without the caller's own, mature commitment.
+    function invariant_noRegistrationWithoutCommitment() public view {
+        assertEq(handler.commitmentBypasses(), 0, "registered without a valid commitment");
+    }
+
+    /// Every record the resolver serves equals the last value the current owner wrote in the
+    /// current epoch; anything written before the latest transfer reads as empty.
     function invariant_recordsMatchModel() public view {
         uint256 n = handler.nodeCount();
         for (uint256 i; i < n; ++i) {
@@ -101,5 +120,6 @@ contract PaytagInvariantsTest is Test {
         console.log("setOtherRecord:rej", handler.calls("setOtherRecord:rejected"));
         console.log("setReverse        ", handler.calls("setReverse"));
         console.log("setReverse:rej    ", handler.calls("setReverse:rejected"));
+        console.log("unprepared:rej    ", handler.calls("registerUnprepared:rejected"));
     }
 }

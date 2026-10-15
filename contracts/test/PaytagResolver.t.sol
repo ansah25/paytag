@@ -4,9 +4,9 @@ pragma solidity 0.8.26;
 import {PaytagRegistry} from "../src/PaytagRegistry.sol";
 import {PaytagResolver} from "../src/PaytagResolver.sol";
 import {Names} from "./utils/Names.sol";
-import {Test} from "forge-std/Test.sol";
+import {PaytagTest} from "./utils/PaytagTest.sol";
 
-contract PaytagResolverTest is Test {
+contract PaytagResolverTest is PaytagTest {
     PaytagRegistry registry;
     PaytagResolver resolver;
 
@@ -27,8 +27,7 @@ contract PaytagResolverTest is Test {
         registry = new PaytagRegistry();
         resolver = new PaytagResolver(registry);
 
-        vm.prank(alice);
-        node = registry.register("derrick");
+        node = _register(registry, alice, "derrick");
     }
 
     function _eth(address a) internal pure returns (bytes memory) {
@@ -188,12 +187,55 @@ contract PaytagResolverTest is Test {
         assertEq(resolver.addr(node, ETH), _eth(bob));
     }
 
-    function test_setRecord_recordsSurviveTransfer() public {
+    function test_transfer_clearsEveryRecordForReaders() public {
+        vm.startPrank(alice);
+        resolver.setRecord(node, ETH, _eth(alice));
+        resolver.setRecord(node, SOL, hex"abcd");
+        resolver.setRecord(node, BASE, _eth(alice));
+        registry.transfer(node, bob);
+        vm.stopPrank();
+
+        // A direct reader never gets an address the previous owner set.
+        assertEq(resolver.addr(node, ETH).length, 0);
+        assertEq(resolver.addr(node, SOL).length, 0);
+        assertEq(resolver.addr(node, BASE).length, 0);
+    }
+
+    function test_transfer_newOwnerWritesFreshRecords() public {
         vm.prank(alice);
         resolver.setRecord(node, SOL, hex"abcd");
         vm.prank(alice);
         registry.transfer(node, bob);
 
+        vm.prank(bob);
+        resolver.setRecord(node, SOL, hex"beef");
+        assertEq(resolver.addr(node, SOL), hex"beef");
+    }
+
+    function test_transfer_toSelfKeepsRecords() public {
+        vm.startPrank(alice);
+        resolver.setRecord(node, SOL, hex"abcd");
+        registry.transfer(node, alice);
+        vm.stopPrank();
+
+        assertEq(registry.epoch(node), 0);
+        assertEq(resolver.addr(node, SOL), hex"abcd");
+    }
+
+    function test_transfer_awayAndBackStartsEmpty() public {
+        // A -> B -> A: the returning owner's old records stay in the old epoch, unreachable.
+        vm.prank(alice);
+        resolver.setRecord(node, SOL, hex"abcd");
+        vm.prank(alice);
+        registry.transfer(node, bob);
+        vm.prank(bob);
+        registry.transfer(node, alice);
+
+        assertEq(registry.epoch(node), 2);
+        assertEq(resolver.addr(node, SOL).length, 0);
+
+        vm.prank(alice);
+        resolver.setRecord(node, SOL, hex"abcd");
         assertEq(resolver.addr(node, SOL), hex"abcd");
     }
 
@@ -285,8 +327,8 @@ contract PaytagResolverTest is Test {
     }
 
     function test_setReverse_switchesBetweenNames() public {
+        bytes32 second = _register(registry, alice, "derrick_2");
         vm.startPrank(alice);
-        bytes32 second = registry.register("derrick_2");
         resolver.setRecord(node, ETH, _eth(alice));
         resolver.setRecord(second, ETH, _eth(alice));
         resolver.setReverse(node);
@@ -320,19 +362,42 @@ contract PaytagResolverTest is Test {
         assertEq(resolver.reverse(alice), bytes32(0));
     }
 
-    function test_reverse_newOwnerRepointingRecordDarkensOldReverse() public {
+    function test_reverse_goesDarkOnTransfer() public {
         vm.startPrank(alice);
         resolver.setRecord(node, ETH, _eth(alice));
         resolver.setReverse(node);
         registry.transfer(node, bob);
         vm.stopPrank();
 
-        // Transfer alone leaves the forward record pointing at Alice, so her reverse still holds.
-        assertEq(resolver.reverse(alice), node);
-
-        vm.prank(bob);
-        resolver.setRecord(node, ETH, _eth(bob));
+        // The previous owner's primary name stops resolving the moment the name moves.
         assertEq(resolver.reverse(alice), bytes32(0));
+    }
+
+    function test_reverse_previousOwnerCannotReclaimAfterTransfer() public {
+        vm.startPrank(alice);
+        resolver.setRecord(node, ETH, _eth(alice));
+        registry.transfer(node, bob);
+        vm.expectRevert(
+            abi.encodeWithSelector(PaytagResolver.ReverseMismatch.selector, node, alice)
+        );
+        resolver.setReverse(node);
+        vm.stopPrank();
+    }
+
+    function test_reverse_staysDarkIfNameReturns() public {
+        // A -> B -> A: the stored claim persists but was made against an old epoch's record.
+        vm.startPrank(alice);
+        resolver.setRecord(node, ETH, _eth(alice));
+        resolver.setReverse(node);
+        registry.transfer(node, bob);
+        vm.stopPrank();
+        vm.prank(bob);
+        registry.transfer(node, alice);
+
+        assertEq(resolver.reverse(alice), bytes32(0));
+        vm.prank(alice);
+        resolver.setRecord(node, ETH, _eth(alice));
+        assertEq(resolver.reverse(alice), node); // valid again once the current owner re-points it
     }
 
     function test_reverse_reappearsIfForwardRecordRestored() public {
@@ -362,8 +427,10 @@ contract PaytagResolverTest is Test {
         if (coinType == ETH) value = value.length >= 20 ? value[:20] : value[:0];
 
         bool valid = Names.isValid(raw);
+        // Commit only for names that normalize; invalid ones must revert in register itself.
+        if (valid) _commitAndWait(registry, caller, string(raw));
         vm.prank(caller);
-        try registry.register(string(raw)) returns (bytes32 n) {
+        try registry.register(string(raw), SECRET) returns (bytes32 n) {
             assertTrue(valid, "registered an invalid name");
             assertFalse(Names.isReserved(Names.lower(raw)), "registered a reserved name");
             assertEq(n, keccak256(Names.lower(raw)));
@@ -376,6 +443,9 @@ contract PaytagResolverTest is Test {
                 assertTrue(valid && Names.isReserved(Names.lower(raw)), "spurious ReservedName");
             } else {
                 assertFalse(valid, "rejected a valid name");
+                assertTrue(
+                    sel != PaytagRegistry.CommitmentNotFound.selector, "commitment not honored"
+                );
             }
         }
     }
@@ -391,8 +461,7 @@ contract PaytagResolverTest is Test {
         vm.assume(keccak256(bytes(name)) != node);
         if (coinType == ETH) value = value.length >= 20 ? value[:20] : value[:0];
 
-        vm.prank(caller);
-        bytes32 n = registry.register(name);
+        bytes32 n = _register(registry, caller, name);
         _setAndCheck(caller, n, coinType, value);
     }
 
