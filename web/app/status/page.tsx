@@ -171,7 +171,7 @@ export default async function StatusPage() {
               <a className={link} href={`${INDEXER_URL}/graphql`} {...ext}>
                 GraphQL
               </a>
-              . Rate-limited per address; a 429 carries Retry-After.
+              . Rate-limited per IP; a 429 carries Retry-After.
             </>
           }
         />
