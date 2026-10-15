@@ -109,7 +109,7 @@ export function RegisterPanel() {
   /** Re-reads a reservation's commitment on-chain and decides what to show. */
   const refreshStep = useCallback(
     async (reservation: Reservation) => {
-      if (!publicClient) return;
+      if (!publicClient || !isCurrent(reservation)) return;
       setStep({ kind: 'checking' });
       try {
         const [committedAt, now] = await Promise.all([
@@ -193,11 +193,15 @@ export function RegisterPanel() {
     };
     saveReservation(reservation);
     setTxLabel('Step 1 of 2: reserve');
+    let submitted = false;
     tx.run(
       { kind: 'commit', commitment: reservation.commitment },
       {
         context: { name },
         skipIndexer: true, // the indexer doesn't track commitments
+        onSubmitted: () => {
+          submitted = true;
+        },
         onConfirmed: (_hash, blockNumber) => {
           void (async () => {
             try {
@@ -215,10 +219,11 @@ export function RegisterPanel() {
             }
           })();
         },
-        // Drop the secret only when the commit certainly didn't land (rejected, or reverted).
-        // After a receipt timeout it may still confirm, so keep it and keep looking.
+        // Drop the secret when the commit certainly didn't land: never sent (simulation, wallet
+        // or funds error), rejected, or reverted. Once sent, a receipt timeout may still
+        // confirm, so keep it and keep looking.
         onFailed: (error) => {
-          if (error.kind === 'rejected' || error.kind === 'revert') {
+          if (!submitted || error.kind === 'rejected' || error.kind === 'revert') {
             clearReservation(reservation.owner, reservation.name);
           } else if (isCurrent(reservation)) {
             setStep({ kind: 'confirming', reservation });
@@ -247,7 +252,9 @@ export function RegisterPanel() {
         onFailed: (error) => {
           setRegistered(null);
           setRecheck((n) => n + 1);
-          if (error.errorName === 'CommitmentTooOld' || error.errorName === 'CommitmentNotFound') {
+          // NotFound right after reserving may just be a lagging RPC node: keep the secret then.
+          const settled = Date.now() - reservation.savedAt > PENDING_COMMIT_GRACE_MS;
+          if (error.errorName === 'CommitmentTooOld' || (error.errorName === 'CommitmentNotFound' && settled)) {
             clearReservation(reservation.owner, reservation.name);
             setStep({ kind: 'none' });
           }

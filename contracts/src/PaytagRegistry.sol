@@ -90,6 +90,8 @@ contract PaytagRegistry {
     /// @notice The commitment for registering `name` to `owner_` with `secret`. Normalizes the
     ///         name, so any casing of a valid name gives the same commitment. Reverts on
     ///         invalid names. `secret` should be 32 random bytes kept until the reveal.
+    ///         `owner_` must be the address that both commits and reveals: commitments are
+    ///         stored per committer and `register` binds `msg.sender`.
     function makeCommitment(string calldata name, address owner_, bytes32 secret)
         external
         pure
