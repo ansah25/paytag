@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { shortAddress } from '@/lib/format';
-import type { PointingName } from '@/lib/onchain/indexer';
+import { visiblePointing, type PointingName } from '@/lib/onchain/indexer';
 import { addressUrl } from '@/lib/onchain/records';
 import { useOnchainTx } from '@/lib/onchain/useOnchainTx';
 import { TxStatus } from './TxStatus';
@@ -29,7 +29,8 @@ export function PointedNames({
   const tx = useOnchainTx();
   const [action, setAction] = useState<string | null>(null);
 
-  if (names.length === 0) return null;
+  const shown = visiblePointing(names, primaryName);
+  if (shown.length === 0) return null;
 
   const setPrimary = (target: PointingName, clear: boolean) => {
     if (tx.busy || tx.wrongNetwork) return;
@@ -55,7 +56,7 @@ export function PointedNames({
       )}
 
       <ul className="grid">
-        {names.map((n) => {
+        {shown.map((n) => {
           const isPrimary = primaryName === n.name;
           return (
             <li key={n.node} className="flex flex-wrap items-center gap-3 border-t border-line py-3 first:border-t-0">

@@ -34,11 +34,13 @@ export function ManageNames() {
       return [] as PointingName[];
     });
     Promise.all([indexer.names(address, controller.signal), indexer.reverse(address, controller.signal), pointing])
-      .then(([owned, rev, points]) =>
-        setLoad({ kind: 'ready', owner: address, names: owned.names, pointing: points, primary: rev.username }),
-      )
+      .then(([owned, rev, points]) => {
+        // An account switch aborts this run; never let its late result land on the new account.
+        if (controller.signal.aborted) return;
+        setLoad({ kind: 'ready', owner: address, names: owned.names, pointing: points, primary: rev.username });
+      })
       .catch((err) => {
-        if ((err as Error)?.name !== 'AbortError') setLoad({ kind: 'error' });
+        if (!controller.signal.aborted && (err as Error)?.name !== 'AbortError') setLoad({ kind: 'error' });
       });
     return () => controller.abort();
   }, [address, reload]);

@@ -28,6 +28,15 @@ export interface OwnedName {
   registeredAt: number;
 }
 
+/**
+ * For `res.json().catch(...)`: an unreadable body becomes null (reported as an HTTP error), but
+ * an abort mid-body must stay an AbortError, or callers would treat a cancelled read as real data.
+ */
+const rethrowIfAborted = (signal?: AbortSignal) => (err: unknown) => {
+  if (signal?.aborted) throw err;
+  return null;
+};
+
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   let res: Response;
   try {
@@ -36,7 +45,7 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
     if ((err as Error)?.name === 'AbortError') throw err;
     throw new IndexerError('The indexer is unreachable.', 'NETWORK_ERROR');
   }
-  const body = (await res.json().catch(() => null)) as { error?: string; code?: string } | null;
+  const body = (await res.json().catch(rethrowIfAborted(signal))) as { error?: string; code?: string } | null;
   if (!res.ok) {
     throw new IndexerError(body?.error ?? `Indexer returned ${res.status}`, body?.code ?? 'HTTP_ERROR', res.status);
   }
@@ -76,17 +85,22 @@ export interface PointingName {
   owner: string;
 }
 
-/** At most this many names are listed; the GraphQL queries ask for exactly this page size. */
+/** At most this many names are shown. */
 export const POINTING_LIMIT = 50;
+/**
+ * Rows fetched per query (Ponder's maximum page size). Far above POINTING_LIMIT because owned and
+ * stale records are filtered out after the query, and anyone can point stale records at a wallet.
+ */
+const FETCH_LIMIT = 1000;
 
 type GqlRecord = { node: string; updatedOrdinal: string };
 type GqlName = { node: string; name: string; owner: string; lastTransferOrdinal: string };
 
 const RECORDS_POINTING_AT = `query RecordsPointingAt($value: String!) {
-  recordss(where: { coinType: "60", value: $value }, limit: ${POINTING_LIMIT}) { items { node updatedOrdinal } }
+  recordss(where: { coinType: "60", value: $value }, limit: ${FETCH_LIMIT}) { items { node updatedOrdinal } }
 }`;
 const NAMES_BY_NODE = `query NamesByNode($nodes: [String!]!) {
-  namess(where: { node_in: $nodes }, limit: ${POINTING_LIMIT}) { items { node name owner lastTransferOrdinal } }
+  namess(where: { node_in: $nodes }, limit: ${FETCH_LIMIT}) { items { node name owner lastTransferOrdinal } }
 }`;
 
 async function gql<T>(query: string, variables: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
@@ -103,7 +117,7 @@ async function gql<T>(query: string, variables: Record<string, unknown>, signal?
     if ((err as Error)?.name === 'AbortError') throw err;
     throw new IndexerError('The indexer is unreachable.', 'NETWORK_ERROR');
   }
-  const body = (await res.json().catch(() => null)) as { data?: T; errors?: unknown[] } | null;
+  const body = (await res.json().catch(rethrowIfAborted(signal))) as { data?: T; errors?: unknown[] } | null;
   if (!res.ok || !body?.data || body.errors?.length) {
     throw new IndexerError(`Indexer GraphQL query failed (${res.status})`, 'GRAPHQL_ERROR', res.status);
   }
@@ -147,6 +161,15 @@ export async function namesPointingAt(account: string, signal?: AbortSignal): Pr
     signal,
   );
   return pointingNames(records, namess?.items ?? [], account);
+}
+
+/**
+ * What the section shows: the current primary name first (so it can always be cleared, even
+ * past the cap), then the rest in name order, at most POINTING_LIMIT.
+ */
+export function visiblePointing(names: PointingName[], primaryName: string | null): PointingName[] {
+  const primary = names.filter((n) => n.name === primaryName);
+  return [...primary, ...names.filter((n) => n.name !== primaryName)].slice(0, POINTING_LIMIT);
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

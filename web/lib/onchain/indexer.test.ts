@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { IndexerError, namesPointingAt, pointingNames } from './indexer';
+import { IndexerError, POINTING_LIMIT, indexer, namesPointingAt, pointingNames, visiblePointing } from './indexer';
 
 const ME = '0x6aD631F215393f9635231de985081B1ccDDC7C11';
 const DEPLOYER = '0x3dbc9c0bef8b7bfbcf0a7cc4041b3962b126f865';
@@ -76,5 +76,48 @@ describe('namesPointingAt', () => {
     await expect(namesPointingAt(ME)).rejects.toBeInstanceOf(IndexerError);
     vi.stubGlobal('fetch', vi.fn().mockImplementation(() => respond('not json', 503)));
     await expect(namesPointingAt(ME)).rejects.toBeInstanceOf(IndexerError);
+  });
+});
+
+describe('visiblePointing', () => {
+  const many = Array.from({ length: POINTING_LIMIT + 5 }, (_, i) => ({
+    name: `n${String(i).padStart(3, '0')}`,
+    node: node((i % 9).toString() + 'a') as `0x${string}`,
+    owner: DEPLOYER,
+  }));
+
+  it('caps the list', () => {
+    expect(visiblePointing(many, null)).toHaveLength(POINTING_LIMIT);
+  });
+
+  it('always keeps the current primary name, first, even past the cap', () => {
+    const last = many[many.length - 1].name;
+    const shown = visiblePointing(many, last);
+    expect(shown).toHaveLength(POINTING_LIMIT);
+    expect(shown[0].name).toBe(last);
+  });
+});
+
+describe('aborts', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  // The body read rejects after the caller aborted (e.g. the wallet switched accounts mid-read).
+  const abortedBody = (controller: AbortController) =>
+    vi.fn().mockImplementation(async () => ({
+      ok: true,
+      status: 200,
+      json: () => {
+        controller.abort();
+        return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+      },
+    }));
+
+  it('surfaces an abort mid-body as AbortError, not an indexer error', async () => {
+    const c1 = new AbortController();
+    vi.stubGlobal('fetch', abortedBody(c1));
+    await expect(namesPointingAt(ME, c1.signal)).rejects.toMatchObject({ name: 'AbortError' });
+    const c2 = new AbortController();
+    vi.stubGlobal('fetch', abortedBody(c2));
+    await expect(indexer.reverse(ME, c2.signal)).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
