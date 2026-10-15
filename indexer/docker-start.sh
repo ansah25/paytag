@@ -8,7 +8,7 @@
 # code didn't change. The id is random, generated on the container's first start and kept in its
 # writable layer: a restart of the same container finds it and resumes (crash recovery), while a
 # new deploy (a new container) starts without it. A fresh schema syncs fast because Ponder caches
-# RPC data in the shared `ponder_sync` schema.
+# RPC data in a shared schema of its own (`ponder_rpc_cache_1` in 0.18).
 set -eu
 : "${PONDER_RPC_URL_84532:?set PONDER_RPC_URL_84532}"
 : "${DATABASE_URL:?set DATABASE_URL}"
@@ -20,4 +20,6 @@ if [ ! -s "$id_file" ]; then
 fi
 schema="${DATABASE_SCHEMA}_$(cat "$id_file")"
 echo "Using database schema $schema"
-exec npx ponder start --schema "$schema"
+# node directly (not npx), so SIGTERM from `docker stop` reaches Ponder, which then shuts down
+# cleanly and releases its schema lock instead of leaving a restart to wait out a stale one.
+exec node node_modules/.bin/ponder start --schema "$schema"
