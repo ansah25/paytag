@@ -4,6 +4,8 @@ import {
   validateUsername,
   USERNAME_REGEX,
   RESERVED_USERNAMES,
+  ROUTE_RESERVED_USERNAMES,
+  isReservedUsername,
 } from '../src/services/userService';
 import { BadRequestError } from '../src/utils/errors';
 
@@ -54,6 +56,14 @@ describe('userService - username validation', () => {
         expect((err as BadRequestError).errorCode).toBe('USERNAME_RESERVED');
       }
     }
+  });
+
+  it('rejects off-chain route names (e.g. "status") as reserved', () => {
+    expect(ROUTE_RESERVED_USERNAMES.has('status')).toBe(true);
+    expect(isReservedUsername('status')).toBe(true);
+    expect(() => validateUsername('status')).toThrow(
+      expect.objectContaining({ errorCode: 'USERNAME_RESERVED' }),
+    );
   });
 
   it('uses USERNAME_INVALID_FORMAT code for malformed input', () => {

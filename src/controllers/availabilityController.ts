@@ -2,7 +2,7 @@ import { RequestHandler } from 'express';
 import { z } from 'zod';
 import {
   USERNAME_REGEX,
-  RESERVED_USERNAMES,
+  isReservedUsername,
   normalizeUsername,
   isUsernameAvailable,
   generateSuggestions,
@@ -26,7 +26,7 @@ export const checkAvailability: RequestHandler = async (req, res, next) => {
       return;
     }
 
-    if (RESERVED_USERNAMES.has(normalized)) {
+    if (isReservedUsername(normalized)) {
       res.json({
         available: false,
         reason: 'RESERVED',

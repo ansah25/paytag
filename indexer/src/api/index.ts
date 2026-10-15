@@ -7,6 +7,7 @@ import { type Hex, getAddress, isAddress } from "viem";
 import { RESERVED_NODES } from "../../abis/reservedNodes";
 import { COIN_TYPE } from "../lib/codec";
 import { normalizeName } from "../lib/names";
+import { RateLimiter, positiveInt, rateLimit } from "../lib/rateLimit";
 import { buildResolveBody, isLiveReverseClaim } from "../lib/resolve";
 
 // Public, read-only HTTP API over the indexed state. Error bodies follow the Paytag API's
@@ -23,7 +24,27 @@ app.onError((err, c) => {
   return c.json({ error: "Internal error", code: "INTERNAL_ERROR" }, 500);
 });
 
-app.use("*", cors({ origin: "*", allowMethods: ["GET", "POST", "OPTIONS"] }));
+app.use(
+  "*",
+  cors({
+    origin: "*",
+    allowMethods: ["GET", "POST", "OPTIONS"],
+    exposeHeaders: ["Retry-After", "RateLimit-Limit", "RateLimit-Remaining", "RateLimit-Reset"],
+  }),
+);
+
+// Per-address limits on this API (Ponder's own /health, /ready, /status and /metrics are
+// registered before these routes and aren't limited). GraphQL gets a tighter bucket: one query
+// can do far more work than a REST lookup. The web app's server-side fetches present
+// INDEXER_SERVER_KEY instead, since they all arrive from Vercel's shared addresses.
+app.use(
+  "*",
+  rateLimit({
+    rest: new RateLimiter({ perMinute: positiveInt(process.env.RATE_LIMIT_PER_MIN, 120) }),
+    graphql: new RateLimiter({ perMinute: positiveInt(process.env.RATE_LIMIT_GRAPHQL_PER_MIN, 60) }),
+    serverKey: process.env.INDEXER_SERVER_KEY || undefined,
+  }),
+);
 
 // Until historical sync completes, tables are partial and every answer would be confidently
 // wrong ("not registered", "available"). Gate all routes on the same flag Ponder's /ready reads:

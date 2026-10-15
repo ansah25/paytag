@@ -36,6 +36,14 @@ export const RESERVED_USERNAMES = new Set([
   'available',
 ]);
 
+// Off-chain only: first path segments of web pages (paytag.dev/<segment>) added after the
+// registry was deployed. On-chain names live under /on-chain/<name>, so these can't collide
+// there, and they deliberately have no entry in the immutable on-chain blocklist above.
+export const ROUTE_RESERVED_USERNAMES = new Set(['status']);
+
+export const isReservedUsername = (username: string): boolean =>
+  RESERVED_USERNAMES.has(username) || ROUTE_RESERVED_USERNAMES.has(username);
+
 const PG_UNIQUE_VIOLATION = '23505';
 
 export interface UserRecord {
@@ -63,7 +71,7 @@ export const validateUsername = (username: string): void => {
       'USERNAME_INVALID_FORMAT',
     );
   }
-  if (RESERVED_USERNAMES.has(username)) {
+  if (isReservedUsername(username)) {
     throw new BadRequestError('That username is reserved', 'USERNAME_RESERVED');
   }
 };
@@ -93,7 +101,7 @@ export const generateSuggestions = async (
   const suggestions: string[] = [];
   for (const candidate of candidates) {
     if (suggestions.length >= count) break;
-    if (!USERNAME_REGEX.test(candidate) || RESERVED_USERNAMES.has(candidate)) continue;
+    if (!USERNAME_REGEX.test(candidate) || isReservedUsername(candidate)) continue;
     if (await isUsernameAvailable(candidate)) suggestions.push(candidate);
   }
   return suggestions;
