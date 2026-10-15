@@ -6,7 +6,7 @@
 //
 //   node scripts/export-abis.mjs          write the files
 //   node scripts/export-abis.mjs --check  exit 1 if any committed file is stale
-// Run `forge build` in contracts/ first. The ABI is frozen at tag v0.1.0-contracts, so --check
+// Run `forge build` in contracts/ first. The ABI is frozen at tag v0.2.0-contracts, so --check
 // failing in CI means something changed without the generated copies being regenerated.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
