@@ -15,10 +15,10 @@ Replace `0x4f3edf83…d8a3c2` with `@derrick`. Paytag maps one human-readable na
 
 ## Live
 
-- **API:** <https://api.paytag.dev>
+- **API:** [api.paytag.dev](https://api.paytag.dev/health). Try [`/resolve/derrick`](https://api.paytag.dev/resolve/derrick)
 - **dApp:** <https://www.paytag.dev>. On-chain names at [`/on-chain`](https://www.paytag.dev/on-chain); live health at [`/status`](https://www.paytag.dev/status)
 - **SDK:** [`@paytagdev/sdk`](https://www.npmjs.com/package/@paytagdev/sdk) on npm
-- **On-chain indexer:** <https://indexer.paytag.dev>. Try [`/resolve/derrick`](https://indexer.paytag.dev/resolve/derrick) or [`/status`](https://indexer.paytag.dev/status)
+- **On-chain indexer:** [indexer.paytag.dev](https://indexer.paytag.dev/status). Try [`/resolve/derrick`](https://indexer.paytag.dev/resolve/derrick) or [`/status`](https://indexer.paytag.dev/status)
 - **Contracts (Base Sepolia):** [`PaytagRegistry`](https://sepolia.basescan.org/address/0xc465e47338d38bfe176c185b590ff0b064d15012#code) · [`PaytagResolver`](https://sepolia.basescan.org/address/0xdd088c3885ee68a9e1cdb16610c1689f21d29142#code)
 
 ## SDK
