@@ -1,11 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { useAccount, useConnect, useDisconnect } from 'wagmi';
+import { useConnect, useDisconnect } from 'wagmi';
 import { Button } from '@/components/ui/Button';
 import { Notice } from '@/components/ui/Notice';
 import { shortAddress } from '@/lib/format';
 import { walletErrorMessage } from '@/lib/pay/errors';
+import { useHydratedAccount } from '@/lib/onchain/useHydratedAccount';
 import { ONCHAIN_CHAIN } from '@/lib/onchain/useOnchainTx';
 
 const NO_WALLET = 'No browser wallet detected. Install MetaMask, Rabby or another browser wallet.';
@@ -52,7 +53,7 @@ export function WalletBar({
   switchToBase: () => Promise<unknown>;
   switching: boolean;
 }) {
-  const { address, status } = useAccount();
+  const { address, status } = useHydratedAccount();
   const { disconnect } = useDisconnect();
   const { connect, connecting, error } = useConnectWallet();
   const [switchError, setSwitchError] = useState<string | null>(null);

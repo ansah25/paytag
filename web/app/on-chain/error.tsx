@@ -1,0 +1,31 @@
+'use client';
+
+import { useEffect } from 'react';
+import { MessageScreen } from '@/components/MessageScreen';
+import { INDEXER_URL } from '@/lib/onchain/indexer';
+
+/** On-chain pages read the indexer, not the Paytag API, so say that (and where to check). */
+export default function OnchainError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
+
+  const host = INDEXER_URL.replace(/^https?:\/\//, '');
+  return (
+    <MessageScreen
+      kicker="Something broke"
+      title="We couldn’t load this page."
+      copy="Your names and records are safe on Base; this page just couldn’t show them. Try again, or check the status page."
+      primary={{ label: 'Try again', onClick: reset }}
+      footnote={
+        <>
+          {error.digest && `ref ${error.digest} · `}
+          {host} ·{' '}
+          <a className="underline hover:text-ink" href="/status">
+            status
+          </a>
+        </>
+      }
+    />
+  );
+}

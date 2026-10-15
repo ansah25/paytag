@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { ChainDot } from '@/components/ui/ChainDot';
 import { normalizeName } from '@/lib/onchain/generated/names';
-import { INDEXER_URL } from '@/lib/onchain/indexer';
+import { indexerServerFetch } from '@/lib/onchain/serverIndexer';
 import { RECORD_SLOTS, addressUrl } from '@/lib/onchain/records';
 
 // Rendered on the server from the indexer on every request: works with no wallet and no JS.
@@ -25,7 +25,7 @@ type Load =
 
 async function load(name: string): Promise<Load> {
   try {
-    const res = await fetch(`${INDEXER_URL}/resolve/${encodeURIComponent(name)}`, { cache: 'no-store' });
+    const res = await indexerServerFetch(`/resolve/${encodeURIComponent(name)}`);
     if (res.status === 404) return { kind: 'missing' };
     if (res.status === 503) return { kind: 'syncing' };
     if (!res.ok) return { kind: 'error' };
@@ -35,7 +35,7 @@ async function load(name: string): Promise<Load> {
     let primary = false;
     const eth = data.addresses.ethereum;
     if (eth) {
-      const rev = await fetch(`${INDEXER_URL}/reverse/${eth}`, { cache: 'no-store' }).catch(() => null);
+      const rev = await indexerServerFetch(`/reverse/${eth}`).catch(() => null);
       const body = rev?.ok ? ((await rev.json()) as { username: string | null }) : null;
       primary = body?.username === data.username;
     }

@@ -2,7 +2,7 @@ import './setup';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { keccak256, toUtf8Bytes } from 'ethers';
-import { RESERVED_USERNAMES } from '../src/services/userService';
+import { RESERVED_USERNAMES, ROUTE_RESERVED_USERNAMES } from '../src/services/userService';
 
 // The on-chain registry hard-codes keccak256 hashes of the reserved usernames and is immutable,
 // so the two lists can only drift by someone editing RESERVED_USERNAMES. This test makes that
@@ -16,6 +16,12 @@ describe('reserved usernames match the on-chain PaytagRegistry blocklist', () =>
 
   it.each([...RESERVED_USERNAMES])('"%s" is blocked on-chain', (name) => {
     expect(onChainHashes.has(keccak256(toUtf8Bytes(name)))).toBe(true);
+  });
+
+  it('off-chain route names are kept out of the on-chain list', () => {
+    for (const name of ROUTE_RESERVED_USERNAMES) {
+      expect(RESERVED_USERNAMES.has(name)).toBe(false);
+    }
   });
 
   it('the contract blocks nothing the API does not reserve', () => {

@@ -2,7 +2,7 @@
 
 import { useCallback, useReducer, useRef } from 'react';
 import type { Address, Hash, Hex, SimulateContractParameters } from 'viem';
-import { useAccount, usePublicClient, useSwitchChain, useWriteContract } from 'wagmi';
+import { usePublicClient, useSwitchChain, useWriteContract } from 'wagmi';
 import { baseSepolia } from 'wagmi/chains';
 import { PaytagRegistryAbi } from './generated/PaytagRegistryAbi';
 import { PaytagResolverAbi } from './generated/PaytagResolverAbi';
@@ -10,6 +10,7 @@ import { REGISTRY_ADDRESS, RESOLVER_ADDRESS } from './generated/deployment';
 import { decodeTxError, type ErrorContext, type TxError } from './errors';
 import { waitForIndexer } from './indexer';
 import { IDLE, isBusy, txReducer, type TxState } from './txMachine';
+import { useHydratedAccount } from './useHydratedAccount';
 
 export const ONCHAIN_CHAIN = baseSepolia;
 
@@ -57,7 +58,7 @@ export interface RunCallbacks {
  */
 export function useOnchainTx() {
   const [state, dispatch] = useReducer(txReducer, IDLE);
-  const { address, chainId, status } = useAccount();
+  const { address, chainId, status } = useHydratedAccount();
   const publicClient = usePublicClient({ chainId: ONCHAIN_CHAIN.id });
   const { writeContractAsync } = useWriteContract();
   const { switchChainAsync, isPending: switching } = useSwitchChain();

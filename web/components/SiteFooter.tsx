@@ -5,7 +5,7 @@ import { resolveRoute } from '@/lib/routes';
 
 const LINKS = [
   { label: 'Docs', href: 'https://github.com/ansah25/paytag/tree/main/packages/sdk#readme' },
-  { label: 'Status', href: 'https://api.paytag.dev/health' },
+  { label: 'Status', href: '/status' },
   { label: 'GitHub', href: 'https://github.com/ansah25/paytag' },
   // TODO: add "Terms" once a terms page exists (spec: Docs · Status · GitHub · Terms).
 ];
@@ -27,8 +27,7 @@ export function SiteFooter() {
                 <a
                   key={link.label}
                   href={link.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  {...(link.href.startsWith('http') ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                   // Negative margin keeps the design's line height while giving a 40px hit area.
                   className="-my-2.5 py-2.5 text-ink2 transition-colors hover:text-ink"
                 >

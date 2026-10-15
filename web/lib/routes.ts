@@ -25,7 +25,8 @@ const MANAGE_ONCHAIN: NavItem = { href: '/on-chain/my-names', label: 'My names' 
 
 // First path segments owned by real routes. Any other single segment is a
 // public profile at /[username]. `on-chain` can never be a username (no hyphens allowed).
-const STATIC_SEGMENTS = new Set(['send', 'app', 'claim', 'welcome', 'pay', 'ui-kit', 'on-chain']);
+// `status` is reserved off-chain by the API (ROUTE_RESERVED_USERNAMES) so no profile can sit under it.
+const STATIC_SEGMENTS = new Set(['send', 'app', 'claim', 'welcome', 'pay', 'ui-kit', 'on-chain', 'status']);
 
 export function resolveRoute(pathname: string): RouteContext {
   const segments = pathname.toLowerCase().split('/').filter(Boolean);
@@ -45,6 +46,9 @@ export function resolveRoute(pathname: string): RouteContext {
       cta: second === 'my-names' ? { href: '/on-chain', label: 'Register a name' } : null,
       hideSignIn: true,
     };
+  }
+  if (first === 'status') {
+    return { kind: 'other', section: 'Status', nav: [ONCHAIN, HOME], cta: CLAIM_A_NAME, hideSignIn: false };
   }
   if (first === 'send') {
     return { kind: 'send', section: 'Send', nav: [DASHBOARD, HOME], cta: CLAIM_A_NAME, hideSignIn: false };
