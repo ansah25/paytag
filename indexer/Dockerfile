@@ -4,7 +4,8 @@
 #   PONDER_RPC_URL_84532  Base Sepolia RPC
 #   DATABASE_URL          Postgres connection string (without it Ponder would silently use
 #                         ephemeral PGlite inside the container)
-#   DATABASE_SCHEMA       Postgres schema for this deployment, e.g. "paytag_v1"
+#   DATABASE_SCHEMA       Schema prefix, e.g. "paytag". Each container runs on
+#                         "<prefix>_<random id per container>" (see docker-start.sh).
 # Optional: PORT (default 42069)
 FROM node:22.12-slim
 
@@ -26,4 +27,4 @@ EXPOSE 42069
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10m --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||42069)+'/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["sh", "-c", ": \"${PONDER_RPC_URL_84532:?set PONDER_RPC_URL_84532}\" \"${DATABASE_URL:?set DATABASE_URL}\"; exec npx ponder start --schema \"${DATABASE_SCHEMA:?set DATABASE_SCHEMA}\""]
+CMD ["sh", "docker-start.sh"]
