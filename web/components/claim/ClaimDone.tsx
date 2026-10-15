@@ -70,7 +70,7 @@ export function ClaimDone({ username, createdAt, resolution }: Props) {
               {username.charAt(0)}
             </span>
             <div className="min-w-0">
-              <div className="truncate font-display text-[22px] font-semibold tracking-display">@{username}</div>
+              <div className="truncate font-mono text-[20px] font-medium">@{username}</div>
               {memberSince && <div className="font-mono text-xs text-ink2">member since {memberSince}</div>}
             </div>
           </div>

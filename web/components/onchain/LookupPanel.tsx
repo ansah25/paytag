@@ -73,7 +73,7 @@ export function LookupPanel() {
           {result.username ? (
             <>
               is{' '}
-              <Link className="font-semibold text-ink underline" href={`/on-chain/${result.username}`}>
+              <Link className="font-mono font-medium text-ink underline" href={`/on-chain/${result.username}`}>
                 @{result.username}
               </Link>
             </>

@@ -442,7 +442,7 @@ export function PayFlow({
         <div className="text-xs font-bold uppercase tracking-label text-ink3">Review before you sign</div>
         <dl className="rounded-inset-xl bg-surface2 px-5 py-1.5">
           <ReviewRow term="To">
-            <span className="text-sm font-bold">@{username}</span>
+            <span className="font-mono text-sm font-medium">@{username}</span>
             <span className="mt-0.5 block font-mono text-xs text-ink2">
               <span className="font-bold text-ink">{head}</span>…<span className="font-bold text-ink">{tail}</span>
             </span>

@@ -62,7 +62,7 @@ export function PointedNames({
             <li key={n.node} className="flex flex-wrap items-center gap-3 border-t border-line py-3 first:border-t-0">
               <div className="grid min-w-0 gap-0.5">
                 <span className="flex flex-wrap items-center gap-2.5">
-                  <a href={`/on-chain/${n.name}`} className="break-all font-display text-[20px] font-semibold leading-tight hover:underline">
+                  <a href={`/on-chain/${n.name}`} className="break-all font-mono text-[19px] font-medium leading-tight hover:underline">
                     @{n.name}
                   </a>
                   {isPrimary && <Badge>Primary name</Badge>}

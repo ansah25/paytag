@@ -186,6 +186,17 @@ describe('Paytag.resolve — caching', () => {
 });
 
 describe('Paytag.resolve — errors', () => {
+  it('rejects non-ASCII lookalikes and Unicode whitespace without a request', async () => {
+    const fetchMock = jest.fn();
+    const client = new Paytag({ baseUrl, fetch: fetchMock });
+    // U+212A KELVIN SIGN lowercases to ASCII "k" under String#toLowerCase.
+    for (const raw of ['\u212Aate', '\u3000kate', 'kate\uFEFF']) {
+      await expect(client.resolve(raw)).rejects.toMatchObject({ code: 'INVALID_USERNAME' });
+    }
+    await expect(client.resolve(' \t@Kate ')).rejects.toBeDefined(); // reaches fetch, which isn't mocked
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('throws PaytagError USER_NOT_FOUND on 404', async () => {
     const fetchMock = jest.fn(async () =>
       mockResponse(false, 404, { error: 'Username not found', code: 'USER_NOT_FOUND' }),

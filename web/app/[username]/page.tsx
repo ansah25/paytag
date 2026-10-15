@@ -92,7 +92,7 @@ export default function ProfilePage({ params }: Props) {
           {name.charAt(0)}
         </span>
         <div className="min-w-0">
-          <h1 className="break-all font-display text-[clamp(36px,5vw,60px)] font-semibold leading-none tracking-display-lg">
+          <h1 className="break-all font-mono text-[clamp(32px,4.5vw,52px)] font-medium leading-none">
             @{name}
           </h1>
           {resolution.displayName && (

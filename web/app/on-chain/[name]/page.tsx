@@ -87,7 +87,7 @@ export default async function OnchainNamePage({ params }: Props) {
     <section className="mx-auto grid w-full max-w-content gap-7 px-6 pb-24 pt-12">
       <div className="animate-enter">
         <span className="font-mono text-[12px] uppercase tracking-kicker text-ink2">Base Sepolia · on-chain</span>
-        <h1 className="mt-2 break-all font-display text-[clamp(36px,5vw,60px)] font-semibold leading-none tracking-display-lg">
+        <h1 className="mt-2 break-all font-mono text-[clamp(32px,4.5vw,52px)] font-medium leading-none">
           @{data.username}
         </h1>
         <div className="mt-3 flex flex-wrap items-center gap-2.5 text-sm text-ink2">

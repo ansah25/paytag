@@ -6,12 +6,12 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { api, type AvailabilityResponse } from '@/lib/api';
 import { cx } from '@/lib/cx';
+import { USERNAME_PATTERN, normalizeUsername } from '@/lib/username';
 import { Button } from './ui/Button';
 import { Field, type FieldStatus } from './ui/Field';
 
-export const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
-
-export const normalizeUsername = (value: string) => value.trim().toLowerCase().replace(/^@/, '');
+// Re-exported so existing imports keep working; the rules live (and are tested) in lib/username.
+export { USERNAME_PATTERN, normalizeUsername } from '@/lib/username';
 
 export type ClaimStatus = 'idle' | 'checking' | 'available' | 'taken' | 'reserved' | 'invalid' | 'offline';
 

@@ -181,7 +181,7 @@ export default function SendPage() {
                     {r.name.charAt(0)}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-bold">@{r.name}</span>
+                    <span className="block truncate font-mono text-[15px] font-medium">@{r.name}</span>
                     <span className="mt-px block text-xs text-ink3">{timeAgo(r.at)}</span>
                   </span>
                   <span aria-hidden className="text-[13px] text-ink2">
@@ -234,7 +234,7 @@ export default function SendPage() {
               {resolution.username.charAt(0)}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="truncate font-display text-xl font-semibold tracking-display">
+              <div className="truncate font-mono text-xl font-medium">
                 @{resolution.username}
               </div>
               <div className="mt-0.5 text-[13px] text-ink2">

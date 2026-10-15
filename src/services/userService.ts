@@ -58,11 +58,12 @@ export interface UserRecord {
 
 export const USER_COLUMNS = 'id, username, owner_wallet, created_at, display_name, bio, avatar_url';
 
-// Lowercase ASCII A-Z only. String#toLowerCase also folds some non-ASCII characters into ASCII
-// (the Kelvin sign U+212A becomes "k"), which would let input the on-chain registry rejects
-// pass here. Leaving non-ASCII untouched makes USERNAME_REGEX reject it, matching the contract.
+// Trim ASCII whitespace and lowercase ASCII A-Z only. String#trim also strips Unicode whitespace
+// and String#toLowerCase folds some non-ASCII characters into ASCII (the Kelvin sign U+212A
+// becomes "k"), which would let input the on-chain registry rejects pass here. Leaving non-ASCII
+// untouched makes USERNAME_REGEX reject it, matching the contract.
 export const normalizeUsername = (username: string): string =>
-  username.trim().replace(/[A-Z]/g, (c) => c.toLowerCase());
+  username.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, '').replace(/[A-Z]/g, (c) => c.toLowerCase());
 
 export const validateUsername = (username: string): void => {
   if (!USERNAME_REGEX.test(username)) {

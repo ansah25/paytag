@@ -185,7 +185,7 @@ export function NameCard({
     <Card className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-          <a href={`/on-chain/${name}`} className="break-all font-display text-[26px] font-semibold leading-none hover:underline">
+          <a href={`/on-chain/${name}`} className="break-all font-mono text-[24px] font-medium leading-none hover:underline">
             @{name}
           </a>
           {isPrimary && <Badge>Primary name</Badge>}

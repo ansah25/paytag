@@ -231,7 +231,7 @@ export function Dashboard() {
           </span>
           <div className="min-w-0">
             <div className="text-[13px] font-semibold text-ink2">Your paytag</div>
-            <h1 className="mt-1 break-all font-display text-[clamp(32px,4.5vw,52px)] font-semibold leading-none tracking-display-lg">
+            <h1 className="mt-1 break-all font-mono text-[clamp(28px,4vw,46px)] font-medium leading-none">
               @{name}
             </h1>
           </div>
