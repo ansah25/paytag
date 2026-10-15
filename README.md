@@ -43,7 +43,7 @@ flowchart TD
   U["User + browser wallet"] --> W["Web app<br/>paytag.dev"]
   W -->|"signed tx"| C["PaytagRegistry + PaytagResolver<br/>Base Sepolia, immutable"]
   C -->|"events"| I["Ponder indexer<br/>+ Postgres"]
-  I -->|"REST, rate-limited"| S["@paytagdev/sdk"]
+  I -->|"REST"| S["@paytagdev/sdk"]
   I -->|"REST + GraphQL"| W
   S --> W
   S --> X["Any app"]
@@ -52,7 +52,7 @@ flowchart TD
 ```
 
 - **Base is canonical.** Ownership lives only in the registry; Solana, Bitcoin and other EVM chains are *records* on the name (ENSIP-9 coin types), never parallel deployments.
-- **The contracts are immutable and admin-free.** The indexer is a read model that can be rebuilt from chain events at any time; it refuses to answer (503) until its backfill completes rather than serve partial data.
+- **The contracts are immutable and admin-free.** The indexer is a read model that can be rebuilt from chain events at any time; it refuses to answer (503) until its backfill completes rather than serve partial data, and its API is rate-limited per address.
 - **One SDK, two sources.** `resolve()` reads the off-chain API (the original MVP), `resolveViaIndexer()` the on-chain registry, with the same response shape.
 - **[`/status`](https://www.paytag.dev/status)** probes the API, the indexer (lag vs. chain head) and the contracts live.
 
