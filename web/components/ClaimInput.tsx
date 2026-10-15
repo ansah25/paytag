@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { api, type AvailabilityResponse } from '@/lib/api';
 import { cx } from '@/lib/cx';
-import { USERNAME_PATTERN, normalizeUsername } from '@/lib/username';
+import { USERNAME_PATTERN, normalizeUsername, sanitizeNameInput } from '@/lib/username';
 import { Button } from './ui/Button';
 import { Field, type FieldStatus } from './ui/Field';
 
@@ -150,7 +150,7 @@ export function ClaimInput({
         at
         status={FIELD_STATUS[status]}
         value={value}
-        onChange={(e) => setValue(e.target.value.toLowerCase().replace(/^@/, '').replace(/\s/g, ''))}
+        onChange={(e) => setValue(sanitizeNameInput(e.target.value))}
         placeholder="yourname"
         maxLength={20}
         autoCapitalize="off"

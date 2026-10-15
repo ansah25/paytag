@@ -193,8 +193,12 @@ describe('Paytag.resolve — errors', () => {
     for (const raw of ['\u212Aate', '\u3000kate', 'kate\uFEFF']) {
       await expect(client.resolve(raw)).rejects.toMatchObject({ code: 'INVALID_USERNAME' });
     }
-    await expect(client.resolve(' \t@Kate ')).rejects.toBeDefined(); // reaches fetch, which isn't mocked
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const ok = jest.fn(async () => mockResponse(true, 200, { username: 'kate', addresses: {} }));
+    const client2 = new Paytag({ baseUrl, fetch: ok });
+    await client2.resolve(' \t@Kate ');
+    expect(String((ok.mock.calls[0] as unknown[])[0])).toMatch(/\/resolve\/kate$/);
   });
 
   it('throws PaytagError USER_NOT_FOUND on 404', async () => {

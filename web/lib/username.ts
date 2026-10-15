@@ -5,9 +5,19 @@
 
 export const USERNAME_PATTERN = /^[a-z0-9_]{3,20}$/;
 
-/** Trim ASCII whitespace, drop one leading "@", lowercase ASCII A–Z. Anything else is left for the pattern to reject. */
+const lowerAscii = (value: string) => value.replace(/[A-Z]/g, (c) => c.toLowerCase());
+
+/**
+ * Trim ASCII whitespace, drop one leading "@", lowercase ASCII A–Z. Anything else is left for the
+ * pattern to reject. (The API itself doesn't strip "@"; clients do before calling it.)
+ */
 export const normalizeUsername = (value: string): string =>
-  value
-    .replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, '')
-    .replace(/^@/, '')
-    .replace(/[A-Z]/g, (c) => c.toLowerCase());
+  lowerAscii(value.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, '').replace(/^@/, ''));
+
+/**
+ * What a name input keeps as the user types or pastes: ASCII whitespace removed anywhere, one
+ * leading "@" dropped, ASCII A–Z lowercased. Non-ASCII stays visible, so the field shows exactly
+ * what will be rejected instead of silently folding it into a different name.
+ */
+export const sanitizeNameInput = (value: string): string =>
+  lowerAscii(value.replace(/^@/, '').replace(/[ \t\n\r\f\v]/g, ''));

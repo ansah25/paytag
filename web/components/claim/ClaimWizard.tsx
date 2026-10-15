@@ -20,6 +20,7 @@ import {
 import { clearAuth, getAuth, saveAuth, updateAuth } from '@/lib/auth';
 import { cx } from '@/lib/cx';
 import { shortAddress } from '@/lib/format';
+import { normalizeUsername } from '@/lib/username';
 import { walletErrorMessage } from '@/lib/pay/errors';
 import { ClaimDone } from './ClaimDone';
 
@@ -65,7 +66,7 @@ interface Props {
 
 export function ClaimWizard({ username: routeName }: Props) {
   const router = useRouter();
-  const username = routeName ? routeName.toLowerCase() : null;
+  const username = routeName ? normalizeUsername(routeName) : null;
   const { address, status: walletStatus } = useAccount();
   const { connectors, connectAsync } = useConnect();
   const { disconnect } = useDisconnect();

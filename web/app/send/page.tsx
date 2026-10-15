@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { normalizeUsername, USERNAME_PATTERN } from '@/components/ClaimInput';
+import { normalizeUsername, sanitizeNameInput, USERNAME_PATTERN } from '@/lib/username';
 import { PayPanel } from '@/components/PayPanel';
 import { ChainDot } from '@/components/ui/ChainDot';
 import { Field, type FieldStatus } from '@/components/ui/Field';
@@ -132,7 +132,7 @@ export default function SendPage() {
           at
           status={FIELD_STATUS[status]}
           value={value}
-          onChange={(e) => setValue(e.target.value.toLowerCase().replace(/^@/, '').replace(/\s/g, ''))}
+          onChange={(e) => setValue(sanitizeNameInput(e.target.value))}
           placeholder="username"
           maxLength={20}
           autoCapitalize="off"

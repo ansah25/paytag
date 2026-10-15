@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { USERNAME_PATTERN, normalizeUsername } from './username';
+import { USERNAME_PATTERN, normalizeUsername, sanitizeNameInput } from './username';
+
+// Escapes, not literal characters: these look identical to ASCII in an editor.
+const KELVIN = 'K'; // KELVIN SIGN, lowercases to ASCII "k" under String#toLowerCase
+const IDEOGRAPHIC_SPACE = '　';
+const ZWNBSP = '﻿';
+const NBSP = ' ';
+const CAPITAL_I_DOT = 'İ'; // lowercases to "i" + combining dot
 
 const valid = (raw: string) => USERNAME_PATTERN.test(normalizeUsername(raw));
 
@@ -9,15 +16,27 @@ describe('normalizeUsername', () => {
     expect(normalizeUsername('\tKATE\n')).toBe('kate');
   });
 
-  it('never folds non-ASCII into ASCII (Kelvin sign U+212A is not "k")', () => {
-    expect(normalizeUsername('Kate')).toBe('Kate');
-    expect(valid('Kate')).toBe(false);
-    expect(valid('İnan')).toBe(false); // U+0130 lowercases to "i" + combining dot
+  it('never folds non-ASCII into ASCII', () => {
+    expect(normalizeUsername(`${KELVIN}ate`)).toBe(`${KELVIN}ate`);
+    expect(valid(`${KELVIN}ate`)).toBe(false);
+    expect(valid(`${CAPITAL_I_DOT}nan`)).toBe(false);
   });
 
   it('leaves Unicode whitespace for the pattern to reject', () => {
-    expect(valid('　kate')).toBe(false); // ideographic space
-    expect(valid('kate﻿')).toBe(false); // zero-width no-break space
-    expect(valid(' kate')).toBe(false); // no-break space
+    expect(valid(`${IDEOGRAPHIC_SPACE}kate`)).toBe(false);
+    expect(valid(`kate${ZWNBSP}`)).toBe(false);
+    expect(valid(`${NBSP}kate`)).toBe(false);
+  });
+});
+
+describe('sanitizeNameInput', () => {
+  it('removes ASCII whitespace anywhere, drops a leading @ and lowercases ASCII', () => {
+    expect(sanitizeNameInput('@De rrick\t')).toBe('derrick');
+  });
+
+  it('keeps non-ASCII visible instead of folding it into another name', () => {
+    expect(sanitizeNameInput(`${KELVIN}ate`)).toBe(`${KELVIN}ate`);
+    expect(sanitizeNameInput(`kate${NBSP}`)).toBe(`kate${NBSP}`);
+    expect(USERNAME_PATTERN.test(sanitizeNameInput(`${KELVIN}ate`))).toBe(false);
   });
 });
