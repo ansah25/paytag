@@ -135,7 +135,9 @@ cd indexer && npm install
 PONDER_RPC_URL_84532=<base-sepolia-rpc> npm run dev
 ```
 
-Production runs the [`Dockerfile`](indexer/Dockerfile) with `DATABASE_URL`, `DATABASE_SCHEMA` and `PONDER_RPC_URL_84532` set; it uses about 200 MB of RAM. Optional: `INDEXER_SERVER_KEY` (a long random secret, also set in the web app's environment), and `RATE_LIMIT_PER_MIN` / `RATE_LIMIT_GRAPHQL_PER_MIN` to change the defaults (120 / 60).
+Production runs the [`Dockerfile`](indexer/Dockerfile) with `DATABASE_URL`, `DATABASE_SCHEMA` (a prefix, e.g. `paytag`) and `PONDER_RPC_URL_84532` set; it uses about 200 MB of RAM. Optional: `INDEXER_SERVER_KEY` (a long random secret, also set in the web app's environment), and `RATE_LIMIT_PER_MIN` / `RATE_LIMIT_GRAPHQL_PER_MIN` to change the defaults (120 / 60).
+
+**Schemas and deploys.** Ponder stamps a schema with a build ID derived from the indexer's code, and `ponder start` refuses a schema created by a different build ("previously used by a different Ponder app"). The image therefore runs on `<DATABASE_SCHEMA>_<hash>`, where the hash covers every file that feeds the build ID (`src/`, `abis/`, the config, schema and deployment files, and the lockfile); the startup log prints the name. A code change gets a fresh schema that syncs from the deploy block while the previous container keeps serving (Coolify switches over once `/ready` passes); redeploying the same code reuses its schema. Old schemas stay behind: `npx ponder db list` inside the running container lists deployments, and `npx ponder db prune` drops every schema whose deployment isn't running.
 
 Operational note: Ponder's own logs print the full RPC URL when an RPC request fails, and with Alchemy that includes the API key. The key never reaches HTTP clients, but treat the indexer's logs as secret, or use a key restricted to this app.
 
