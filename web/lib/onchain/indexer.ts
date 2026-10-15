@@ -69,6 +69,86 @@ export const indexer = {
   },
 };
 
+/** A name you don't own whose Ethereum record points at your wallet, so it can be your primary name. */
+export interface PointingName {
+  name: string;
+  node: `0x${string}`;
+  owner: string;
+}
+
+/** At most this many names are listed; the GraphQL queries ask for exactly this page size. */
+export const POINTING_LIMIT = 50;
+
+type GqlRecord = { node: string; updatedOrdinal: string };
+type GqlName = { node: string; name: string; owner: string; lastTransferOrdinal: string };
+
+const RECORDS_POINTING_AT = `query RecordsPointingAt($value: String!) {
+  recordss(where: { coinType: "60", value: $value }, limit: ${POINTING_LIMIT}) { items { node updatedOrdinal } }
+}`;
+const NAMES_BY_NODE = `query NamesByNode($nodes: [String!]!) {
+  namess(where: { node_in: $nodes }, limit: ${POINTING_LIMIT}) { items { node name owner lastTransferOrdinal } }
+}`;
+
+async function gql<T>(query: string, variables: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`${INDEXER_URL}/graphql`, {
+      method: 'POST',
+      signal,
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ query, variables }),
+    });
+  } catch (err) {
+    if ((err as Error)?.name === 'AbortError') throw err;
+    throw new IndexerError('The indexer is unreachable.', 'NETWORK_ERROR');
+  }
+  const body = (await res.json().catch(() => null)) as { data?: T; errors?: unknown[] } | null;
+  if (!res.ok || !body?.data || body.errors?.length) {
+    throw new IndexerError(`Indexer GraphQL query failed (${res.status})`, 'GRAPHQL_ERROR', res.status);
+  }
+  return body.data;
+}
+
+/**
+ * Joins the two GraphQL results into the names `account` can claim but doesn't own. A record
+ * written before the name's latest transfer is stale: the indexer's /reverse ignores it (stricter
+ * than the contract), so offering it would set a primary name that never shows up.
+ */
+export function pointingNames(records: GqlRecord[], names: GqlName[], account: string): PointingName[] {
+  const me = account.toLowerCase();
+  const byNode = new Map(names.map((n) => [n.node.toLowerCase(), n]));
+  const out: PointingName[] = [];
+  for (const r of records) {
+    const n = byNode.get(r.node.toLowerCase());
+    if (!n || n.owner.toLowerCase() === me) continue;
+    try {
+      if (BigInt(r.updatedOrdinal) < BigInt(n.lastTransferOrdinal)) continue;
+    } catch {
+      continue; // malformed ordinal: don't offer it
+    }
+    out.push({ name: n.name, node: n.node.toLowerCase() as `0x${string}`, owner: n.owner });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Names whose (non-stale) Ethereum record is `account`, excluding names `account` owns. */
+export async function namesPointingAt(account: string, signal?: AbortSignal): Promise<PointingName[]> {
+  const { recordss } = await gql<{ recordss: { items: GqlRecord[] } }>(
+    RECORDS_POINTING_AT,
+    { value: account.toLowerCase() },
+    signal,
+  );
+  const records = recordss?.items ?? [];
+  if (records.length === 0) return [];
+  const { namess } = await gql<{ namess: { items: GqlName[] } }>(
+    NAMES_BY_NODE,
+    { nodes: records.map((r) => r.node.toLowerCase()) },
+    signal,
+  );
+  return pointingNames(records, namess?.items ?? [], account);
+}
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**

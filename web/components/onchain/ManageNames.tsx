@@ -4,14 +4,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { indexer, type OwnedName } from '@/lib/onchain/indexer';
+import { indexer, namesPointingAt, type OwnedName, type PointingName } from '@/lib/onchain/indexer';
 import { useOnchainTx } from '@/lib/onchain/useOnchainTx';
 import { NameCard } from './NameCard';
+import { PointedNames } from './PointedNames';
 import { WalletBar, useConnectWallet } from './WalletBar';
 
 type Load =
   | { kind: 'loading' }
-  | { kind: 'ready'; owner: string; names: OwnedName[]; primary: string | null }
+  | { kind: 'ready'; owner: string; names: OwnedName[]; pointing: PointingName[]; primary: string | null }
   | { kind: 'error' };
 
 /** The connected wallet's names, from the indexer. Reads work on any network; writes need Base Sepolia. */
@@ -27,8 +28,15 @@ export function ManageNames() {
     const controller = new AbortController();
     // Keep showing the list during a same-account refresh; never show another account's names.
     setLoad((l) => (l.kind === 'ready' && l.owner === address ? l : { kind: 'loading' }));
-    Promise.all([indexer.names(address, controller.signal), indexer.reverse(address, controller.signal)])
-      .then(([owned, rev]) => setLoad({ kind: 'ready', owner: address, names: owned.names, primary: rev.username }))
+    // Names that merely point here are a nice-to-have: if that query fails, the section is hidden.
+    const pointing = namesPointingAt(address, controller.signal).catch((err) => {
+      if ((err as Error)?.name === 'AbortError') throw err;
+      return [] as PointingName[];
+    });
+    Promise.all([indexer.names(address, controller.signal), indexer.reverse(address, controller.signal), pointing])
+      .then(([owned, rev, points]) =>
+        setLoad({ kind: 'ready', owner: address, names: owned.names, pointing: points, primary: rev.username }),
+      )
       .catch((err) => {
         if ((err as Error)?.name !== 'AbortError') setLoad({ kind: 'error' });
       });
@@ -81,6 +89,7 @@ export function ManageNames() {
         load.names.map((owned) => (
           <NameCard key={owned.node} owned={owned} account={address} primaryName={load.primary} onChanged={refresh} />
         ))}
+      {load.kind === 'ready' && <PointedNames names={load.pointing} primaryName={load.primary} onChanged={refresh} />}
     </div>
   );
 }
