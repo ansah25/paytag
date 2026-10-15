@@ -16,7 +16,7 @@
     "test:watch": "jest --watch",
     "sdk:build": "npm run build -w @paytagdev/sdk",
     "sdk:test": "npm test -w @paytagdev/sdk",
-    "web:dev": "npm run dev -w paytag-web",
+    "web:dev": "npm run sdk:build && npm run dev -w paytag-web",
     "web:build": "npm run build -w paytag-web"
   },
   "dependencies": {

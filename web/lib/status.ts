@@ -10,7 +10,8 @@ export const MAX_LAG_BLOCKS = 30;
 export const BASE_BLOCK_SECONDS = 2;
 
 const TIMEOUT_MS = 5_000;
-const API_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api.paytag.dev').replace(/\/+$/, '');
+// Same fallback as lib/api.ts, so /status probes the API the app actually uses.
+const API_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
 const RPC_URL = process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC || 'https://sepolia.base.org';
 
 export interface IndexerProbe {
