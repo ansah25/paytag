@@ -122,5 +122,10 @@ jobs:
       - name: Type-check web
         run: npm run -w paytag-web type-check
 
+      # lib/onchain: tx state machine, revert decoding, and the shared codec vectors
+      # (reads indexer/test/vectors.json, which this checkout includes).
+      - name: Test web
+        run: npm run -w paytag-web test
+
       - name: Build web
         run: npm run web:build
