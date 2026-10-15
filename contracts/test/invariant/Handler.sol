@@ -93,7 +93,12 @@ contract Handler is CommonBase, StdCheats, StdUtils {
             bytes32 commitment = registry.makeCommitment(name, actor, SECRET);
             vm.prank(actor);
             registry.commit(commitment);
-            vm.warp(block.timestamp + registry.MIN_COMMITMENT_AGE());
+            // A griefer re-commits the (public) hash just before it matures. It must not delay
+            // the actor's registration: a miss shows up as missedRegistrations.
+            vm.warp(block.timestamp + registry.MIN_COMMITMENT_AGE() - 1);
+            vm.prank(_actor(actorSeed + 1));
+            registry.commit(commitment);
+            vm.warp(block.timestamp + 1);
         }
 
         vm.prank(actor);

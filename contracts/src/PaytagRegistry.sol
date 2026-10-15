@@ -44,7 +44,10 @@ contract PaytagRegistry {
     }
 
     mapping(bytes32 node => NameRecord) private _names;
-    mapping(bytes32 commitment => uint256 committedAt) private _commitments;
+    // Keyed by committer: a commitment hash is public once it's on-chain, so a single shared
+    // mapping would let anyone overwrite (and so restart) someone else's commitment.
+    mapping(address committer => mapping(bytes32 commitment => uint256 committedAt)) private
+        _commitments;
 
     event NameRegistered(bytes32 indexed node, string name, address indexed owner);
     event Transfer(bytes32 indexed node, address indexed from, address indexed to);
@@ -74,9 +77,14 @@ contract PaytagRegistry {
     ///      reveal seen pending can't be raced, because a competing registration would need its
     ///      own commitment to the same name that is already `MIN_COMMITMENT_AGE` old. It doesn't
     ///      stop someone who committed to the same name earlier; that is first-come-first-served
-    ///      working as intended. Re-committing an existing commitment restarts its clock.
+    ///      working as intended.
+    ///
+    ///      Commitments are stored per committer, so nobody can touch another address's
+    ///      commitment; re-committing your own restarts its clock. A reveal that reverts (for
+    ///      example, sent too early) publishes the name, but the commitment survives it, so
+    ///      reveal again promptly.
     function commit(bytes32 commitment) external {
-        _commitments[commitment] = block.timestamp;
+        _commitments[msg.sender][commitment] = block.timestamp;
     }
 
     /// @notice The commitment for registering `name` to `owner_` with `secret`. Normalizes the
@@ -92,9 +100,9 @@ contract PaytagRegistry {
         return keccak256(abi.encode(keccak256(b), owner_, secret));
     }
 
-    /// @notice When `commitment` was made (unix seconds), or 0 if it doesn't exist.
-    function commitmentTime(bytes32 commitment) external view returns (uint256) {
-        return _commitments[commitment];
+    /// @notice When `committer` made `commitment` (unix seconds), or 0 if they haven't.
+    function commitmentTime(address committer, bytes32 commitment) external view returns (uint256) {
+        return _commitments[committer][commitment];
     }
 
     /// @notice Step 2 of registration: registers `name` to the caller, consuming the caller's
@@ -108,7 +116,7 @@ contract PaytagRegistry {
         if (_names[node].owner != address(0)) revert NameTaken(node);
 
         bytes32 commitment = keccak256(abi.encode(node, msg.sender, secret));
-        uint256 committedAt = _commitments[commitment];
+        uint256 committedAt = _commitments[msg.sender][commitment];
         if (committedAt == 0) revert CommitmentNotFound(commitment);
         if (block.timestamp < committedAt + MIN_COMMITMENT_AGE) {
             revert CommitmentTooNew(commitment, committedAt + MIN_COMMITMENT_AGE);
@@ -116,7 +124,7 @@ contract PaytagRegistry {
         if (block.timestamp > committedAt + MAX_COMMITMENT_AGE) {
             revert CommitmentTooOld(commitment, committedAt + MAX_COMMITMENT_AGE);
         }
-        delete _commitments[commitment];
+        delete _commitments[msg.sender][commitment];
 
         // A fresh name: epoch is 0, and no records can exist yet (writes require an owner).
         _names[node].owner = msg.sender;

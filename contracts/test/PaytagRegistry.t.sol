@@ -291,13 +291,13 @@ contract PaytagRegistryTest is PaytagTest {
         bytes32 c = registry.makeCommitment("derrick", alice, SECRET);
         vm.prank(alice);
         registry.commit(c);
-        assertEq(registry.commitmentTime(c), block.timestamp);
+        assertEq(registry.commitmentTime(alice, c), block.timestamp);
     }
 
     function test_register_consumesCommitment() public {
         bytes32 c = registry.makeCommitment("derrick", alice, SECRET);
         _register(registry, alice, "derrick");
-        assertEq(registry.commitmentTime(c), 0);
+        assertEq(registry.commitmentTime(alice, c), 0);
     }
 
     function test_register_revertsWithoutCommitment() public {
@@ -366,6 +366,39 @@ contract PaytagRegistryTest is PaytagTest {
             abi.encodeWithSelector(PaytagRegistry.CommitmentTooOld.selector, c, expiredAt)
         );
         registry.register("derrick", SECRET);
+    }
+
+    function test_commit_othersCannotRestartYourClock() public {
+        // The hash is public once Alice's commit lands; Mallory re-committing it must not touch
+        // Alice's commitment (it only creates one under Mallory, which binds Alice and is useless).
+        _commit(registry, alice, "derrick");
+        bytes32 c = registry.makeCommitment("derrick", alice, SECRET);
+        uint256 committedAt = block.timestamp;
+        vm.warp(block.timestamp + registry.MIN_COMMITMENT_AGE() - 1);
+        vm.prank(mallory);
+        registry.commit(c);
+        assertEq(registry.commitmentTime(alice, c), committedAt);
+
+        vm.warp(block.timestamp + 1);
+        vm.prank(alice);
+        bytes32 node = registry.register("derrick", SECRET);
+        assertEq(registry.owner(node), alice);
+    }
+
+    function test_register_revertedRevealCanBeRetried() public {
+        // A reveal sent too early reverts and publishes the name and secret. Alice's commitment
+        // survives, so she reveals again as soon as it's ready; Mallory's fresh commitment is too
+        // new to race her.
+        _commit(registry, alice, "derrick");
+        vm.prank(alice);
+        vm.expectPartialRevert(PaytagRegistry.CommitmentTooNew.selector);
+        registry.register("derrick", SECRET);
+        _commit(registry, mallory, "derrick");
+
+        vm.warp(block.timestamp + registry.MIN_COMMITMENT_AGE());
+        vm.prank(alice);
+        bytes32 node = registry.register("derrick", SECRET);
+        assertEq(registry.owner(node), alice);
     }
 
     function test_commit_recommitRestartsClock() public {
