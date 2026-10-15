@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { USERNAME_PATTERN, normalizeUsername, sanitizeNameInput } from './username';
 
 // Escapes, not literal characters: these look identical to ASCII in an editor.
-const KELVIN = 'K'; // KELVIN SIGN, lowercases to ASCII "k" under String#toLowerCase
-const IDEOGRAPHIC_SPACE = '　';
-const ZWNBSP = '﻿';
-const NBSP = ' ';
-const CAPITAL_I_DOT = 'İ'; // lowercases to "i" + combining dot
+const KELVIN = '\u212A'; // KELVIN SIGN, lowercases to ASCII "k" under String#toLowerCase
+const IDEOGRAPHIC_SPACE = '\u3000';
+const ZWNBSP = '\uFEFF';
+const NBSP = '\u00A0';
+const CAPITAL_I_DOT = '\u0130'; // lowercases to "i" + combining dot
 
 const valid = (raw: string) => USERNAME_PATTERN.test(normalizeUsername(raw));
 

@@ -24,8 +24,8 @@ describe('userService - username validation', () => {
 
   it('does not fold non-ASCII lookalikes into valid names', () => {
     // U+212A KELVIN SIGN lowercases to ASCII "k" under String#toLowerCase.
-    const kelvin = 'Kelvin';
-    expect(normalizeUsername(kelvin)).toBe('Kelvin');
+    const kelvin = '\u212Aelvin';
+    expect(normalizeUsername(kelvin)).toBe('\u212Aelvin');
     expect(() => validateUsername(normalizeUsername(kelvin))).toThrow(BadRequestError);
   });
 
