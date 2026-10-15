@@ -117,7 +117,7 @@ export function RegisterPanel() {
 
   const suggestions = check.kind === 'result' && !justRegistered ? check.result.suggestions : [];
   const action = !tx.connected ? (
-    <Button size={48} onClick={connect} loading={connecting}>
+    <Button size={48} onClick={connect} loading={connecting || tx.checking}>
       Connect wallet
     </Button>
   ) : tx.wrongNetwork ? (

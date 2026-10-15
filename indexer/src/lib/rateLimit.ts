@@ -1,8 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
+import type { MiddlewareHandler } from "hono";
 
 // Per-client token buckets, in memory. One indexer instance serves the API, so a process-local
-// limiter is enough; a restart simply refills everyone. Kept free of Hono so it can be tested
-// with a fake clock.
+// limiter is enough; a restart simply refills everyone. The limiter takes an injected clock, and
+// the Hono middleware below takes its limiters, so both are tested without Ponder.
 
 export interface BucketConfig {
   /** Requests allowed per minute; also the burst size. */
@@ -25,12 +26,15 @@ interface Bucket {
   updated: number;
 }
 
-/** Above this many tracked clients, full (idle) buckets are dropped on the next check. */
+/** Above this many tracked clients, full (idle) buckets are dropped... */
 const PRUNE_AT = 10_000;
+/** ...at most this often, so a flood of distinct clients can't make every check an O(n) scan. */
+const PRUNE_EVERY_MS = 10_000;
 
 export class RateLimiter {
   private readonly buckets = new Map<string, Bucket>();
   private readonly ratePerMs: number;
+  private lastPrune = -Infinity;
 
   constructor(
     private readonly config: BucketConfig,
@@ -42,7 +46,10 @@ export class RateLimiter {
   check(key: string): Decision {
     const { perMinute } = this.config;
     const t = this.now();
-    if (this.buckets.size > PRUNE_AT) this.prune(t);
+    if (this.buckets.size > PRUNE_AT && t - this.lastPrune >= PRUNE_EVERY_MS) {
+      this.lastPrune = t;
+      this.prune(t);
+    }
 
     const bucket = this.buckets.get(key) ?? { tokens: perMinute, updated: t };
     bucket.tokens = Math.min(perMinute, bucket.tokens + (t - bucket.updated) * this.ratePerMs);
@@ -102,4 +109,33 @@ export function hasServerKey(presented: string | undefined, expected: string | u
 export function positiveInt(raw: string | undefined, fallback: number): number {
   const n = Number(raw);
   return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
+export interface RateLimitOptions {
+  rest: RateLimiter;
+  graphql: RateLimiter;
+  /** INDEXER_SERVER_KEY; unset disables the bypass. */
+  serverKey?: string;
+}
+
+type NodeEnv = { incoming?: { socket?: { remoteAddress?: string } } } | undefined;
+
+/**
+ * Hono middleware: OPTIONS (CORS preflight) and server-key callers pass; everyone else spends a
+ * token from the GraphQL or REST bucket for their address. Every limited response carries the
+ * RateLimit-* headers; a refusal is a 429 in the API's `{ error, code }` shape with Retry-After.
+ */
+export function rateLimit({ rest, graphql, serverKey }: RateLimitOptions): MiddlewareHandler {
+  return async (c, next) => {
+    if (c.req.method === "OPTIONS" || hasServerKey(c.req.header("x-paytag-server-key"), serverKey)) return next();
+    const socket = (c.env as NodeEnv)?.incoming?.socket;
+    const key = clientKey(c.req.header("x-forwarded-for"), socket?.remoteAddress);
+    const d = (c.req.path.startsWith("/graphql") ? graphql : rest).check(key);
+    c.header("RateLimit-Limit", String(d.limit));
+    c.header("RateLimit-Remaining", String(d.remaining));
+    c.header("RateLimit-Reset", String(d.reset));
+    if (d.allowed) return next();
+    c.header("Retry-After", String(d.retryAfter));
+    return c.json({ error: "Too many requests; slow down and retry shortly", code: "RATE_LIMITED" }, 429);
+  };
 }

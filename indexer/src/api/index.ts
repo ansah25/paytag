@@ -7,7 +7,7 @@ import { type Hex, getAddress, isAddress } from "viem";
 import { RESERVED_NODES } from "../../abis/reservedNodes";
 import { COIN_TYPE } from "../lib/codec";
 import { normalizeName } from "../lib/names";
-import { RateLimiter, clientKey, hasServerKey, positiveInt } from "../lib/rateLimit";
+import { RateLimiter, positiveInt, rateLimit } from "../lib/rateLimit";
 import { buildResolveBody, isLiveReverseClaim } from "../lib/resolve";
 
 // Public, read-only HTTP API over the indexed state. Error bodies follow the Paytag API's
@@ -37,23 +37,14 @@ app.use(
 // registered before these routes and aren't limited). GraphQL gets a tighter bucket: one query
 // can do far more work than a REST lookup. The web app's server-side fetches present
 // INDEXER_SERVER_KEY instead, since they all arrive from Vercel's shared addresses.
-const SERVER_KEY = process.env.INDEXER_SERVER_KEY || undefined;
-const restLimiter = new RateLimiter({ perMinute: positiveInt(process.env.RATE_LIMIT_PER_MIN, 120) });
-const graphqlLimiter = new RateLimiter({ perMinute: positiveInt(process.env.RATE_LIMIT_GRAPHQL_PER_MIN, 30) });
-
-app.use("*", async (c, next) => {
-  if (c.req.method === "OPTIONS" || hasServerKey(c.req.header("x-paytag-server-key"), SERVER_KEY)) return next();
-  const socket = (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming?.socket;
-  const key = clientKey(c.req.header("x-forwarded-for"), socket?.remoteAddress);
-  const limiter = c.req.path.startsWith("/graphql") ? graphqlLimiter : restLimiter;
-  const d = limiter.check(key);
-  c.header("RateLimit-Limit", String(d.limit));
-  c.header("RateLimit-Remaining", String(d.remaining));
-  c.header("RateLimit-Reset", String(d.reset));
-  if (d.allowed) return next();
-  c.header("Retry-After", String(d.retryAfter));
-  return c.json({ error: "Too many requests; slow down and retry shortly", code: "RATE_LIMITED" }, 429);
-});
+app.use(
+  "*",
+  rateLimit({
+    rest: new RateLimiter({ perMinute: positiveInt(process.env.RATE_LIMIT_PER_MIN, 120) }),
+    graphql: new RateLimiter({ perMinute: positiveInt(process.env.RATE_LIMIT_GRAPHQL_PER_MIN, 60) }),
+    serverKey: process.env.INDEXER_SERVER_KEY || undefined,
+  }),
+);
 
 // Until historical sync completes, tables are partial and every answer would be confidently
 // wrong ("not registered", "available"). Gate all routes on the same flag Ponder's /ready reads:

@@ -14,7 +14,9 @@ const API_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'https://api.paytag.dev
 const RPC_URL = process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC || 'https://sepolia.base.org';
 
 export interface IndexerProbe {
-  /** /status answered: the block the indexer has processed, and its timestamp (unix s). */
+  /** /status answered at all (an indexer that's starting up answers with no block yet). */
+  responded: boolean;
+  /** The block the indexer has processed, and its timestamp (unix s). */
   synced: { block: number; timestamp: number } | null;
   /** /ready: true once historical sync is done. null when unreachable. */
   ready: boolean | null;
@@ -29,9 +31,11 @@ export interface StatusReport {
 }
 
 export function indexerHealth(probe: IndexerProbe, headBlock: number | null): Pick<StatusReport['indexer'], 'health' | 'reason' | 'lagBlocks'> {
-  if (!probe.synced) return { health: 'down', reason: 'Not responding', lagBlocks: null };
+  if (!probe.responded) return { health: 'down', reason: 'Not responding', lagBlocks: null };
+  if (!probe.synced) return { health: 'degraded', reason: 'Starting up', lagBlocks: null };
   const lagBlocks = headBlock === null ? null : Math.max(0, headBlock - probe.synced.block);
   if (probe.ready === false) return { health: 'degraded', reason: 'Catching up on history', lagBlocks };
+  if (probe.ready === null) return { health: 'degraded', reason: 'Readiness check failed', lagBlocks };
   if (lagBlocks !== null && lagBlocks > MAX_LAG_BLOCKS) {
     return { health: 'degraded', reason: `${lagBlocks} blocks behind`, lagBlocks };
   }
@@ -66,12 +70,12 @@ async function probeIndexer(): Promise<IndexerProbe> {
       const res = await fetch(`${INDEXER_URL}/status`, { signal, cache: 'no-store' });
       if (!res.ok) return null;
       const body = (await res.json()) as Record<string, { block?: { number?: number; timestamp?: number } }>;
-      const block = Object.values(body)[0]?.block;
-      return typeof block?.number === 'number' ? { block: block.number, timestamp: block.timestamp ?? 0 } : null;
+      const block = Object.values(body ?? {})[0]?.block;
+      return { synced: typeof block?.number === 'number' ? { block: block.number, timestamp: block.timestamp ?? 0 } : null };
     }),
     timed(async (signal) => (await fetch(`${INDEXER_URL}/ready`, { signal, cache: 'no-store' })).status === 200),
   ]);
-  return { synced: status.value, ready: ready.value };
+  return { responded: status.value !== null, synced: status.value?.synced ?? null, ready: ready.value };
 }
 
 async function probeHead(): Promise<number | null> {

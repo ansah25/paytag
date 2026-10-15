@@ -11,15 +11,16 @@ export function useHydrated(): boolean {
 }
 
 /**
- * useAccount, but disconnected until hydration is done. The server always renders the
- * disconnected UI; with the root loading.tsx streaming the page in later, wagmi has often
- * reconnected by the time the page hydrates, so reading it directly renders "connected" against
- * "disconnected" server HTML (a hydration mismatch). The real state follows one render later.
+ * useAccount, but "reconnecting" until hydration is done. The server can't know the wallet, and
+ * with the root loading.tsx streaming the page in later, wagmi has often reconnected by the time
+ * the page hydrates, so reading it directly renders "connected" against server HTML that wasn't
+ * (a hydration mismatch). Reporting "reconnecting" on both sides lets the UI show a neutral
+ * checking state instead of flashing "Connect wallet"; the real state follows one render later.
  */
 export function useHydratedAccount() {
   const { address, chainId, status } = useAccount();
   const hydrated = useHydrated();
   return hydrated
     ? { address, chainId, status }
-    : { address: undefined, chainId: undefined, status: 'disconnected' as const };
+    : { address: undefined, chainId: undefined, status: 'reconnecting' as const };
 }

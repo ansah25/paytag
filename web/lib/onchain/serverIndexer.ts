@@ -1,3 +1,5 @@
+// Fails the build if a client component ever imports this (it reads a server secret).
+import 'server-only';
 import { INDEXER_URL } from './indexer';
 
 /**
@@ -6,7 +8,6 @@ import { INDEXER_URL } from './indexer';
  * bundled for the browser) to skip the per-address rate limit. Without the key it's a plain fetch.
  */
 export function indexerServerFetch(path: string): Promise<Response> {
-  if (typeof window !== 'undefined') throw new Error('indexerServerFetch is server-only');
   const key = process.env.INDEXER_SERVER_KEY;
   return fetch(`${INDEXER_URL}${path}`, {
     cache: 'no-store',

@@ -87,7 +87,7 @@ export function WalletBar({
             </Button>
           </span>
         ) : (
-          <Button variant="outline" size={36} onClick={connect} loading={connecting} disabled={status === 'reconnecting'}>
+          <Button variant="outline" size={36} onClick={connect} loading={connecting || status === 'reconnecting'}>
             Connect wallet
           </Button>
         )}

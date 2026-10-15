@@ -116,7 +116,7 @@ Live at **<https://indexer.paytag.dev>**, self-hosted on Coolify with Postgres. 
 | `POST /graphql` | Ponder's generated GraphQL over the raw tables. It has no `stale` field: compare `records.updatedOrdinal < names.lastTransferOrdinal` yourself |
 | `GET /status`, `/ready` | Synced block per chain; 200 once backfill is complete |
 
-**Rate limits**: each client address gets 120 requests a minute on the REST routes and 30 on `/graphql` (a burst up to the limit, then a steady refill). Over the limit, the answer is `429 { code: "RATE_LIMITED" }` with `Retry-After`; every limited response carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`. `/status`, `/ready` and `/health` aren't limited. The client address is the rightmost `X-Forwarded-For` entry, the one the reverse proxy appends, so the indexer must only be reachable through that proxy. Server-to-server callers can send `x-paytag-server-key: <INDEXER_SERVER_KEY>` to skip the limit; the web app's server-rendered pages do, because they all share Vercel's addresses. Limits are in memory, per process.
+**Rate limits**: each client address gets 120 requests a minute on the REST routes and 60 on `/graphql` (a burst up to the limit, then a steady refill). Over the limit, the answer is `429 { code: "RATE_LIMITED" }` with `Retry-After`; every limited response carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`. `/status`, `/ready` and `/health` aren't limited. The client address is the rightmost `X-Forwarded-For` entry, the one the reverse proxy appends, so the indexer must only be reachable through that proxy. Server-to-server callers can send `x-paytag-server-key: <INDEXER_SERVER_KEY>` to skip the limit; the web app's server-rendered pages do, because they all share Vercel's addresses. Limits are in memory, per process.
 
 Until backfill completes, every route above answers `503 { code: "NOT_READY" }` rather than serving partial data (which would claim registered names are free). Readiness is read from the deployment's own database, the same flag as `/ready`. Route errors return a generic `{ code: "INTERNAL_ERROR" }`, and GraphQL masks error details when `NODE_ENV=production` (the Docker image sets it).
 
@@ -135,7 +135,7 @@ cd indexer && npm install
 PONDER_RPC_URL_84532=<base-sepolia-rpc> npm run dev
 ```
 
-Production runs the [`Dockerfile`](indexer/Dockerfile) with `DATABASE_URL`, `DATABASE_SCHEMA` and `PONDER_RPC_URL_84532` set; it uses about 200 MB of RAM. Optional: `INDEXER_SERVER_KEY` (a long random secret, also set in the web app's environment), and `RATE_LIMIT_PER_MIN` / `RATE_LIMIT_GRAPHQL_PER_MIN` to change the defaults (120 / 30).
+Production runs the [`Dockerfile`](indexer/Dockerfile) with `DATABASE_URL`, `DATABASE_SCHEMA` and `PONDER_RPC_URL_84532` set; it uses about 200 MB of RAM. Optional: `INDEXER_SERVER_KEY` (a long random secret, also set in the web app's environment), and `RATE_LIMIT_PER_MIN` / `RATE_LIMIT_GRAPHQL_PER_MIN` to change the defaults (120 / 60).
 
 Operational note: Ponder's own logs print the full RPC URL when an RPC request fails, and with Alchemy that includes the API key. The key never reaches HTTP clients, but treat the indexer's logs as secret, or use a key restricted to this app.
 

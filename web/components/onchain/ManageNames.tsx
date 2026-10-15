@@ -18,7 +18,7 @@ type Load =
 /** The connected wallet's names, from the indexer. Reads work on any network; writes need Base Sepolia. */
 export function ManageNames() {
   // Only for connection/network state here; each NameCard runs its own writes.
-  const { connected, address, wrongNetwork, switchToBase, switching } = useOnchainTx();
+  const { connected, checking, address, wrongNetwork, switchToBase, switching } = useOnchainTx();
   const { connect, connecting, error: connectError } = useConnectWallet();
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [reload, setReload] = useState(0);
@@ -46,6 +46,15 @@ export function ManageNames() {
   }, [address, reload]);
 
   const refresh = useCallback(() => setReload((n) => n + 1), []);
+
+  if (checking) {
+    return (
+      <Card className="grid gap-3" aria-busy="true">
+        <Skeleton className="h-7 w-48" />
+        <Skeleton className="h-4 w-3/4" />
+      </Card>
+    );
+  }
 
   if (!connected || !address) {
     return (

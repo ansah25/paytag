@@ -156,7 +156,9 @@ export function useOnchainTx() {
   const switchToBase = useCallback(() => switchChainAsync({ chainId: ONCHAIN_CHAIN.id }), [switchChainAsync]);
   const reset = useCallback(() => dispatch({ type: 'reset' }), []);
 
-  return { state, run, reset, busy: isBusy(state), connected, address, wrongNetwork, switchToBase, switching };
+  // Hydrating, or wagmi restoring a previous session: don't offer "Connect wallet" yet.
+  const checking = status === 'reconnecting';
+  return { state, run, reset, busy: isBusy(state), connected, checking, address, wrongNetwork, switchToBase, switching };
 }
 
 export type { TxState };
