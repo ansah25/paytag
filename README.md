@@ -39,7 +39,7 @@ Zero config — the SDK ships with `https://api.paytag.dev` as the default base 
 ## Architecture
 
 ```mermaid
-flowchart LR
+flowchart TD
   U["User + browser wallet"] --> W["Web app<br/>paytag.dev"]
   W -->|"signed tx"| C["PaytagRegistry + PaytagResolver<br/>Base Sepolia, immutable"]
   C -->|"events"| I["Ponder indexer<br/>+ Postgres"]
@@ -69,7 +69,7 @@ sequenceDiagram
   A->>B: Simulate register("alice") (eth_call)
   alt Would revert
     B-->>A: Custom error, e.g. NameTaken
-    A-->>U: Readable reason; the wallet never opens
+    A-->>U: Readable reason, and the wallet never opens
   else Would succeed
     A->>W: Request signature
     alt Rejected
@@ -86,7 +86,7 @@ sequenceDiagram
         A->>I: Refetch name
         A-->>U: Done, with Basescan link
       else Timed out
-        A-->>U: "Confirmed on-chain; display may lag" (keeps the new value, re-checks every 10 s)
+        A-->>U: "Confirmed, display may lag" (keeps the new value, re-checks every 10 s)
       end
     end
   end
