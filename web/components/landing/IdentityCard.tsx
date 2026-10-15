@@ -19,7 +19,7 @@ export function IdentityCard({ name }: { name: string }) {
               {name.charAt(0)}
             </span>
             <div className="min-w-0 text-left">
-              <div className="truncate font-display text-[22px] font-semibold tracking-display">@{name}</div>
+              <div className="truncate font-mono text-[20px] font-medium">@{name}</div>
               <div className="truncate font-mono text-xs text-ink2">paytag.dev/{name}</div>
             </div>
           </div>

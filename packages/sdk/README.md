@@ -39,7 +39,7 @@ await resolveViaIndexer('derrick');             // → OnchainResolveResponse (B
 await available('newname');                     // → AvailabilityResponse
 ```
 
-All of them accept the same username forms — `'derrick'`, `'@derrick'`, `'DERRICK'` — and normalize to lowercase with the leading `@` stripped.
+All of them accept the same username forms — `'derrick'`, `'@derrick'`, `'DERRICK'` — and normalize them the way the API and the on-chain registry do: surrounding ASCII whitespace trimmed, the leading `@` stripped, ASCII `A–Z` lowercased. Anything non-ASCII (including look-alikes such as the Kelvin sign U+212A, and Unicode spaces) is rejected with `INVALID_USERNAME` rather than folded into a different name.
 
 ## Custom client
 

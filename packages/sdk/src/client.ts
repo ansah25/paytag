@@ -223,11 +223,21 @@ function resolveCacheOption(
   return option;
 }
 
+// Only ASCII is transformed, matching the API and the on-chain registry: String#trim strips
+// Unicode whitespace and String#toLowerCase folds some non-ASCII into ASCII (the Kelvin sign
+// U+212A becomes "k"), which would accept input those layers reject.
+function asciiClean(raw: string): string {
+  return raw
+    .replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, '')
+    .replace(/^@/, '')
+    .replace(/[A-Z]/g, (c) => c.toLowerCase());
+}
+
 function normalizeUsername(raw: unknown): string {
   if (typeof raw !== 'string') {
     throw new PaytagError('Username must be a string', 'INVALID_USERNAME');
   }
-  const cleaned = raw.trim().replace(/^@/, '').toLowerCase();
+  const cleaned = asciiClean(raw);
   if (!USERNAME_REGEX.test(cleaned)) {
     throw new PaytagError(
       'Invalid username — must be 3–20 chars of [a-z0-9_]',
@@ -244,7 +254,7 @@ function normalizeForAvailability(raw: unknown): string {
   if (typeof raw !== 'string') {
     throw new PaytagError('Username must be a string', 'INVALID_USERNAME');
   }
-  const cleaned = raw.trim().replace(/^@/, '').toLowerCase();
+  const cleaned = asciiClean(raw);
   if (cleaned.length === 0 || cleaned.includes('/')) {
     throw new PaytagError(
       'Invalid username — must be a non-empty string without "/"',

@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { normalizeUsername, USERNAME_PATTERN } from '@/components/ClaimInput';
+import { normalizeUsername, sanitizeNameInput, USERNAME_PATTERN } from '@/lib/username';
 import { PayPanel } from '@/components/PayPanel';
 import { ChainDot } from '@/components/ui/ChainDot';
 import { Field, type FieldStatus } from '@/components/ui/Field';
@@ -132,7 +132,7 @@ export default function SendPage() {
           at
           status={FIELD_STATUS[status]}
           value={value}
-          onChange={(e) => setValue(e.target.value.toLowerCase().replace(/^@/, '').replace(/\s/g, ''))}
+          onChange={(e) => setValue(sanitizeNameInput(e.target.value))}
           placeholder="username"
           maxLength={20}
           autoCapitalize="off"
@@ -181,7 +181,7 @@ export default function SendPage() {
                     {r.name.charAt(0)}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-bold">@{r.name}</span>
+                    <span className="block truncate font-mono text-[15px] font-medium">@{r.name}</span>
                     <span className="mt-px block text-xs text-ink3">{timeAgo(r.at)}</span>
                   </span>
                   <span aria-hidden className="text-[13px] text-ink2">
@@ -234,7 +234,7 @@ export default function SendPage() {
               {resolution.username.charAt(0)}
             </span>
             <div className="min-w-0 flex-1">
-              <div className="truncate font-display text-xl font-semibold tracking-display">
+              <div className="truncate font-mono text-xl font-medium">
                 @{resolution.username}
               </div>
               <div className="mt-0.5 text-[13px] text-ink2">

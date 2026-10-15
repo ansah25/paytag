@@ -15,10 +15,17 @@ describe('userService - username validation', () => {
     expect(normalizeUsername('ALICE_99')).toBe('alice_99');
   });
 
+  it('trims ASCII whitespace only, leaving Unicode whitespace to be rejected', () => {
+    expect(normalizeUsername('\tkate\n')).toBe('kate');
+    for (const raw of ['\u3000kate', 'kate\uFEFF', '\u00A0kate']) {
+      expect(() => validateUsername(normalizeUsername(raw))).toThrow(BadRequestError);
+    }
+  });
+
   it('does not fold non-ASCII lookalikes into valid names', () => {
     // U+212A KELVIN SIGN lowercases to ASCII "k" under String#toLowerCase.
-    const kelvin = 'Kelvin';
-    expect(normalizeUsername(kelvin)).toBe('Kelvin');
+    const kelvin = '\u212Aelvin';
+    expect(normalizeUsername(kelvin)).toBe('\u212Aelvin');
     expect(() => validateUsername(normalizeUsername(kelvin))).toThrow(BadRequestError);
   });
 

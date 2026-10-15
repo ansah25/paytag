@@ -24,7 +24,7 @@ export function MessageScreen({ kicker, tone = 'danger', title, copy, primary, f
         >
           {kicker}
         </div>
-        <h1 className="break-words font-display text-[clamp(36px,5vw,60px)] font-semibold leading-none tracking-display-lg [text-wrap:balance]">
+        <h1 className="[overflow-wrap:anywhere] font-display text-[clamp(36px,5vw,60px)] font-semibold leading-none tracking-display-lg [text-wrap:balance]">
           {title}
         </h1>
         <p className="max-w-[420px] text-base leading-[1.55] text-ink2 [text-wrap:pretty]">{copy}</p>

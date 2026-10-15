@@ -2,7 +2,7 @@
 
 import { notFound } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { USERNAME_PATTERN } from '@/components/ClaimInput';
+import { USERNAME_PATTERN, normalizeUsername } from '@/lib/username';
 import { MessageScreen } from '@/components/MessageScreen';
 import { PayPanel } from '@/components/PayPanel';
 import { AddressText } from '@/components/ui/AddressText';
@@ -27,7 +27,7 @@ interface Props {
 }
 
 export default function ProfilePage({ params }: Props) {
-  const username = decodeURIComponent(params.username).toLowerCase();
+  const username = normalizeUsername(decodeURIComponent(params.username));
   const validName = USERNAME_PATTERN.test(username);
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
@@ -92,7 +92,7 @@ export default function ProfilePage({ params }: Props) {
           {name.charAt(0)}
         </span>
         <div className="min-w-0">
-          <h1 className="break-all font-display text-[clamp(36px,5vw,60px)] font-semibold leading-none tracking-display-lg">
+          <h1 className="break-all font-mono text-[clamp(32px,4.5vw,52px)] font-medium leading-none">
             @{name}
           </h1>
           {resolution.displayName && (
