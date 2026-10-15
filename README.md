@@ -43,7 +43,8 @@ flowchart TD
   U["User + browser wallet"] --> W["Web app<br/>paytag.dev"]
   W -->|"signed tx"| C["PaytagRegistry + PaytagResolver<br/>Base Sepolia, immutable"]
   C -->|"events"| I["Ponder indexer<br/>+ Postgres"]
-  I -->|"REST + GraphQL<br/>rate-limited"| S["@paytagdev/sdk"]
+  I -->|"REST, rate-limited"| S["@paytagdev/sdk"]
+  I -->|"REST + GraphQL"| W
   S --> W
   S --> X["Any app"]
   W --> O["Off-chain API<br/>Express + Supabase"]
@@ -51,11 +52,11 @@ flowchart TD
 ```
 
 - **Base is canonical.** Ownership lives only in the registry; Solana, Bitcoin and other EVM chains are *records* on the name (ENSIP-9 coin types), never parallel deployments.
-- **The contracts are immutable and admin-free.** The indexer is a read model that can be rebuilt from chain events at any time; it refuses to answer (503) until it has caught up rather than serve partial data.
+- **The contracts are immutable and admin-free.** The indexer is a read model that can be rebuilt from chain events at any time; it refuses to answer (503) until its backfill completes rather than serve partial data.
 - **One SDK, two sources.** `resolve()` reads the off-chain API (the original MVP), `resolveViaIndexer()` the on-chain registry, with the same response shape.
 - **[`/status`](https://www.paytag.dev/status)** probes the API, the indexer (lag vs. chain head) and the contracts live.
 
-Every on-chain write in the app follows the same lifecycle (one hook, `useOnchainTx`, driven by a unit-tested state machine):
+Every on-chain write in the app follows the same lifecycle (one hook, `useOnchainTx`, driven by a unit-tested state machine). Registration is shown; record edits work the same way, and on a timeout they keep the new value and re-check every 10 s until the indexer agrees:
 
 ```mermaid
 sequenceDiagram
@@ -86,7 +87,7 @@ sequenceDiagram
         A->>I: Refetch name
         A-->>U: Done, with Basescan link
       else Timed out
-        A-->>U: "Confirmed, display may lag" (keeps the new value, re-checks every 10 s)
+        A-->>U: "Confirmed, display may lag" (the name stays shown as yours)
       end
     end
   end
@@ -111,6 +112,8 @@ npm install
 NEXT_PUBLIC_API_BASE_URL=https://api.paytag.dev npm run web:dev   # http://localhost:3002
 ```
 
+On Windows PowerShell, set the variable first: `$env:NEXT_PUBLIC_API_BASE_URL="https://api.paytag.dev"; npm run web:dev`.
+
 Everything on-chain works from there (look up, register, manage, with a Base Sepolia wallet), as does resolving and sending to off-chain names. Signing in to claim an off-chain name needs your own API, because the hosted one only accepts sign-ins from paytag.dev. If a page can't reach the hosted services, check [paytag.dev/status](https://www.paytag.dev/status); the full-local setup below runs without them.
 
 <details>
@@ -123,7 +126,7 @@ cp .env.example .env
 # Fill in SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET (32+ chars)
 ```
 
-Apply the schema once in your Supabase SQL editor by pasting the contents of `supabase/migrations/0001_init.sql`, then:
+Apply the schema once in your Supabase SQL editor by running each file in [`supabase/migrations/`](supabase/migrations) in order (`0001_init.sql`, `0002_owner_wallet_unique.sql`, `0003_profiles_and_verification.sql`), then:
 
 ```bash
 npm run dev       # API on http://localhost:3000
@@ -171,7 +174,7 @@ The ABI is frozen at tag `v0.1.0-contracts`. An earlier deployment (`0xf082…87
 
 ### Tests, coverage, gas
 
-The contracts are covered on every metric, not just lines: **100% of lines, statements, branches (19/19) and functions** in both contracts (`forge coverage`). The strongest evidence is the **4 stateful invariants** below, checked against a full ghost model over 256 random sequences (16,384 calls) per run, and mutation-checked against seven deliberate bugs. Alongside them, in [`contracts/test/`](contracts/test):
+The contracts are covered on every metric, not just lines: **100% of lines, statements, branches (19/19) and functions** in both contracts (`forge coverage`). The strongest evidence is the **4 stateful invariants** below, checked against a full ghost model over 256 random sequences per run (16,384 calls locally, 32,768 in CI's deeper profile). Alongside them, in [`contracts/test/`](contracts/test):
 
 - **Unit:** every external function, including each revert path (length bounds, charset, non-ASCII/homoglyph bytes, reserved names and their case variants, taken names and case variants, non-owner writes, ETH record length and zero address, reverse mismatch).
 - **Fuzz:** `testFuzz_normalizeIsIdempotent`, `testFuzz_normalizeMatchesReference` (contract vs. an independent reference model over arbitrary bytes, including the exact revert reason), `testFuzz_registerThenResolve`, the reserved list, ownership and reverse authorization.
@@ -180,7 +183,7 @@ The contracts are covered on every metric, not just lines: **100% of lines, stat
   - every record the resolver serves equals the last value its owner wrote
   - `reverse(a)` is exactly the model's answer, and round-trips (`addr(reverse(a), 60) == a`) wherever it is set
   - no two distinct names collide to the same node, no name or case variant registers twice, and no reserved name registers at all
-- **Mutation-checked:** the invariant suite fails on each of seven deliberate contract bugs: `reverse` always returning zero, owner ETH writes reverting, non-ETH records dropped, `transfer` always reverting, the reverse re-check removed, the reserved check removed, and the transfer auth check removed.
+- **Mutation-checked during development:** seven deliberate contract bugs were each introduced by hand and caught by the invariant suite (the mutants aren't committed; see commit `3e558ab`): `reverse` always returning zero, owner ETH writes reverting, non-ETH records dropped, `transfer` always reverting, the reverse re-check removed, the reserved check removed, and the transfer auth check removed.
 
 | File | Lines | Statements | Branches | Functions |
 |---|---|---|---|---|
@@ -276,9 +279,14 @@ cd contracts && forge test
 | GET | `/auth/nonce?wallet=0x…` | — | Issue nonce for wallet signing |
 | POST | `/auth/verify` | — | Verify signed nonce, return JWT |
 | POST | `/register` | JWT | Register a username |
-| POST | `/add-address` | JWT | Add or update an address for a chain |
-| GET | `/resolve/:username` | — | Resolve username → addresses |
-| GET | `/available/:username` | — | Check whether a username is free |
+| GET | `/me` | JWT | The wallet's username and profile |
+| PATCH | `/me/profile` | JWT | Update display name (≤ 40) and bio (≤ 120); `null` clears |
+| POST | `/add-address` | JWT | Add or update an address for a chain (resets its verification) |
+| DELETE | `/address/:chain` | JWT | Remove the address for a chain |
+| POST | `/verify-address/nonce` | JWT | Get a single-use message to sign with a mapped address (Ethereum, Solana) |
+| POST | `/verify-address` | JWT | Submit the signature; marks the address verified |
+| GET | `/resolve/:username` | — | Resolve username → addresses, verification and profile |
+| GET | `/available/:username` | — | Check availability, with suggestions |
 
 Public read endpoints (`/resolve`, `/available`, `/health`) are CORS-open. `/resolve` responses carry `Cache-Control: public, max-age=30, stale-while-revalidate=60`.
 
@@ -291,7 +299,11 @@ Public read endpoints (`/resolve`, `/available`, `/health`) are CORS-open. `/res
     "ethereum": "0x4f3edf83…d8a3c2",
     "solana": "4Nd1mYz7K8jM…",
     "bitcoin": "bc1qw508d6q…"
-  }
+  },
+  "verified": { "ethereum": true },
+  "displayName": "Derrick",
+  "bio": null,
+  "avatarUrl": null
 }
 ```
 
