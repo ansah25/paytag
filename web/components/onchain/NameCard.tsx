@@ -211,6 +211,10 @@ export function NameCard({
       )}
 
       <div className="grid">
+        <p className="pb-2 text-[13px] text-ink2">
+          Anyone can see the addresses you add here, and look up their balances and history. Use addresses you’re
+          comfortable making public.
+        </p>
         {RECORD_SLOTS.map((slot) => {
           const key = slot.coinType.toString();
           const r = record(slot);
