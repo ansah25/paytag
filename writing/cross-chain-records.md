@@ -47,7 +47,7 @@ Both properties are tested rather than asserted: [`testFuzz_normalizeIsIdempoten
 
 ## Two holes, and why the fix had to be on-chain
 
-v0.1 shipped with two known problems around transfers, both handled in the indexer rather than the contract.
+v0.1's contracts shipped with two known problems around transfers, which the indexer, added the same day, handled instead of the contract.
 
 **Wrong payee.** Transferring a name moved ownership, but the previous owner's records stayed in the resolver. A plain `addr()` call right after a transfer returned the previous owner's address with nothing to say so. On a payments product, that's money sent to the wrong person.
 
