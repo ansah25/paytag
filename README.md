@@ -185,7 +185,7 @@ Base Sepolia (chain 84532), verified on Basescan and Sourcify. Deployed at block
 
 Superseded deployments, left on-chain and unused:
 
-- **v0.1** (`0xC465…5012` / `0xdd08…9142`, tag `v0.1.0-contracts`): records and primary names survived a transfer, which only the indexer could hide from its own readers, and registration had no commit-reveal. Writing the design write-up made the case for moving both fixes into the contracts; v0.2 does that. Before v0.2 was deployed, an independent review also caught a commitment-griefing bug in its first draft (a shared commitment map let anyone restart another user's clock); commitments are now stored per committer.
+- **v0.1** (`0xC465…5012` / `0xdd08…9142`, tag `v0.1.0-contracts`): records survived a transfer (a known trade-off when it shipped), and so did primary names (found while building the indexer the same day); only the indexer hid both, and only from its own readers. Registration had no commit-reveal. Writing the design write-up made the case for moving both fixes into the contracts; v0.2 does that. Before v0.2 was deployed, an independent review also caught a commitment-griefing bug in its first draft (a shared commitment map let anyone restart another user's clock); commitments are now stored per committer.
 - **Pre-v0.1** (`0xf082…8721` / `0xa403…e828`): a pre-merge review found that it emitted misleading events for zero-address ETH records and lacked the reserved-name blocklist. Nothing was built on it.
 
 ### Tests, coverage, gas
@@ -283,7 +283,7 @@ Operational note: Ponder's own logs print the full RPC URL when an RPC request f
 - **Free, first-come, permanent registration.** Commit-reveal stops a pending reveal from being raced, as long as it lands within 15 seconds of being broadcast (before a competitor's fresh commitment could mature), but not first-come squatting: anyone can register any free name for the gas of a commit and a register, with no fees or expiry. That's acceptable on a testnet; a mainnet deployment would want pricing or expiry.
 - **Registration is two transactions,** at least 15 seconds apart. The app runs the countdown and keeps the commitment's secret in the browser until the reveal; losing it just means reserving again.
 - **A transfer clears everything, including a return.** After a transfer away and back (A → B → A), A starts from empty records and has to set them again. The app shows such a name as *Unconfigured*, and the indexer reports `recordsReset`, rather than letting it quietly resolve to nothing.
-- **Two separate namespaces.** On-chain names (the Base registry, at `/on-chain/<name>`) and Paytag accounts (the off-chain API, at `paytag.dev/<name>`) are independent: owning `@alice` in one doesn't reserve it in the other, so the two can belong to different people. The on-chain pages are labelled accordingly; linking or unifying the two is planned.
+- **Two separate namespaces.** On-chain names (the Base registry, at `/on-chain/<name>`) and Paytag accounts (the off-chain API, at `paytag.dev/<name>`) are independent: owning `@alice` in one doesn't reserve it in the other, so the two can belong to different people. Every on-chain page is labelled as separate from Paytag accounts; linking or unifying the two is on the roadmap.
 - **On-chain reads cost a registry call.** `addr` and `reverse` read the current epoch from the registry, about 5.4k gas inside a transaction. Free off-chain.
 - **ASCII-only names.** This removes Unicode homoglyphs entirely. ASCII lookalikes (`0`/`o`, `1`/`l`) remain, so names are displayed in a monospace font.
 - **Fixed reserved list.** The contract has no admin, so the blocklist can't change after deployment. Adding a reserved name means a redeploy, and the drift test enforces that.
@@ -397,6 +397,7 @@ The repo is an npm workspace; `npm install` at the root installs everything.
 - [x] On-chain app: register, records, primary names, transfer, public name pages
 - [x] Hardening: indexer rate limits, `/status`, per-deploy indexer schemas
 - [x] Contracts v0.2: transfer epochs (a transfer clears records and the old owner's primary name, in the contract) and commit-reveal registration; SDK 0.4.0
+- [ ] Link on-chain names and Paytag accounts, so one name can't belong to two different people
 - [ ] Deferred: gas-sponsored registration (see [Known trade-offs](#known-trade-offs))
 - [ ] Future: ERC-20 / SPL-token sends, payment links with amounts, a mainnet deployment with registration pricing or expiry
 
