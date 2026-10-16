@@ -60,7 +60,7 @@ export function ManageNames() {
     return (
       <Card elevated className="grid justify-items-start gap-4">
         <h2 className="font-display text-[22px] font-semibold">Connect your wallet</h2>
-        <p className="text-sm text-ink2">Your on-chain names belong to your wallet. Connect it to manage them.</p>
+        <p className="text-sm text-ink2">Your on-chain names belong to your wallet. Connect it to manage them. (These are separate from Paytag accounts.)</p>
         <Button size={48} onClick={connect} loading={connecting}>
           Connect wallet
         </Button>

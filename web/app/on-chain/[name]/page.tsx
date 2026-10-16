@@ -62,7 +62,7 @@ export default async function OnchainNamePage({ params }: Props) {
         kicker="Not registered"
         tone="muted"
         title={`@${name} isn’t registered on-chain.`}
-        copy="Nobody owns this name on the Base registry yet."
+        copy={`Nobody owns this name on the Base registry yet. On-chain names are separate from Paytag accounts, so @${name} may still exist as one at paytag.dev/${name}.`}
         primary={{ label: 'Register a name', href: '/on-chain' }}
       />
     );
