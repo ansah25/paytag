@@ -56,6 +56,8 @@ flowchart TD
 - **One SDK, two sources.** `resolve()` reads the off-chain API (the original MVP), `resolveViaIndexer()` the on-chain registry, with the same response shape.
 - **[`/status`](https://www.paytag.dev/status)** probes the API, the indexer (lag vs. chain head) and the contracts live.
 
+The design decisions behind the records, normalization, reverse resolution and the v0.2 contract fixes are written up in [Why Paytag stores a Solana address as 32 raw bytes on Base](writing/cross-chain-records.md).
+
 Every on-chain write in the app follows the same lifecycle (one hook, `useOnchainTx`, driven by a unit-tested state machine). Registration is shown: two transactions, a commit that hides the name and a reveal that claims it. Each write is simulated first, so failures surface before the wallet opens. Record edits work the same way, and on a timeout they keep the new value and re-check every 10 s until the indexer agrees:
 
 ```mermaid
@@ -183,7 +185,7 @@ Base Sepolia (chain 84532), verified on Basescan and Sourcify. Deployed at block
 
 Superseded deployments, left on-chain and unused:
 
-- **v0.1** (`0xC465…5012` / `0xdd08…9142`, tag `v0.1.0-contracts`): records and primary names survived a transfer, which only the indexer could hide from readers, and registration had no commit-reveal. A design write-up found both; v0.2 fixes them in the contracts. Before v0.2 was deployed, an independent review also caught a commitment-griefing bug in its first draft (a shared commitment map let anyone restart another user's clock); commitments are now stored per committer.
+- **v0.1** (`0xC465…5012` / `0xdd08…9142`, tag `v0.1.0-contracts`): records and primary names survived a transfer, which only the indexer could hide from its own readers, and registration had no commit-reveal. Writing the design write-up made the case for moving both fixes into the contracts; v0.2 does that. Before v0.2 was deployed, an independent review also caught a commitment-griefing bug in its first draft (a shared commitment map let anyone restart another user's clock); commitments are now stored per committer.
 - **Pre-v0.1** (`0xf082…8721` / `0xa403…e828`): a pre-merge review found that it emitted misleading events for zero-address ETH records and lacked the reserved-name blocklist. Nothing was built on it.
 
 ### Tests, coverage, gas
