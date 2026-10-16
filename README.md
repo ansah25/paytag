@@ -56,7 +56,7 @@ flowchart TD
 - **One SDK, two sources.** `resolve()` reads the off-chain API (the original MVP), `resolveViaIndexer()` the on-chain registry, with the same response shape.
 - **[`/status`](https://www.paytag.dev/status)** probes the API, the indexer (lag vs. chain head) and the contracts live.
 
-The design decisions behind the records, normalization, reverse resolution and the v0.2 contract fixes are written up in [Why Paytag stores a Solana address as 32 raw bytes on Base](writing/cross-chain-records.md).
+The design decisions behind the records, normalization, reverse resolution and the v0.2 contract fixes are written up in [Why Paytag stores a Solana address as 32 raw bytes on Base](https://paragraph.com/@jhaylow/why-paytag-stores-a-solana-address-as-32-raw-bytes-on-base) (published on Paragraph; source in [`writing/`](writing/cross-chain-records.md)).
 
 Every on-chain write in the app follows the same lifecycle (one hook, `useOnchainTx`, driven by a unit-tested state machine). Registration is shown: two transactions, a commit that hides the name and a reveal that claims it. Each write is simulated first, so failures surface before the wallet opens. Record edits work the same way, and on a timeout they keep the new value and re-check every 10 s until the indexer agrees:
 
