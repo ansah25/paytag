@@ -62,7 +62,7 @@ export default async function OnchainNamePage({ params }: Props) {
         kicker="Not registered"
         tone="muted"
         title={`@${name} isn’t registered on-chain.`}
-        copy="Nobody owns this name on the Base registry yet."
+        copy={`Nobody owns this name on the Base registry yet. On-chain names are separate from Paytag accounts, so @${name} may still exist as one at paytag.dev/${name}.`}
         primary={{ label: 'Register a name', href: '/on-chain' }}
       />
     );
@@ -86,7 +86,7 @@ export default async function OnchainNamePage({ params }: Props) {
   return (
     <section className="mx-auto grid w-full max-w-content gap-7 px-6 pb-24 pt-12">
       <div className="animate-enter">
-        <span className="font-mono text-[12px] uppercase tracking-kicker text-ink2">Base Sepolia · on-chain</span>
+        <span className="font-mono text-[12px] uppercase tracking-kicker text-ink2">Base Sepolia · on-chain · separate from Paytag accounts</span>
         <h1 className="mt-2 break-all font-mono text-[clamp(32px,4.5vw,52px)] font-medium leading-none">
           @{data.username}
         </h1>
