@@ -76,8 +76,7 @@ export function NameCard({
         if (entry.phase !== 'confirmed') continue;
         const record = data.records.find((r) => r.coinType === key);
         const current = record?.address ?? null;
-        // Same value written by a previous owner (stale) doesn't count: that's the pre-write row.
-        const matches = (current?.toLowerCase() ?? null) === (entry.value?.toLowerCase() ?? null) && !record?.stale;
+        const matches = (current?.toLowerCase() ?? null) === (entry.value?.toLowerCase() ?? null);
         if (matches) delete next[key];
       }
       return next;
@@ -94,7 +93,7 @@ export function NameCard({
   const record = (slot: RecordSlot) => data?.records.find((r) => r.coinType === slot.coinType.toString());
 
   const ethRecord = data?.records.find((r) => r.coinType === '60');
-  const ethPointsHere = !!ethRecord?.address && !ethRecord.stale && ethRecord.address.toLowerCase() === account.toLowerCase();
+  const ethPointsHere = !!ethRecord?.address && ethRecord.address.toLowerCase() === account.toLowerCase();
   const isPrimary = primaryName === name;
 
   const startEdit = (slot: RecordSlot) => {
@@ -190,11 +189,19 @@ export function NameCard({
           </a>
           {isPrimary && <Badge>Primary name</Badge>}
           {transferring && <Badge tone="warn">Transferring…</Badge>}
+          {data?.recordsReset && Object.keys(overlay).length === 0 && <Badge tone="warn">Unconfigured</Badge>}
         </div>
         <span className="text-[13px] text-ink2">
           Registered {new Date(owned.registeredAt * 1000).toLocaleDateString()}
         </span>
       </div>
+
+      {data?.recordsReset && Object.keys(overlay).length === 0 && (
+        <p className="rounded-inset-sm bg-warn-bg px-4 py-3 text-sm font-semibold text-warn">
+          This name was transferred to you, and a transfer clears every record on-chain. It won’t receive payments
+          until you set your addresses below.
+        </p>
+      )}
 
       {action && tx.state.status !== 'idle' && (
         <div className="grid gap-1.5">
@@ -202,6 +209,11 @@ export function NameCard({
           <TxStatus state={tx.state} />
         </div>
       )}
+
+      <p className="-mb-3 text-[13px] text-ink2">
+        Anyone can see the addresses you add here, and look up their balances and history. Use addresses you’re
+        comfortable making public; clearing one later doesn’t remove it from the chain’s history.
+      </p>
 
       <div className="grid">
         {RECORD_SLOTS.map((slot) => {
@@ -222,7 +234,6 @@ export function NameCard({
                   </span>
                 )}
                 {o && <Badge tone="muted">{o.phase === 'pending' ? 'Pending' : 'Confirmed, updating'}</Badge>}
-                {!o && r?.stale && <Badge tone="warn">Set by previous owner</Badge>}
                 {editing !== key && (
                   <span className="flex gap-2">
                     <Button variant="outline-muted" size={36} onClick={() => startEdit(slot)} disabled={tx.busy || !data}>

@@ -56,7 +56,7 @@ flowchart TD
 - **One SDK, two sources.** `resolve()` reads the off-chain API (the original MVP), `resolveViaIndexer()` the on-chain registry, with the same response shape.
 - **[`/status`](https://www.paytag.dev/status)** probes the API, the indexer (lag vs. chain head) and the contracts live.
 
-Every on-chain write in the app follows the same lifecycle (one hook, `useOnchainTx`, driven by a unit-tested state machine). Registration is shown; record edits work the same way, and on a timeout they keep the new value and re-check every 10 s until the indexer agrees:
+Every on-chain write in the app follows the same lifecycle (one hook, `useOnchainTx`, driven by a unit-tested state machine). Registration is shown: two transactions, a commit that hides the name and a reveal that claims it. Each write is simulated first, so failures surface before the wallet opens. Record edits work the same way, and on a timeout they keep the new value and re-check every 10 s until the indexer agrees:
 
 ```mermaid
 sequenceDiagram
@@ -67,7 +67,14 @@ sequenceDiagram
   participant B as Base Sepolia
   participant I as Indexer
   U->>A: Register @alice
-  A->>B: Simulate register("alice") (eth_call)
+  Note over A: Step 1: reserve (commit). The name stays hidden
+  A->>B: Simulate commit(hash(alice, wallet, secret))
+  A->>W: Request signature
+  W->>B: Broadcast commit
+  A->>B: Wait for receipt
+  Note over A: Countdown on chain time, at least 15 s
+  Note over A: Step 2: register (reveal)
+  A->>B: Simulate register("alice", secret) (eth_call)
   alt Would revert
     B-->>A: Custom error, e.g. NameTaken
     A-->>U: Readable reason, and the wallet never opens
@@ -77,14 +84,13 @@ sequenceDiagram
       W-->>A: User rejected
       A-->>U: "Rejected in your wallet"
     else Signed
-      W->>B: Broadcast
+      W->>B: Broadcast register
       A->>B: Wait for receipt (a cancel or replacement counts as failure)
       B-->>I: NameRegistered + Transfer events
       loop Until indexed block ≥ receipt block (max 60 s)
         A->>I: GET /status
       end
       alt Indexer caught up
-        A->>I: Refetch name
         A-->>U: Done, with Basescan link
       else Timed out
         A-->>U: "Confirmed, display may lag" (the name stays shown as yours)
@@ -224,11 +230,11 @@ Live at **<https://indexer.paytag.dev>**, self-hosted on Coolify with Postgres. 
 
 | Endpoint | Returns |
 |---|---|
-| `GET /resolve/:name` | `{ username, node, owner, registeredAt, addresses, records, source: "onchain" }`. Same base shape as the API's `/resolve`; `records` holds every raw record with its decoded address and a `stale` flag |
+| `GET /resolve/:name` | `{ username, node, owner, registeredAt, epoch, recordsReset, addresses, records, source: "onchain" }`. Same base shape as the API's `/resolve`; `records` holds every raw record with its decoded address. `epoch` counts transfers to a different owner; `recordsReset` is true when the name changed owner and the current owner hasn't set a record since |
 | `GET /reverse/:address` | `{ address, username }`. `username` is null unless the claim is still forward-verified and current |
 | `GET /available/:name` | `{ available, reason?, suggestions }`. Format, the registry's reserved list, then taken |
 | `GET /names?owner=0x…` | Names currently owned by an address |
-| `POST /graphql` | Ponder's generated GraphQL over the raw tables. It has no `stale` field: compare `records.updatedOrdinal < names.lastTransferOrdinal` yourself |
+| `POST /graphql` | Ponder's generated GraphQL over the raw tables |
 | `GET /status`, `/ready` | Synced block per chain; 200 once backfill is complete |
 
 **Rate limits**: each client IP gets 120 requests a minute on the REST routes and 60 on `/graphql` (a burst up to the limit, then a steady refill). Over the limit, the answer is `429 { code: "RATE_LIMITED" }` with `Retry-After`; every limited response carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`. `/status`, `/ready` and `/health` aren't limited. The client IP is the rightmost `X-Forwarded-For` entry, the one the reverse proxy appends, so the indexer must only be reachable through that proxy. Server-to-server callers can send `x-paytag-server-key: <INDEXER_SERVER_KEY>` to skip the limit; the web app's server-rendered pages do, because they all share Vercel's addresses. Limits are in memory, per process.
@@ -238,8 +244,8 @@ Until backfill completes, every route above answers `503 { code: "NOT_READY" }` 
 Read-model rules the indexer enforces:
 
 - Every `RecordSet` payload equals what `addr` returns afterwards. An empty value deletes the record; the zero ETH address can't be written.
-- **Stale records**: a record written before the name's latest change of owner was set by a previous owner. It's listed in `records` with `stale: true` but left out of `addresses`, so payment flows never pay a former owner. Self-transfers don't count; a transfer away and back (A → B → A) does, so A rewrites their records after reclaiming the name. This is stricter than the contract, which keeps serving such records.
-- **Reverse validity**: not derivable from `ReverseSet` alone (a coin-60 `RecordSet` silently invalidates claims on the old address). `/reverse` serves `claim[a]` only while `eth[claim[a]] == a` (mirroring `PaytagResolver.reverse()`) and that ETH record isn't stale, so a former owner's address stops resolving to the name at transfer time. That second condition is stricter than the contract.
+- **Transfers clear records**: a transfer to a different owner starts a new epoch on-chain, where every earlier record is unreachable; the indexer deletes that name's rows to match. Self-transfers change nothing. After a transfer away and back (A → B → A), A starts from empty records too.
+- **Reverse validity**: not derivable from `ReverseSet` alone (a coin-60 `RecordSet` silently invalidates claims on the old address, and a transfer invalidates every claim on the name). `/reverse` serves `claim[a]` only while the name's current ETH record equals `a`, exactly as `PaytagResolver.reverse()` checks it.
 - **Reserved names** are answered locally from the registry's hard-coded hashes (generated into `indexer/abis/reservedNodes.ts` and drift-checked in CI), with no RPC call per request.
 - Records use ENSIP-9 encodings: SOL is the raw 32-byte key, BTC is the `scriptPubKey`, EVM chains are 20 address bytes. Test vectors are in [`indexer/test/vectors.json`](indexer/test/vectors.json).
 

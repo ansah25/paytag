@@ -3,10 +3,10 @@ pragma solidity 0.8.26;
 
 import {PaytagRegistry} from "../src/PaytagRegistry.sol";
 import {PaytagResolver} from "../src/PaytagResolver.sol";
-import {Test} from "forge-std/Test.sol";
+import {PaytagTest} from "./utils/PaytagTest.sol";
 
 /// @notice End-to-end happy path. The exhaustive unit, fuzz and invariant suites live alongside.
-contract SmokeTest is Test {
+contract SmokeTest is PaytagTest {
     PaytagRegistry registry;
     PaytagResolver resolver;
 
@@ -18,8 +18,8 @@ contract SmokeTest is Test {
     }
 
     function test_registerSetRecordsAndReverse() public {
+        bytes32 node = _register(registry, alice, "Derrick");
         vm.startPrank(alice);
-        bytes32 node = registry.register("Derrick");
         resolver.setRecord(node, 60, abi.encodePacked(alice));
         resolver.setRecord(node, 501, hex"0102");
         resolver.setReverse(node);

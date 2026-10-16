@@ -4,13 +4,12 @@ pragma solidity 0.8.26;
 /// @title PaytagRegistry
 /// @notice Canonical ownership registry for Paytag names. One flat namespace (`@derrick`, not
 ///         `derrick.paytag`), so a node is simply `keccak256(normalize(name))`.
-/// @dev Immutable and admin-free: no owner, no pause, no upgrade path. Registration is
-///      first-come, free and permanent. Front-running and squatting are accepted trade-offs for
-///      this deployment and are documented in the README.
+/// @dev Immutable and admin-free: no owner, no pause, no upgrade path. Registration is free,
+///      first-come and permanent, through a commit-reveal (see `commit`).
 ///
 ///      Name policy (same character set, length bounds and reserved list as the off-chain API,
 ///      so a name valid on one layer is valid on the other; the API additionally trims
-///      surrounding whitespace, which the contract rejects):
+///      surrounding ASCII whitespace, which the contract rejects):
 ///        - 3 to 20 bytes after normalization
 ///        - allowed characters: a-z, 0-9, underscore
 ///        - not on the reserved list (`isReserved`): route names and project/staff names that
@@ -21,13 +20,34 @@ pragma solidity 0.8.26;
 ///
 ///      Homoglyph policy: any byte >= 0x80 reverts with `NonAsciiName`. Restricting to ASCII
 ///      eliminates Unicode confusables (Cyrillic "а" vs Latin "a", zero-width joiners, etc.)
-///      outright. The remaining ASCII look-alikes (`0`/`o`, `1`/`l`) are an accepted risk: they
-///      are visually distinct in every monospace font and the frontend displays names in one.
+///      outright. The remaining ASCII look-alikes (`0`/`o`, `1`/`l`) are an accepted risk; they
+///      are distinct in a monospace font, which the frontend uses for names.
+///
+///      Epochs: every name carries an epoch, stored in the same slot as its owner. A transfer to
+///      a different owner increments it. The resolver keys records by (node, epoch), so a
+///      transfer makes every record the previous owner wrote unreachable at once, for every
+///      reader, with no cleanup and no off-chain convention.
 contract PaytagRegistry {
     uint256 public constant MIN_LENGTH = 3;
     uint256 public constant MAX_LENGTH = 20;
 
-    mapping(bytes32 node => address owner) private _owners;
+    /// @notice A commitment can be revealed this long after it was made, and no sooner.
+    ///         The minimum guarantees commit and reveal land in different blocks (about seven
+    ///         Base blocks apart, with margin for reorgs); without it the commitment hides
+    ///         nothing. The maximum bounds how long an unused commitment can be held.
+    uint256 public constant MIN_COMMITMENT_AGE = 15 seconds;
+    uint256 public constant MAX_COMMITMENT_AGE = 1 days;
+
+    struct NameRecord {
+        address owner;
+        uint96 epoch;
+    }
+
+    mapping(bytes32 node => NameRecord) private _names;
+    // Keyed by committer: a commitment hash is public once it's on-chain, so a single shared
+    // mapping would let anyone overwrite (and so restart) someone else's commitment.
+    mapping(address committer => mapping(bytes32 commitment => uint256 committedAt)) private
+        _commitments;
 
     event NameRegistered(bytes32 indexed node, string name, address indexed owner);
     event Transfer(bytes32 indexed node, address indexed from, address indexed to);
@@ -39,36 +59,119 @@ contract PaytagRegistry {
     error ReservedName(bytes32 node);
     error NotOwner(bytes32 node, address caller);
     error ZeroAddress();
+    /// @dev Also raised when the reveal comes from a different address than the one bound into
+    ///      the commitment: the owner is part of the hash, so a commitment made for wallet A
+    ///      doesn't exist from wallet B's point of view.
+    error CommitmentNotFound(bytes32 commitment);
+    error CommitmentTooNew(bytes32 commitment, uint256 revealableAt);
+    error CommitmentTooOld(bytes32 commitment, uint256 expiredAt);
 
-    /// @notice Registers `name` to the caller.
+    // ------------------------------------------------------------------ registration
+
+    /// @notice Step 1 of registration: record `commitment`, from `makeCommitment(name, owner,
+    ///         secret)`. Reveal it with `register` between `MIN_COMMITMENT_AGE` and
+    ///         `MAX_COMMITMENT_AGE` later.
+    /// @dev What commit-reveal buys is that the name isn't legible on-chain or in the mempool
+    ///      before the transaction that claims it: the commitment is an opaque hash, and the
+    ///      name first appears in the reveal, which registers it in the same transaction. A
+    ///      reveal seen pending can't be raced, because a competing registration would need its
+    ///      own commitment to the same name that is already `MIN_COMMITMENT_AGE` old. It doesn't
+    ///      stop someone who committed to the same name earlier; that is first-come-first-served
+    ///      working as intended.
+    ///
+    ///      Commitments are stored per committer, so nobody can touch another address's
+    ///      commitment; re-committing your own restarts its clock. A reveal that reverts (for
+    ///      example, sent too early) publishes the name, but the commitment survives it, so
+    ///      reveal again promptly.
+    function commit(bytes32 commitment) external {
+        _commitments[msg.sender][commitment] = block.timestamp;
+    }
+
+    /// @notice The commitment for registering `name` to `owner_` with `secret`. Normalizes the
+    ///         name, so any casing of a valid name gives the same commitment. Reverts on
+    ///         invalid names. `secret` should be 32 random bytes kept until the reveal.
+    ///         `owner_` must be the address that both commits and reveals: commitments are
+    ///         stored per committer and `register` binds `msg.sender`.
+    function makeCommitment(string calldata name, address owner_, bytes32 secret)
+        external
+        pure
+        returns (bytes32)
+    {
+        bytes memory b = bytes(name);
+        _normalizeInPlace(b);
+        return keccak256(abi.encode(keccak256(b), owner_, secret));
+    }
+
+    /// @notice When `committer` made `commitment` (unix seconds), or 0 if they haven't.
+    function commitmentTime(address committer, bytes32 commitment) external view returns (uint256) {
+        return _commitments[committer][commitment];
+    }
+
+    /// @notice Step 2 of registration: registers `name` to the caller, consuming the caller's
+    ///         commitment for (name, caller, secret).
     /// @return node The node the normalized name hashes to.
-    function register(string calldata name) external returns (bytes32 node) {
+    function register(string calldata name, bytes32 secret) external returns (bytes32 node) {
         bytes memory normalized = bytes(name); // calldata -> fresh memory copy
         _normalizeInPlace(normalized);
         node = keccak256(normalized);
         if (isReserved(node)) revert ReservedName(node);
-        if (_owners[node] != address(0)) revert NameTaken(node);
+        if (_names[node].owner != address(0)) revert NameTaken(node);
 
-        _owners[node] = msg.sender;
+        bytes32 commitment = keccak256(abi.encode(node, msg.sender, secret));
+        uint256 committedAt = _commitments[msg.sender][commitment];
+        if (committedAt == 0) revert CommitmentNotFound(commitment);
+        if (block.timestamp < committedAt + MIN_COMMITMENT_AGE) {
+            revert CommitmentTooNew(commitment, committedAt + MIN_COMMITMENT_AGE);
+        }
+        if (block.timestamp > committedAt + MAX_COMMITMENT_AGE) {
+            revert CommitmentTooOld(commitment, committedAt + MAX_COMMITMENT_AGE);
+        }
+        delete _commitments[msg.sender][commitment];
+
+        // A fresh name: epoch is 0, and no records can exist yet (writes require an owner).
+        _names[node].owner = msg.sender;
         emit NameRegistered(node, string(normalized), msg.sender);
         emit Transfer(node, address(0), msg.sender);
     }
 
-    /// @notice Transfers ownership of `node` to `to`. Records on the resolver are left in place;
-    ///         the new owner can overwrite them.
+    // ------------------------------------------------------------------ ownership
+
+    /// @notice Transfers ownership of `node` to `to`. A transfer to a different address starts
+    ///         a new epoch, so every record and reverse claim from the previous owner stops
+    ///         resolving; the new owner starts from empty records. A self-transfer changes
+    ///         nothing.
     function transfer(bytes32 node, address to) external {
-        address current = _owners[node];
-        // `current == address(0)` covers unregistered nodes even if msg.sender were zero.
-        if (current == address(0) || current != msg.sender) revert NotOwner(node, msg.sender);
+        NameRecord memory current = _names[node];
+        // `current.owner == address(0)` covers unregistered nodes even if msg.sender were zero.
+        if (current.owner == address(0) || current.owner != msg.sender) {
+            revert NotOwner(node, msg.sender);
+        }
         if (to == address(0)) revert ZeroAddress();
 
-        _owners[node] = to;
-        emit Transfer(node, current, to);
+        if (to != current.owner) {
+            // One SSTORE: owner and epoch share a slot. uint96 can't overflow in practice
+            // (2^96 transfers), and an overflow would only reuse a long-dead epoch's records.
+            unchecked {
+                _names[node] = NameRecord(to, current.epoch + 1);
+            }
+        }
+        emit Transfer(node, current.owner, to);
     }
 
     /// @notice Owner of `node`, or `address(0)` if unregistered.
     function owner(bytes32 node) external view returns (address) {
-        return _owners[node];
+        return _names[node].owner;
+    }
+
+    /// @notice Current epoch of `node`: the number of transfers to a different owner.
+    function epoch(bytes32 node) external view returns (uint256) {
+        return _names[node].epoch;
+    }
+
+    /// @notice Owner and epoch of `node` in one call (one storage read).
+    function ownerAndEpoch(bytes32 node) external view returns (address, uint256) {
+        NameRecord memory r = _names[node];
+        return (r.owner, r.epoch);
     }
 
     /// @notice Node for `name` after normalization. Reverts on invalid names.

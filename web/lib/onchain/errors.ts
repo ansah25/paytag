@@ -98,6 +98,16 @@ export function revertMessage(errorName: string, args: readonly unknown[], ctx: 
       return `An Ethereum record must be exactly 20 bytes (got ${String(args[0])}).`;
     case 'ZeroEthAddress':
       return 'The zero address can’t be used as an Ethereum record. Clear the record instead.';
+    case 'CommitmentNotFound':
+      // The owner is bound into the commitment, so a reveal from another wallet lands here too.
+      return `No reservation for ${at === 'This name' ? 'this name' : at} from this wallet. Reservations only work from the wallet that made them; reserve again from this one.`;
+    case 'CommitmentTooNew': {
+      const readyAt = Number(args[1]);
+      const wait = Number.isFinite(readyAt) ? Math.max(1, Math.ceil(readyAt - Date.now() / 1000)) : null;
+      return wait ? `Your reservation isn’t ready yet. Try again in about ${wait}s.` : 'Your reservation isn’t ready yet. Try again in a few seconds.';
+    }
+    case 'CommitmentTooOld':
+      return 'Your reservation expired (they last 24 hours). Reserve the name again.';
     case 'ReverseMismatch':
       return `${at}’s Ethereum record must point at your connected wallet before it can be your primary name.`;
     default:

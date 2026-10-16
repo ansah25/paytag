@@ -1,3 +1,4 @@
+import { eq } from "ponder";
 import { ponder } from "ponder:registry";
 import schema from "ponder:schema";
 import { zeroAddress, zeroHash } from "viem";
@@ -15,7 +16,8 @@ ponder.on("PaytagRegistry:NameRegistered", async ({ event, context }) => {
     owner: owner.toLowerCase() as `0x${string}`,
     registeredBlock: event.block.number,
     registeredAt: event.block.timestamp,
-    lastTransferOrdinal: ordinal(event.block.number, event.log.logIndex),
+    epoch: 0n,
+    lastTransferAt: null,
   });
 });
 
@@ -32,13 +34,16 @@ ponder.on("PaytagRegistry:Transfer", async ({ event, context }) => {
   });
 
   // The mint Transfer (from 0x0) directly follows NameRegistered in the same tx; the name row
-  // already reflects it. A self-transfer changes nothing. Only a real change of owner moves
-  // ownership and makes the previous owner's records stale.
+  // already reflects it. A self-transfer changes nothing. A real change of owner starts a new
+  // epoch on-chain, which makes every earlier record unreachable, so the read model drops them
+  // (reverse claims resting on the old ETH record go dark with it).
   if (from === zeroAddress || from.toLowerCase() === to.toLowerCase()) return;
-  await context.db.update(schema.names, { node }).set({
+  await context.db.update(schema.names, { node }).set((row) => ({
     owner: to.toLowerCase() as `0x${string}`,
-    lastTransferOrdinal: ordinal(event.block.number, event.log.logIndex),
-  });
+    epoch: row.epoch + 1n,
+    lastTransferAt: event.block.timestamp,
+  }));
+  await context.db.sql.delete(schema.records).where(eq(schema.records.node, node));
 });
 
 ponder.on("PaytagResolver:RecordSet", async ({ event, context }) => {

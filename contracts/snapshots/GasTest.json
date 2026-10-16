@@ -1,13 +1,14 @@
 {
-  "addr ETH": "2824",
-  "addr SOL": "5452",
-  "register (20 chars)": "54791",
-  "register (3 chars)": "50643",
-  "reverse": "4763",
-  "setRecord BTC 22B (new)": "53332",
-  "setRecord ETH (new)": "53156",
-  "setRecord ETH (overwrite)": "36056",
-  "setRecord SOL 32B (new)": "75725",
-  "setReverse": "47772",
-  "transfer": "29537"
+  "addr ETH": "8272",
+  "addr SOL": "10897",
+  "commit": "44049",
+  "register (20 chars)": "56278",
+  "register (3 chars)": "52130",
+  "reverse": "10219",
+  "setRecord BTC 22B (new)": "53587",
+  "setRecord ETH (new)": "53414",
+  "setRecord ETH (overwrite)": "36314",
+  "setRecord SOL 32B (new)": "75980",
+  "setReverse": "53231",
+  "transfer": "29746"
 }
