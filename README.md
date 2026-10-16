@@ -278,7 +278,7 @@ Operational note: Ponder's own logs print the full RPC URL when an RPC request f
 
 ### Known trade-offs
 
-- **Free, first-come, permanent registration.** Commit-reveal stops a pending reveal from being raced, as long as it lands within the 15-second window, but not first-come squatting: anyone can register any free name for the gas of a commit and a register, with no fees or expiry. That's acceptable on a testnet; a mainnet deployment would want pricing or expiry.
+- **Free, first-come, permanent registration.** Commit-reveal stops a pending reveal from being raced, as long as it lands within 15 seconds of being broadcast (before a competitor's fresh commitment could mature), but not first-come squatting: anyone can register any free name for the gas of a commit and a register, with no fees or expiry. That's acceptable on a testnet; a mainnet deployment would want pricing or expiry.
 - **Registration is two transactions,** at least 15 seconds apart. The app runs the countdown and keeps the commitment's secret in the browser until the reveal; losing it just means reserving again.
 - **A transfer clears everything, including a return.** After a transfer away and back (A → B → A), A starts from empty records and has to set them again. The app shows such a name as *Unconfigured*, and the indexer reports `recordsReset`, rather than letting it quietly resolve to nothing.
 - **On-chain reads cost a registry call.** `addr` and `reverse` read the current epoch from the registry, about 5.4k gas inside a transaction. Free off-chain.
