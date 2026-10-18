@@ -55,7 +55,7 @@ describe('getStatus', () => {
     vi.stubGlobal(
       'fetch',
       route({
-        '/health': () => json({ status: 'ok' }),
+        '/ping': () => json({ status: 'ok' }),
         '/status': () => json({ baseSepolia: { id: 84532, block: { number: 100, timestamp: 1 } } }),
         '/ready': () => json({}),
         'sepolia.base.org': () => json({ jsonrpc: '2.0', id: 1, result: '0x64' }),
