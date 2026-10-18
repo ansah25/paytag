@@ -241,3 +241,42 @@ describe('CircuitBreaker — weighted failures', () => {
     expect(b.allow()).toBe(false);
   });
 });
+
+describe('getOnchainOwner — the budget', () => {
+  type Init = { signal: AbortSignal };
+  const afterAbort = (init: Init, err: () => unknown) =>
+    new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(err())));
+  const timeoutErr = () => new DOMException('timed out', 'TimeoutError');
+  const resetErr = () => Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET' } });
+  const quick = () => getOnchainOwner('alice', { timeoutMs: 20 });
+
+  it('counts a body that stalls after the headers as a timeout (weight 2)', async () => {
+    for (let i = 0; i < 3; i++) {
+      fetchMock.mockImplementationOnce(async (_url: string, init: Init) => ({
+        status: 200,
+        ok: true,
+        json: () => afterAbort(init, timeoutErr),
+      }));
+      expect(await quick()).toEqual({ kind: 'unavailable' });
+    }
+    expect(await quick()).toEqual({ kind: 'unavailable' }); // open after three
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("doesn't retry a reset that arrives after the budget ran out", async () => {
+    fetchMock.mockImplementationOnce((_url: string, init: Init) => afterAbort(init, resetErr));
+    expect(await quick()).toEqual({ kind: 'unavailable' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('counts a reset followed by a timed-out retry as a timeout', async () => {
+    for (let i = 0; i < 3; i++) {
+      fetchMock.mockRejectedValueOnce(resetErr());
+      fetchMock.mockImplementationOnce((_url: string, init: Init) => afterAbort(init, timeoutErr));
+      expect(await quick()).toEqual({ kind: 'unavailable' });
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(await quick()).toEqual({ kind: 'unavailable' }); // open after three
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+});

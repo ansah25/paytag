@@ -145,6 +145,12 @@ export const getOnchainOwner = async (
   // when no route matches and 503 while a container is swapped, and a wrong INDEXER_URL path
   // 404s too. Read as "not registered", those would let a held name through.
   const body = (await res.json().catch(() => null)) as { owner?: unknown; code?: unknown } | null;
+  // The budget covers the body too: headers followed by a stall is a timeout, not a bad answer.
+  if (body === null && signal.aborted) {
+    outcome.failure(2);
+    logger.warn('onchain.lookup_failed', { name, reason: 'TimeoutError', status: res.status });
+    return { kind: 'unavailable' };
+  }
   if (res.status === 404 && body?.code === 'USER_NOT_FOUND') {
     outcome.success();
     return { kind: 'none' };
