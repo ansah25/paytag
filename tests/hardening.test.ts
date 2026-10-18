@@ -46,6 +46,25 @@ describe('input caps', () => {
   });
 });
 
+describe('sign-in protocol', () => {
+  it('tells a client that sends no nonce to reload (CLIENT_OUTDATED)', async () => {
+    const res = await request(app)
+      .post('/auth/verify')
+      .send({ wallet: '0x6aD631F215393f9635231de985081B1ccDDC7C11', signature: '0x' + 'ab'.repeat(65) });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('CLIENT_OUTDATED');
+    expect(res.body.error).toMatch(/Reload the page/);
+  });
+
+  it('rejects a nonce that is not 80 hex characters at validation', async () => {
+    const res = await request(app)
+      .post('/auth/verify')
+      .send({ wallet: '0x6aD631F215393f9635231de985081B1ccDDC7C11', signature: '0xab', nonce: 'ab'.repeat(16) });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+});
+
 describe('auth rate limit', () => {
   it('puts /auth/nonce, /auth/verify and /register on the auth budget', async () => {
     for (const req of [
@@ -64,6 +83,17 @@ describe('body parser errors', () => {
     const res = await request(app).post('/auth/verify').set('Content-Type', 'application/json').send('{bad');
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('INVALID_JSON');
+  });
+
+  it('answers other client-side body errors with their 4xx and a fixed message', async () => {
+    const res = await request(app)
+      .post('/auth/verify')
+      .set('Content-Type', 'application/json')
+      .set('Content-Encoding', 'compress')
+      .send('{}');
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeLessThan(500);
+    expect(res.body).toEqual({ error: 'Unsupported or malformed request body', code: 'BAD_REQUEST_BODY' });
   });
 
   it('answers an over-limit body with 413', async () => {
@@ -89,6 +119,15 @@ describe('profile text', () => {
     ['BOM (mid-text; trim already strips it at the ends)', 'der\uFEFFrick'],
     ['line separator', 'a\u2028b'],
     ['paragraph separator', 'a\u2029b'],
+    ['soft hyphen', 'der\u00ADrick'],
+    ['combining grapheme joiner', 'a\u034Fb'],
+    ['Hangul filler', '\u3164derrick'],
+    ['halfwidth Hangul filler', 'a\uFFA0b'],
+    ['braille blank', 'a\u2800b'],
+    ['Mongolian vowel separator', 'a\u180Eb'],
+    ['ZWNJ', 'a\u200Cb'],
+    ['invisible plus', 'a\u2064b'],
+    ['tag character', 'a\u{E0041}b'],
   ])('rejects %s', (_label, value) => {
     expect(parse(value).success).toBe(false);
   });
@@ -96,5 +135,6 @@ describe('profile text', () => {
   it('keeps emoji ZWJ sequences and ordinary Unicode', () => {
     expect(parse('Derrick 👨\u200D👩\u200D👧').success).toBe(true);
     expect(parse('Dérrick Ànsah').success).toBe(true);
+    expect(parse('Love \u2764\uFE0F').success).toBe(true); // variation selector 16
   });
 });

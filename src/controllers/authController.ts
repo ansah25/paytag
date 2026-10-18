@@ -10,9 +10,9 @@ export const nonceQuerySchema = z.object({
 export const verifyBodySchema = z.object({
   wallet: bounded(MAX_LEN.wallet),
   signature: bounded(MAX_LEN.authSignature),
-  // The nonce this signature is over. Optional for one release, for pages loaded before the web
-  // app started sending it; then required.
-  nonce: z.string().regex(/^[0-9a-f]{1,64}$/).optional(),
+  // The nonce this signature is over. Optional in the schema only so that an outdated client gets
+  // a clear CLIENT_OUTDATED from the service instead of a generic validation error.
+  nonce: z.string().regex(/^[0-9a-f]{80}$/).optional(),
 });
 
 export const getNonce: RequestHandler = async (req, res, next) => {

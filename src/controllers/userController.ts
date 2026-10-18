@@ -10,10 +10,12 @@ export const registerBodySchema = z.object({
 });
 
 const CONTROL_CHARS = /\p{Cc}/gu;
-// Characters that reorder or hide text, used to make a profile read as something it isn't:
-// bidi embeddings/overrides/isolates and marks (incl. the Arabic letter mark), zero-width
-// space / word joiner / BOM, and line/paragraph separators. U+200D (ZWJ) stays: emoji need it.
-const DECEPTIVE_CHARS = /[\u061C\u200B\u200E\u200F\u202A-\u202E\u2028\u2029\u2060\u2066-\u2069\uFEFF]/u;
+// Characters that reorder or hide text, used to make a profile read as something it isn't: every
+// default-ignorable code point (bidi marks/overrides/isolates, zero-width chars, BOM, soft hyphen,
+// Hangul fillers, tag characters, ...) plus line/paragraph separators and the braille blank.
+// Kept: U+200D (ZWJ) and the variation selectors U+FE00–FE0F, which emoji need. Known trade-off:
+// subdivision flags (e.g. England) use tag characters and are rejected.
+const DECEPTIVE_CHARS = /[\u2028\u2029\u2800]|(?![\u200D\uFE00-\uFE0F])\p{Default_Ignorable_Code_Point}/u;
 
 /**
  * Optional profile text: control characters become spaces, surrounding

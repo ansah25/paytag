@@ -2,93 +2,50 @@ import './setup';
 import { ethers } from 'ethers';
 import jwt from 'jsonwebtoken';
 
-// In-memory auth_nonces table behind a chainable, awaitable query builder covering the calls the
-// service makes: insert, select + eq/order/range/limit, delete + eq/in/lt (+ select returning).
-interface NonceRow {
+// In-memory auth_nonces_used table: insert (with the primary-key conflict) and delete + lt.
+interface UsedRow {
   wallet_address: string;
   nonce: string;
-  created_at: string;
+  used_at: string;
 }
-const rows: NonceRow[] = [];
+const used: UsedRow[] = [];
+const touchedTables = new Set<string>();
 
 jest.mock('../src/config/supabase', () => {
   const builder = (table: string) => {
-    if (table !== 'auth_nonces') throw new Error(`Unexpected table: ${table}`);
-    let mode: 'select' | 'delete' = 'select';
-    let returning = false;
-    const filters: ((r: NonceRow) => boolean)[] = [];
-    let orderDesc = false;
-    let from = 0;
-    let to = Infinity;
-
-    const matching = () => {
-      let out = rows.filter((r) => filters.every((f) => f(r)));
-      out = [...out].sort((a, b) => a.created_at.localeCompare(b.created_at));
-      if (orderDesc) out.reverse();
-      return out.slice(from, to + 1);
-    };
-    const run = () => {
-      if (mode === 'delete') {
-        const gone = rows.filter((r) => filters.every((f) => f(r)));
-        for (const r of gone) rows.splice(rows.indexOf(r), 1);
-        return { data: returning ? gone.map((r) => ({ nonce: r.nonce })) : null, error: null };
-      }
-      return { data: matching().map(({ nonce, created_at }) => ({ nonce, created_at })), error: null };
-    };
-
+    touchedTables.add(table);
+    if (table !== 'auth_nonces_used') throw new Error(`Unexpected table: ${table}`);
+    const filters: ((r: UsedRow) => boolean)[] = [];
     const b: Record<string, unknown> = {
-      insert: (payload: NonceRow) => {
-        if (rows.some((r) => r.wallet_address === payload.wallet_address && r.nonce === payload.nonce)) {
-          return Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate' } });
+      insert: (row: UsedRow) => {
+        if (used.some((r) => r.wallet_address === row.wallet_address && r.nonce === row.nonce)) {
+          return Promise.resolve({ data: null, error: { code: '23505', message: 'duplicate key' } });
         }
-        rows.push({ ...payload });
+        used.push({ ...row });
         return Promise.resolve({ data: null, error: null });
       },
-      select: () => {
-        if (mode === 'delete') returning = true;
-        return b;
-      },
-      delete: () => {
-        mode = 'delete';
-        return b;
-      },
-      eq: (column: keyof NonceRow, value: string) => {
-        filters.push((r) => r[column] === value);
-        return b;
-      },
-      in: (column: keyof NonceRow, values: string[]) => {
-        filters.push((r) => values.includes(r[column]));
-        return b;
-      },
-      lt: (column: keyof NonceRow, value: string) => {
+      delete: () => b,
+      lt: (column: keyof UsedRow, value: string) => {
         filters.push((r) => r[column] < value);
         return b;
       },
-      order: (_column: string, opts: { ascending: boolean }) => {
-        orderDesc = !opts.ascending;
-        return b;
+      then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
+        const gone = used.filter((r) => filters.every((f) => f(r)));
+        for (const r of gone) used.splice(used.indexOf(r), 1);
+        return Promise.resolve({ data: null, error: null }).then(resolve, reject);
       },
-      range: (a: number, z: number) => {
-        from = a;
-        to = z;
-        return b;
-      },
-      limit: (n: number) => {
-        to = from + n - 1;
-        return b;
-      },
-      then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) =>
-        Promise.resolve(run()).then(resolve, reject),
     };
     return b;
   };
   return { supabase: { from: (table: string) => builder(table) } };
 });
 
+import { env } from '../src/config/env';
 import {
-  MAX_NONCES_PER_WALLET,
+  NONCE_FUTURE_TOLERANCE_SECONDS,
   createNonce,
-  resetNonceCleanup,
+  resetUsedNoncePrune,
+  usedNonceRetentionSeconds,
   verifySignatureAndIssueToken,
   verifyToken,
   _internal,
@@ -96,156 +53,183 @@ import {
 import { BadRequestError, UnauthorizedError } from '../src/utils/errors';
 
 const sign = (wallet: ethers.HDNodeWallet, nonce: string) => wallet.signMessage(_internal.buildSignMessage(nonce));
-const rowsFor = (wallet: ethers.HDNodeWallet) => rows.filter((r) => r.wallet_address === wallet.address.toLowerCase());
-const age = (nonce: string, minutes: number) => {
-  const row = rows.find((r) => r.nonce === nonce)!;
-  row.created_at = new Date(Date.now() - minutes * 60_000).toISOString();
-};
+const at = (ms: number) => jest.spyOn(Date, 'now').mockReturnValue(ms);
 
-describe('authService', () => {
+describe('authService (stateless nonces)', () => {
   beforeEach(() => {
-    rows.length = 0;
-    resetNonceCleanup();
+    used.length = 0;
+    touchedTables.clear();
+    resetUsedNoncePrune();
+    jest.restoreAllMocks();
   });
 
-  it('createNonce rejects invalid addresses', async () => {
+  it('createNonce rejects invalid addresses, including ICAP', async () => {
     await expect(createNonce('not-an-address')).rejects.toBeInstanceOf(BadRequestError);
+    await expect(createNonce('XE7338O073KYGTWWZN0F2WZ0R8PX5ZPPZS')).rejects.toBeInstanceOf(BadRequestError);
   });
 
-  it('issues a JWT for a correct signature over the nonce named in the request, and uses it up', async () => {
+  it('issues an 80-hex nonce and writes nothing', async () => {
+    const nonce = await createNonce(ethers.Wallet.createRandom().address);
+    expect(nonce).toMatch(/^[0-9a-f]{80}$/);
+    expect(touchedTables.size).toBe(0);
+  });
+
+  it('issues a JWT for a correct signature and records the nonce as spent', async () => {
     const wallet = ethers.Wallet.createRandom();
     const nonce = await createNonce(wallet.address);
-    const signature = await sign(wallet, nonce);
 
-    const { token, wallet: returned } = await verifySignatureAndIssueToken(wallet.address, signature, nonce);
+    const { token, wallet: returned } = await verifySignatureAndIssueToken(wallet.address, await sign(wallet, nonce), nonce);
 
     expect(returned).toBe(wallet.address.toLowerCase());
     expect(verifyToken(token).sub).toBe(wallet.address.toLowerCase());
-    expect(rowsFor(wallet)).toHaveLength(0);
-    await expect(verifySignatureAndIssueToken(wallet.address, signature, nonce)).rejects.toMatchObject({
-      errorCode: 'NONCE_NOT_FOUND',
-    });
+    expect(used).toEqual([expect.objectContaining({ wallet_address: wallet.address.toLowerCase(), nonce })]);
   });
 
-  it("a new nonce request doesn't invalidate one already being signed (no lockout)", async () => {
+  it('refuses a replay of a spent nonce', async () => {
     const wallet = ethers.Wallet.createRandom();
-    const mine = await createNonce(wallet.address);
-    const signature = await sign(wallet, mine);
-    // Someone else requests nonces for the same wallet meanwhile.
-    await createNonce(wallet.address);
-    await createNonce(wallet.address);
-
-    await expect(verifySignatureAndIssueToken(wallet.address, signature, mine)).resolves.toMatchObject({
-      wallet: wallet.address.toLowerCase(),
-    });
-  });
-
-  it('builds the checked message from the stored row: body.nonce A with a signature over B is refused', async () => {
-    const wallet = ethers.Wallet.createRandom();
-    const a = await createNonce(wallet.address);
-    const b = await createNonce(wallet.address);
-    const signatureOverB = await sign(wallet, b);
-
-    await expect(verifySignatureAndIssueToken(wallet.address, signatureOverB, a)).rejects.toMatchObject({
-      errorCode: 'INVALID_SIGNATURE',
-    });
-    // Neither nonce was used up by the failed attempt.
-    expect(rowsFor(wallet).map((r) => r.nonce).sort()).toEqual([a, b].sort());
-  });
-
-  it('refuses a nonce that was never issued, even with a valid signature over it', async () => {
-    const wallet = ethers.Wallet.createRandom();
-    await createNonce(wallet.address);
-    const forged = 'ab'.repeat(16);
-    await expect(
-      verifySignatureAndIssueToken(wallet.address, await sign(wallet, forged), forged),
-    ).rejects.toMatchObject({ errorCode: 'NONCE_NOT_FOUND' });
-  });
-
-  it("doesn't use up the nonce on a bad signature", async () => {
-    const wallet = ethers.Wallet.createRandom();
-    const attacker = ethers.Wallet.createRandom();
     const nonce = await createNonce(wallet.address);
-
-    await expect(
-      verifySignatureAndIssueToken(wallet.address, await sign(attacker, nonce), nonce),
-    ).rejects.toMatchObject({ errorCode: 'INVALID_SIGNATURE' });
-    await expect(verifySignatureAndIssueToken(wallet.address, await sign(wallet, nonce), nonce)).resolves.toBeDefined();
+    const signature = await sign(wallet, nonce);
+    await verifySignatureAndIssueToken(wallet.address, signature, nonce);
+    await expect(verifySignatureAndIssueToken(wallet.address, signature, nonce)).rejects.toMatchObject({
+      errorCode: 'NONCE_USED',
+    });
   });
 
   it('lets only one of two concurrent verifies of the same signature succeed', async () => {
     const wallet = ethers.Wallet.createRandom();
     const nonce = await createNonce(wallet.address);
     const signature = await sign(wallet, nonce);
-
     const results = await Promise.allSettled([
       verifySignatureAndIssueToken(wallet.address, signature, nonce),
       verifySignatureAndIssueToken(wallet.address, signature, nonce),
     ]);
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
-    const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
-    expect(rejected.reason).toBeInstanceOf(UnauthorizedError);
   });
 
-  it('rejects an expired nonce', async () => {
+  it('has no per-wallet state to evict: any number of newer nonces leaves an earlier one valid', async () => {
+    const wallet = ethers.Wallet.createRandom();
+    const mine = await createNonce(wallet.address);
+    const signature = await sign(wallet, mine);
+    for (let i = 0; i < 100; i++) await createNonce(wallet.address); // an attacker hammering the wallet
+    await expect(verifySignatureAndIssueToken(wallet.address, signature, mine)).resolves.toBeDefined();
+  });
+
+  it('builds the checked message only from an authenticated nonce: body nonce A with a signature over B is refused', async () => {
+    const wallet = ethers.Wallet.createRandom();
+    const a = await createNonce(wallet.address);
+    const b = await createNonce(wallet.address);
+    await expect(verifySignatureAndIssueToken(wallet.address, await sign(wallet, b), a)).rejects.toMatchObject({
+      errorCode: 'INVALID_SIGNATURE',
+    });
+    expect(used).toHaveLength(0); // nothing spent by the failed attempt
+  });
+
+  it('refuses a nonce issued for another wallet (the MAC binds the wallet)', async () => {
+    const victim = ethers.Wallet.createRandom();
+    const attacker = ethers.Wallet.createRandom();
+    const nonceForVictim = await createNonce(victim.address);
+    await expect(
+      verifySignatureAndIssueToken(attacker.address, await sign(attacker, nonceForVictim), nonceForVictim),
+    ).rejects.toMatchObject({ errorCode: 'NONCE_INVALID' });
+  });
+
+  it('refuses a tampered or forged nonce, even with a valid signature over it', async () => {
     const wallet = ethers.Wallet.createRandom();
     const nonce = await createNonce(wallet.address);
-    age(nonce, 10);
-    await expect(
-      verifySignatureAndIssueToken(wallet.address, await sign(wallet, nonce), nonce),
-    ).rejects.toMatchObject({ errorCode: 'NONCE_EXPIRED' });
-  });
-
-  it('rejects when no nonce was issued', async () => {
-    const wallet = ethers.Wallet.createRandom();
-    await expect(
-      verifySignatureAndIssueToken(wallet.address, '0x' + '00'.repeat(65), 'ab'.repeat(16)),
-    ).rejects.toBeInstanceOf(UnauthorizedError);
-  });
-
-  it(`keeps at most ${MAX_NONCES_PER_WALLET} nonces per wallet, dropping the oldest`, async () => {
-    const wallet = ethers.Wallet.createRandom();
-    const issued: string[] = [];
-    for (let i = 0; i < MAX_NONCES_PER_WALLET + 3; i++) {
-      issued.push(await createNonce(wallet.address));
-      // Distinct, increasing timestamps.
-      rows[rows.length - 1].created_at = new Date(Date.now() - (100 - i) * 1000).toISOString();
+    const flipped = nonce.slice(0, 20) + (nonce[20] === 'a' ? 'b' : 'a') + nonce.slice(21);
+    const forged = 'ab'.repeat(40);
+    for (const bad of [flipped, forged]) {
+      await expect(verifySignatureAndIssueToken(wallet.address, await sign(wallet, bad), bad)).rejects.toMatchObject({
+        errorCode: 'NONCE_INVALID',
+      });
     }
-    const kept = rowsFor(wallet).map((r) => r.nonce);
-    expect(kept).toHaveLength(MAX_NONCES_PER_WALLET);
-    expect(kept).not.toContain(issued[0]);
-    expect(kept).toContain(issued[issued.length - 1]);
   });
 
-  it('deletes expired nonces of any wallet when issuing a new one', async () => {
-    const other = ethers.Wallet.createRandom();
-    const stale = await createNonce(other.address);
-    age(stale, 10);
-    resetNonceCleanup();
-    await createNonce(ethers.Wallet.createRandom().address);
-    expect(rows.find((r) => r.nonce === stale)).toBeUndefined();
+  it("doesn't spend the nonce on a bad signature", async () => {
+    const wallet = ethers.Wallet.createRandom();
+    const nonce = await createNonce(wallet.address);
+    await expect(
+      verifySignatureAndIssueToken(wallet.address, await sign(ethers.Wallet.createRandom(), nonce), nonce),
+    ).rejects.toMatchObject({ errorCode: 'INVALID_SIGNATURE' });
+    await expect(verifySignatureAndIssueToken(wallet.address, await sign(wallet, nonce), nonce)).resolves.toBeDefined();
   });
 
-  describe('without a nonce in the request (pages loaded before the web app sent it)', () => {
-    it('accepts a signature over any fresh nonce of the wallet', async () => {
-      const wallet = ethers.Wallet.createRandom();
-      const mine = await createNonce(wallet.address);
-      const signature = await sign(wallet, mine);
-      await createNonce(wallet.address); // a newer one doesn't lock this client out
+  it('refuses an expired nonce', async () => {
+    const wallet = ethers.Wallet.createRandom();
+    const t0 = Date.now();
+    at(t0);
+    const nonce = await createNonce(wallet.address);
+    const signature = await sign(wallet, nonce);
+    at(t0 + (env.NONCE_TTL_SECONDS + 2) * 1000);
+    await expect(verifySignatureAndIssueToken(wallet.address, signature, nonce)).rejects.toMatchObject({
+      errorCode: 'NONCE_EXPIRED',
+    });
+  });
 
-      await expect(verifySignatureAndIssueToken(wallet.address, signature)).resolves.toBeDefined();
-      expect(rows.find((r) => r.nonce === mine)).toBeUndefined();
+  it('refuses a nonce dated beyond the future tolerance, and accepts one within it', async () => {
+    const wallet = ethers.Wallet.createRandom();
+    const t0 = Date.now();
+
+    at(t0 + (NONCE_FUTURE_TOLERANCE_SECONDS + 5) * 1000);
+    const farFuture = await createNonce(wallet.address);
+    at(t0);
+    await expect(
+      verifySignatureAndIssueToken(wallet.address, await sign(wallet, farFuture), farFuture),
+    ).rejects.toMatchObject({ errorCode: 'NONCE_INVALID' });
+
+    at(t0 + 5_000);
+    const slightlyAhead = await createNonce(wallet.address);
+    at(t0);
+    await expect(
+      verifySignatureAndIssueToken(wallet.address, await sign(wallet, slightlyAhead), slightlyAhead),
+    ).resolves.toBeDefined();
+  });
+
+  it('answers a request without a nonce (an outdated page) with 400 CLIENT_OUTDATED', async () => {
+    const wallet = ethers.Wallet.createRandom();
+    await expect(verifySignatureAndIssueToken(wallet.address, '0x' + '00'.repeat(65))).rejects.toMatchObject({
+      status: 400,
+      errorCode: 'CLIENT_OUTDATED',
+    });
+  });
+
+  describe('spent-nonce retention', () => {
+    it('outlives every nonce that could still be accepted (else a spent nonce becomes replayable)', () => {
+      expect(usedNonceRetentionSeconds()).toBeGreaterThan(env.NONCE_TTL_SECONDS + NONCE_FUTURE_TOLERANCE_SECONDS);
+      expect(usedNonceRetentionSeconds()).toBeGreaterThanOrEqual(15 * 60);
     });
 
-    it('still refuses another wallet’s signature and expired nonces', async () => {
+    it('prunes only rows older than the retention window', async () => {
+      const now = Date.now();
+      used.push(
+        { wallet_address: '0xold', nonce: 'a', used_at: new Date(now - (usedNonceRetentionSeconds() + 60) * 1000).toISOString() },
+        { wallet_address: '0xnew', nonce: 'b', used_at: new Date(now - 60_000).toISOString() },
+      );
       const wallet = ethers.Wallet.createRandom();
       const nonce = await createNonce(wallet.address);
-      await expect(
-        verifySignatureAndIssueToken(wallet.address, await sign(ethers.Wallet.createRandom(), nonce)),
-      ).rejects.toMatchObject({ errorCode: 'INVALID_SIGNATURE' });
-      age(nonce, 10);
-      await expect(verifySignatureAndIssueToken(wallet.address, await sign(wallet, nonce))).rejects.toMatchObject({
-        errorCode: 'NONCE_EXPIRED',
+      await verifySignatureAndIssueToken(wallet.address, await sign(wallet, nonce), nonce); // triggers the prune
+
+      expect(used.map((r) => r.wallet_address)).toEqual(['0xnew', wallet.address.toLowerCase()]);
+    });
+
+    it('still refuses a replay at the very end of the acceptance window', async () => {
+      const wallet = ethers.Wallet.createRandom();
+      const t0 = Date.now();
+      at(t0);
+      const nonce = await createNonce(wallet.address);
+      const signature = await sign(wallet, nonce);
+      await verifySignatureAndIssueToken(wallet.address, signature, nonce);
+
+      // Near the end of the window, another sign-in runs a prune; the spent row must survive it.
+      at(t0 + (env.NONCE_TTL_SECONDS - 1) * 1000);
+      resetUsedNoncePrune();
+      const other = ethers.Wallet.createRandom();
+      const otherNonce = await createNonce(other.address);
+      await verifySignatureAndIssueToken(other.address, await sign(other, otherNonce), otherNonce);
+      expect(used.some((r) => r.nonce === nonce)).toBe(true);
+
+      await expect(verifySignatureAndIssueToken(wallet.address, signature, nonce)).rejects.toMatchObject({
+        errorCode: 'NONCE_USED',
       });
     });
   });
