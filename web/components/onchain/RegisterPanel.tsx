@@ -439,6 +439,11 @@ export function RegisterPanel() {
             {connectError}
           </p>
         )}
+        {accountPending && !justRegistered && (
+          <p className="text-[13px] text-ink2" aria-live="polite">
+            Checking for a Paytag account named @{name}…
+          </p>
+        )}
         {account?.kind === 'yours' && !justRegistered && (
           <p className="text-[13px] font-semibold text-ink2">Registering it links it to your Paytag account @{name}.</p>
         )}

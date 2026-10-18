@@ -59,9 +59,19 @@ describe('clientKey', () => {
     expect(clientKey('2001:db8:1:3::1')).not.toBe(clientKey('2001:db8:1:2::1'));
   });
 
+  it('counts a dotted IPv4 tail as two groups', () => {
+    expect(clientKey('1:2::3:4:5:1.2.3.4')).toBe('1:2:0:3::/64');
+    expect(clientKey('1:2::4:4:5:1.2.3.4')).toBe('1:2:0:4::/64');
+    expect(clientKey('1:2:0:3:4:5:6:7')).toBe(clientKey('1:2::3:4:5:1.2.3.4'));
+    expect(clientKey('64:ff9b::1.2.3.4')).toBe('64:ff9b:0:0::/64');
+    expect(clientKey('::')).toBe('0:0:0:0::/64');
+  });
+
   it('leaves IPv4 alone and unwraps IPv4-mapped IPv6', () => {
     expect(clientKey('203.0.113.7')).toBe('203.0.113.7');
     expect(clientKey('::ffff:203.0.113.7')).toBe('203.0.113.7');
+    expect(clientKey('::ffff:cb00:7107')).toBe('203.0.113.7');
+    expect(clientKey('::FFFF:203.0.113.7')).toBe('203.0.113.7');
     expect(clientKey('unknown')).toBe('unknown');
   });
 });

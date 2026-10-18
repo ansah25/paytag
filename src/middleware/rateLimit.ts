@@ -69,16 +69,31 @@ export class RateLimiter {
  * give them an endless supply of fresh buckets. IPv4-mapped IPv6 counts as the IPv4 address.
  */
 export function clientKey(ip: string): string {
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
-  if (mapped && isIPv4(mapped[1])) return mapped[1];
-  if (!isIPv6(ip)) return ip;
-  const [head, tail = ''] = ip.toLowerCase().split('%')[0].split('::');
-  const left = head ? head.split(':') : [];
-  const right = tail ? tail.split(':') : [];
-  const groups = ip.includes('::')
-    ? [...left, ...Array(8 - left.length - right.length).fill('0'), ...right]
-    : left;
-  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':')}::/64`;
+  const addr = ip.split('%')[0]; // drop an IPv6 zone id
+  if (isIPv4(addr) || !isIPv6(addr)) return ip;
+  const groups = expandIPv6(addr);
+  // IPv4-mapped (::ffff:a.b.c.d, in either notation) counts as the IPv4 address.
+  if (groups.slice(0, 5).every((g) => g === 0) && groups[5] === 0xffff) {
+    return [groups[6] >> 8, groups[6] & 0xff, groups[7] >> 8, groups[7] & 0xff].join('.');
+  }
+  return `${groups.slice(0, 4).map((g) => g.toString(16)).join(':')}::/64`;
+}
+
+/** The eight 16-bit groups of a valid IPv6 address, with `::` and a dotted IPv4 tail expanded. */
+function expandIPv6(addr: string): number[] {
+  const toGroups = (part: string): number[] =>
+    part
+      ? part.split(':').flatMap((g) => {
+          if (!g.includes('.')) return [parseInt(g, 16)];
+          const [a, b, c, d] = g.split('.').map(Number);
+          return [(a << 8) | b, (c << 8) | d];
+        })
+      : [];
+  const [head, tail] = addr.split('::');
+  const left = toGroups(head);
+  if (tail === undefined) return left;
+  const right = toGroups(tail);
+  return [...left, ...Array<number>(8 - left.length - right.length).fill(0), ...right];
 }
 
 /**
