@@ -347,10 +347,10 @@ Public read endpoints (`/resolve`, `/available`, `/health`) are CORS-open. `/res
 
 1. Client calls `GET /auth/nonce?wallet=0x…` → receives `{ nonce }`
 2. Client signs message: `Paytag authentication\n\nSign this message to log in.\n\nNonce: <nonce>`
-3. Client POSTs `{ wallet, signature }` to `/auth/verify` → receives `{ token, wallet }`
+3. Client POSTs `{ wallet, signature, nonce }` to `/auth/verify` → receives `{ token, wallet }`. Without `nonce` the API answers `400 CLIENT_OUTDATED`.
 4. Client uses `Authorization: Bearer <token>` on protected routes
 
-Nonces are single-use (deleted on verify) and TTL-bounded (default 300 s) to prevent replay.
+Nonces are stateless (issued with a MAC binding them to the wallet; nothing stored at issue), TTL-bounded (default 300 s) and single-use: a successful sign-in records the nonce in `auth_nonces_used`, kept well past the TTL, so a replay is refused.
 
 ## Username rules
 
@@ -411,7 +411,7 @@ The repo is an npm workspace; `npm install` at the root installs everything.
 - Nonces are single-use and TTL-bounded
 - JWT secret enforced ≥ 32 chars
 - Service-role Supabase key isolated to backend
-- RLS enabled on all tables (public read on `users` + `wallet_mappings`, no public access to `auth_nonces`)
+- RLS enabled on all tables (public read on `users` + `wallet_mappings`, no public access to `auth_nonces` / `auth_nonces_used`)
 - No private keys are ever stored or transmitted
 
 ## License

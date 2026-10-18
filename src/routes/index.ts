@@ -12,7 +12,7 @@ export const router = Router();
 
 // One budget shared by the public reads: each can trigger an indexer lookup.
 const publicReads = rateLimit(new RateLimiter(env.PUBLIC_RATE_LIMIT_PER_MIN), { viaEdge: !!env.EDGE_SECRET });
-// Sign-in and signup: unauthenticated writes (a nonce row, a JWT, a username), so a tighter budget.
+// Sign-in and signup: unauthenticated, and they mint JWTs and usernames, so a tighter budget.
 // A normal sign-in is two requests.
 const authWrites = rateLimit(new RateLimiter(env.AUTH_RATE_LIMIT_PER_MIN), { viaEdge: !!env.EDGE_SECRET });
 

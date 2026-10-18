@@ -9,6 +9,12 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     return;
   }
 
+  // A malformed %-escape in a route parameter: Express raises a URIError with status 400.
+  if (err instanceof URIError) {
+    res.status(400).json({ error: 'Malformed URL', code: 'MALFORMED_URL' });
+    return;
+  }
+
   // express.json errors (http-errors with expose: true) are the client's fault. Fixed messages:
   // the parser's own text can describe internals, so it's never echoed.
   const parser = err as { type?: unknown; status?: unknown; expose?: unknown };

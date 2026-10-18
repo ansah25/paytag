@@ -8,7 +8,6 @@ export const MAX_LEN = {
   authSignature: 200, // EIP-191 hex is 132
   address: 128,
   chain: 32,
-  nonce: 64, // 32 hex
 } as const;
 
 export const bounded = (max: number) => z.string().min(1).max(max);

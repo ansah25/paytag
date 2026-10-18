@@ -96,6 +96,12 @@ describe('body parser errors', () => {
     expect(res.body).toEqual({ error: 'Unsupported or malformed request body', code: 'BAD_REQUEST_BODY' });
   });
 
+  it('answers a malformed %-escape in the URL with 400, not 500', async () => {
+    const res = await request(app).get('/resolve/%E0%A4%A');
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('MALFORMED_URL');
+  });
+
   it('answers an over-limit body with 413', async () => {
     const res = await request(app)
       .post('/auth/verify')

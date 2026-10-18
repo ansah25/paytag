@@ -54,6 +54,8 @@ import { BadRequestError, UnauthorizedError } from '../src/utils/errors';
 
 const sign = (wallet: ethers.HDNodeWallet, nonce: string) => wallet.signMessage(_internal.buildSignMessage(nonce));
 const at = (ms: number) => jest.spyOn(Date, 'now').mockReturnValue(ms);
+// The prune runs in the background after a sign-in; let it finish before asserting on it.
+const flushPrune = () => new Promise((resolve) => setImmediate(resolve));
 
 describe('authService (stateless nonces)', () => {
   beforeEach(() => {
@@ -208,24 +210,29 @@ describe('authService (stateless nonces)', () => {
       const wallet = ethers.Wallet.createRandom();
       const nonce = await createNonce(wallet.address);
       await verifySignatureAndIssueToken(wallet.address, await sign(wallet, nonce), nonce); // triggers the prune
+      await flushPrune();
 
       expect(used.map((r) => r.wallet_address)).toEqual(['0xnew', wallet.address.toLowerCase()]);
     });
 
     it('still refuses a replay at the very end of the acceptance window', async () => {
+      // Worst case: issued by a machine whose clock is a full tolerance ahead, spent immediately,
+      // replayed at the last second it would still be accepted (issuedAt + TTL). A prune running
+      // just before must keep the spent row; a retention of only the TTL would not.
       const wallet = ethers.Wallet.createRandom();
       const t0 = Date.now();
-      at(t0);
+      at(t0 + NONCE_FUTURE_TOLERANCE_SECONDS * 1000);
       const nonce = await createNonce(wallet.address);
       const signature = await sign(wallet, nonce);
+      at(t0);
       await verifySignatureAndIssueToken(wallet.address, signature, nonce);
 
-      // Near the end of the window, another sign-in runs a prune; the spent row must survive it.
-      at(t0 + (env.NONCE_TTL_SECONDS - 1) * 1000);
+      at(t0 + (NONCE_FUTURE_TOLERANCE_SECONDS + env.NONCE_TTL_SECONDS - 1) * 1000);
       resetUsedNoncePrune();
       const other = ethers.Wallet.createRandom();
       const otherNonce = await createNonce(other.address);
       await verifySignatureAndIssueToken(other.address, await sign(other, otherNonce), otherNonce);
+      await flushPrune();
       expect(used.some((r) => r.nonce === nonce)).toBe(true);
 
       await expect(verifySignatureAndIssueToken(wallet.address, signature, nonce)).rejects.toMatchObject({

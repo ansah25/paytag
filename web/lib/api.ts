@@ -80,7 +80,8 @@ const request = async <T>(path: string, opts: RequestOptions = {}): Promise<T> =
 
   if (!res.ok) {
     if (res.status === 401 && opts.auth) clearAuth();
-    // The API changed under a page loaded before the deploy: reload to pick up the new client.
+    // A future protocol change: the API says this client is out of date, so reload to get the new
+    // one. (Pages already open when this shipped run the old code and show the API's message.)
     if ((payload as { code?: unknown } | null)?.code === 'CLIENT_OUTDATED' && typeof window !== 'undefined') {
       window.location.reload();
     }
