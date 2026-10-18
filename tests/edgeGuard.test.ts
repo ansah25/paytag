@@ -86,8 +86,13 @@ describe('createApp with EDGE_SECRET (real wiring)', () => {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       app = require('../src/app').createApp();
     });
-    process.env.EDGE_SECRET = saved.secret;
-    process.env.PUBLIC_RATE_LIMIT_PER_MIN = saved.limit;
+    // Assigning undefined would store the string "undefined", which fails env validation.
+    const restore = (key: string, value: string | undefined) => {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    };
+    restore('EDGE_SECRET', saved.secret);
+    restore('PUBLIC_RATE_LIMIT_PER_MIN', saved.limit);
   });
   const viaEdge = (path: string, visitor: string) =>
     request(app).get(path).set(EDGE_HEADER, SECRET).set('Fly-Client-IP', '162.158.1.1').set('CF-Connecting-IP', visitor);
@@ -110,5 +115,10 @@ describe('createApp with EDGE_SECRET (real wiring)', () => {
     expect((await viaEdge(path, '203.0.113.1')).status).toBe(400);
     expect((await viaEdge(path, '203.0.113.2')).status).toBe(400);
     expect((await viaEdge(path, '203.0.113.1')).status).toBe(429);
+  });
+
+  it('leaves the environment as it found it', () => {
+    expect(process.env.EDGE_SECRET).toBeUndefined();
+    expect(process.env.PUBLIC_RATE_LIMIT_PER_MIN).toBeUndefined();
   });
 });
