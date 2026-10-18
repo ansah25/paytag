@@ -30,6 +30,9 @@ const envSchema = z.object({
   // rate limit keys on CF-Connecting-IP. Unset (local dev): no check.
   EDGE_SECRET: z.string().min(32, 'EDGE_SECRET must be at least 32 characters').optional(),
 
+  // Requests per minute per client IP on /auth/nonce, /auth/verify and /register (one budget).
+  AUTH_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(20),
+
   // Requests per minute per client IP on the public reads (/resolve, /available).
   PUBLIC_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(120),
 });

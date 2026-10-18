@@ -368,7 +368,7 @@ export function ClaimWizard({ username: routeName }: Props) {
         return;
       }
       try {
-        const { token, wallet } = await api.verify(address, signature);
+        const { token, wallet } = await api.verify(address, signature, nonce);
         saveAuth({ token, wallet });
         resumedFor.current = address;
         const me = await api.me();

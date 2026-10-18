@@ -1,9 +1,10 @@
 import { RequestHandler } from 'express';
 import { z } from 'zod';
+import { MAX_LEN } from './limits';
 import { checkAvailability as checkUsernameAvailability } from '../services/userService';
 
 export const availabilityParamsSchema = z.object({
-  username: z.string().min(1),
+  username: z.string().min(1).max(MAX_LEN.username),
 });
 
 // `wallet` is the caller's connected wallet: a name it already owns on-chain isn't reported

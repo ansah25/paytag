@@ -4,6 +4,7 @@ import { supabase } from '../config/supabase';
 import { env } from '../config/env';
 import { BadRequestError, ConflictError, NotFoundError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import { base58ToBytes } from '../utils/base58';
 import { assertSupportedChain, Chain, findOwnedUser, invalidateResolveCache } from './walletService';
 
 const NONCE_BYTES = 16;
@@ -31,15 +32,6 @@ export const buildVerificationMessage = (params: {
     `Address: ${params.address}`,
     `Nonce: ${params.nonce}`,
   ].join('\n');
-
-/** Base58 → bytes, keeping leading zero bytes (encoded as leading "1"s). */
-const base58ToBytes = (value: string): Uint8Array => {
-  const leadingZeros = value.match(/^1*/)?.[0].length ?? 0;
-  const body = ethers.toBeArray(ethers.decodeBase58(value));
-  const bytes = new Uint8Array(leadingZeros + body.length);
-  bytes.set(body, leadingZeros);
-  return bytes;
-};
 
 /**
  * Whether `signature` over `message` was made by the key behind `address`.
@@ -148,12 +140,22 @@ export const verifyAddress = async (
   }
   const challenge = data as { address: string; nonce: string; created_at: string };
 
-  // Single-use: consume the challenge whatever the outcome (replay protection).
-  await supabase
+  // Single-use: consume the challenge whatever the outcome (replay protection). Atomic: only the
+  // request whose delete removed this exact challenge goes on, so two concurrent submissions of
+  // one signature can't both succeed, and a newer challenge isn't consumed by mistake.
+  const { data: consumed, error: consumeErr } = await supabase
     .from('address_verification_nonces')
     .delete()
     .eq('user_id', user.id)
-    .eq('chain', chain);
+    .eq('chain', chain)
+    .eq('nonce', challenge.nonce)
+    .select('nonce');
+  if (consumeErr) {
+    throw new Error(`Failed to consume verification nonce: ${consumeErr.message}`);
+  }
+  if (!consumed || consumed.length === 0) {
+    throw new BadRequestError('No verification in progress for this chain', 'CHALLENGE_NOT_FOUND');
+  }
 
   const ageSeconds = (Date.now() - new Date(challenge.created_at).getTime()) / 1000;
   if (ageSeconds > env.NONCE_TTL_SECONDS) {

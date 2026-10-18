@@ -302,7 +302,7 @@ cd contracts && forge test
 |---|---|---|---|
 | GET | `/health` | — | Health check |
 | GET | `/auth/nonce?wallet=0x…` | — | Issue nonce for wallet signing |
-| POST | `/auth/verify` | — | Verify signed nonce, return JWT |
+| POST | `/auth/verify` | — | Verify signed nonce (`{ wallet, signature, nonce }`), return JWT |
 | POST | `/register` | JWT | Register a username |
 | GET | `/me` | JWT | The wallet's username and profile |
 | PATCH | `/me/profile` | JWT | Update display name (≤ 40) and bio (≤ 120); `null` clears |
@@ -312,6 +312,8 @@ cd contracts && forge test
 | POST | `/verify-address` | JWT | Submit the signature; marks the address verified |
 | GET | `/resolve/:username` | — | Resolve username → addresses, verification, profile and on-chain link status |
 | GET | `/available/:username?wallet=0x…` | — | Check availability, with suggestions. `TAKEN_ONCHAIN` when the name is held on-chain by a wallet other than `wallet` |
+
+Sign-in nonces are stateless: each carries its issue time and a MAC binding it to the wallet, and nothing is stored when one is issued, so requesting a nonce can never invalidate someone else's. They expire after `NONCE_TTL_SECONDS` and are single-use (spent nonces are recorded on successful sign-in and remembered well past their lifetime). `/auth/nonce`, `/auth/verify` and `/register` share a limit of 20 requests a minute per client IP. Every string input has a length cap, and published addresses are checksum-validated per chain (EIP-55, base58check, bech32/bech32m, 32-byte Solana keys).
 
 Public read endpoints (`/resolve`, `/available`, `/health`) are CORS-open. `/resolve` responses carry `Cache-Control: public, max-age=30, stale-while-revalidate=60`. `/resolve` and `/available` share a limit of 120 requests a minute per client IP (per API machine); over it, `429 { code: "RATE_LIMITED" }` with `Retry-After`. In production the API sits behind Cloudflare: a Transform Rule adds a secret `x-paytag-edge` header, the API refuses requests without it (except `/health`, for Fly's checks), and the limit keys on Cloudflare's `CF-Connecting-IP`. IPv6 clients are limited per /64. Roll out in this order: add the Transform Rule first (harmless on its own), then set `EDGE_SECRET` on Fly; the other way round refuses every real request. `/ping` is `/health` behind the guard, and www.paytag.dev/status probes it, so a mismatch shows there as the API being down. Only one secret is accepted, so rotating it means a short window of 403s between changing the rule and the Fly secret.
 
@@ -345,10 +347,10 @@ Public read endpoints (`/resolve`, `/available`, `/health`) are CORS-open. `/res
 
 1. Client calls `GET /auth/nonce?wallet=0x…` → receives `{ nonce }`
 2. Client signs message: `Paytag authentication\n\nSign this message to log in.\n\nNonce: <nonce>`
-3. Client POSTs `{ wallet, signature }` to `/auth/verify` → receives `{ token, wallet }`
+3. Client POSTs `{ wallet, signature, nonce }` to `/auth/verify` → receives `{ token, wallet }`. Without `nonce` the API answers `400 CLIENT_OUTDATED`.
 4. Client uses `Authorization: Bearer <token>` on protected routes
 
-Nonces are single-use (deleted on verify) and TTL-bounded (default 300 s) to prevent replay.
+Nonces are stateless (issued with a MAC binding them to the wallet; nothing stored at issue), TTL-bounded (default 300 s) and single-use: a successful sign-in records the nonce in `auth_nonces_used`, kept well past the TTL, so a replay is refused.
 
 ## Username rules
 
@@ -409,7 +411,7 @@ The repo is an npm workspace; `npm install` at the root installs everything.
 - Nonces are single-use and TTL-bounded
 - JWT secret enforced ≥ 32 chars
 - Service-role Supabase key isolated to backend
-- RLS enabled on all tables (public read on `users` + `wallet_mappings`, no public access to `auth_nonces`)
+- RLS enabled on all tables (public read on `users` + `wallet_mappings`, no public access to `auth_nonces` / `auth_nonces_used`)
 - No private keys are ever stored or transmitted
 
 ## License

@@ -80,6 +80,11 @@ const request = async <T>(path: string, opts: RequestOptions = {}): Promise<T> =
 
   if (!res.ok) {
     if (res.status === 401 && opts.auth) clearAuth();
+    // A future protocol change: the API says this client is out of date, so reload to get the new
+    // one. (Pages already open when this shipped run the old code and show the API's message.)
+    if ((payload as { code?: unknown } | null)?.code === 'CLIENT_OUTDATED' && typeof window !== 'undefined') {
+      window.location.reload();
+    }
     const obj = (payload && typeof payload === 'object' ? payload : {}) as {
       error?: string;
       code?: string;
@@ -190,10 +195,11 @@ const meSingleFlight = (_signal?: AbortSignal): Promise<MeResponse> => {
 export const api = {
   getNonce: (wallet: string) =>
     request<NonceResponse>(`/auth/nonce?wallet=${encodeURIComponent(wallet)}`),
-  verify: (wallet: string, signature: string) =>
+  /** `nonce`: the one from getNonce that was signed, so the API checks exactly that one. */
+  verify: (wallet: string, signature: string, nonce: string) =>
     request<VerifyResponse>('/auth/verify', {
       method: 'POST',
-      body: { wallet, signature },
+      body: { wallet, signature, nonce },
     }),
   register: (username: string) =>
     request<RegisterResponse>('/register', {

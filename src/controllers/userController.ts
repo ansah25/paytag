@@ -3,12 +3,19 @@ import { z } from 'zod';
 import * as userService from '../services/userService';
 import * as profileService from '../services/profileService';
 import { UnauthorizedError } from '../utils/errors';
+import { MAX_LEN } from './limits';
 
 export const registerBodySchema = z.object({
-  username: z.string().min(1, 'username is required'),
+  username: z.string().min(1, 'username is required').max(MAX_LEN.username),
 });
 
 const CONTROL_CHARS = /\p{Cc}/gu;
+// Characters that reorder or hide text, used to make a profile read as something it isn't: every
+// default-ignorable code point (bidi marks/overrides/isolates, zero-width chars, BOM, soft hyphen,
+// Hangul fillers, tag characters, ...) plus line/paragraph separators and the braille blank.
+// Kept: U+200D (ZWJ) and the variation selectors U+FE00–FE0F, which emoji need. Known trade-off:
+// subdivision flags (e.g. England) use tag characters and are rejected.
+const DECEPTIVE_CHARS = /[\u2028\u2029\u2800]|(?![\u200D\uFE00-\uFE0F])\p{Default_Ignorable_Code_Point}/u;
 
 /**
  * Optional profile text: control characters become spaces, surrounding
@@ -22,6 +29,9 @@ const profileText = (max: number, label: string) =>
     .transform((value) => (typeof value === 'string' ? value.replace(CONTROL_CHARS, ' ').trim() : value))
     .refine((value) => value == null || value.length <= max, {
       message: `${label} must be ${max} characters or fewer`,
+    })
+    .refine((value) => value == null || !DECEPTIVE_CHARS.test(value), {
+      message: `${label} contains invisible or text-direction characters`,
     })
     .transform((value) => (value === '' ? null : value));
 
