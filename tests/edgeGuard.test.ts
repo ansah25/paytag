@@ -78,8 +78,9 @@ describe('rateLimit behind the edge', () => {
 
 describe('createApp with EDGE_SECRET (real wiring)', () => {
   let app: express.Express;
+  // Whatever the shell running the tests had; put back afterwards.
+  const saved = { secret: process.env.EDGE_SECRET, limit: process.env.PUBLIC_RATE_LIMIT_PER_MIN };
   beforeAll(() => {
-    const saved = { secret: process.env.EDGE_SECRET, limit: process.env.PUBLIC_RATE_LIMIT_PER_MIN };
     process.env.EDGE_SECRET = SECRET;
     process.env.PUBLIC_RATE_LIMIT_PER_MIN = '1';
     jest.isolateModules(() => {
@@ -118,7 +119,7 @@ describe('createApp with EDGE_SECRET (real wiring)', () => {
   });
 
   it('leaves the environment as it found it', () => {
-    expect(process.env.EDGE_SECRET).toBeUndefined();
-    expect(process.env.PUBLIC_RATE_LIMIT_PER_MIN).toBeUndefined();
+    expect(process.env.EDGE_SECRET).toBe(saved.secret);
+    expect(process.env.PUBLIC_RATE_LIMIT_PER_MIN).toBe(saved.limit);
   });
 });
