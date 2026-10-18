@@ -12,8 +12,13 @@ import {
 } from '../src/services/onchainService';
 
 const OWNER = '0x6aD631F215393f9635231de985081B1ccDDC7C11';
-const fetchMock = jest.fn();
-global.fetch = fetchMock as unknown as typeof fetch;
+// The service fetches through undici (for its keep-alive agent); mock that fetch.
+const mockFetch = jest.fn();
+jest.mock('undici', () => ({
+  ...jest.requireActual('undici'),
+  fetch: (...args: unknown[]) => mockFetch(...args),
+}));
+const fetchMock = mockFetch;
 
 const reply = (status: number, body: unknown = {}) =>
   fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(body), { status }));
@@ -32,6 +37,7 @@ describe('getOnchainOwner', () => {
     expect(url).toBe('https://indexer.test/resolve/alice');
     expect(init.headers).toEqual({ 'x-paytag-server-key': 'fly-key' });
     expect(init.signal).toBeInstanceOf(AbortSignal);
+    expect(init.dispatcher).toBeDefined(); // the keep-alive agent
   });
 
   it("maps the indexer's own 404 to none and 503 to syncing", async () => {
@@ -76,16 +82,17 @@ describe('getOnchainOwner', () => {
   it('lets a lookup without the breaker through while it is open, and never trips it', async () => {
     const read = () => getOnchainOwner('alice', { timeoutMs: 300 });
     const register = () => getOnchainOwner('alice', { timeoutMs: REGISTER_TIMEOUT_MS, useBreaker: false });
-    for (let i = 0; i < 5; i++) {
+    // Timeouts count double: three open a breaker with a threshold of five.
+    for (let i = 0; i < 3; i++) {
       fetchMock.mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'));
       await read();
     }
     expect(await read()).toEqual({ kind: 'unavailable' }); // open
-    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
 
     reply(200, { owner: OWNER });
     expect(await register()).toEqual({ kind: 'owner', owner: OWNER.toLowerCase() });
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
 
     // ...and its failures don't count either.
     resetOnchainBreaker();
@@ -189,5 +196,48 @@ describe('without INDEXER_URL', () => {
     process.env.INDEXER_URL = saved;
     expect(await fresh.getOnchainOwner('alice', { timeoutMs: 300 })).toEqual({ kind: 'unavailable' });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('getOnchainOwner — connection resets', () => {
+  const reset = (code = 'ECONNRESET') => Object.assign(new TypeError('fetch failed'), { cause: { code } });
+
+  it('retries once on a reset and reports only the final outcome', async () => {
+    fetchMock.mockRejectedValueOnce(reset());
+    reply(200, { owner: OWNER });
+    expect(await lookup()).toEqual({ kind: 'owner', owner: OWNER.toLowerCase() });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // The reset didn't count: four more failures still leave the breaker closed.
+    for (let i = 0; i < 4; i++) {
+      reply(500);
+      await lookup();
+    }
+    reply(200, { owner: OWNER });
+    expect(await lookup()).toEqual({ kind: 'owner', owner: OWNER.toLowerCase() });
+  });
+
+  it('retries only once', async () => {
+    fetchMock.mockRejectedValueOnce(reset('UND_ERR_SOCKET'));
+    fetchMock.mockRejectedValueOnce(reset());
+    expect(await lookup()).toEqual({ kind: 'unavailable' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("doesn't retry other errors", async () => {
+    fetchMock.mockRejectedValueOnce(Object.assign(new TypeError('fetch failed'), { cause: { code: 'ENOTFOUND' } }));
+    expect(await lookup()).toEqual({ kind: 'unavailable' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('CircuitBreaker — weighted failures', () => {
+  it('opens sooner on timeouts, which count double', () => {
+    const b = new CircuitBreaker(5, 1_000, () => 0);
+    b.failure(2);
+    b.failure(2);
+    expect(b.allow()).toBe(true);
+    b.failure(2);
+    expect(b.allow()).toBe(false);
   });
 });

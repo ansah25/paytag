@@ -1,3 +1,4 @@
+import { Agent, fetch } from 'undici';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
@@ -8,10 +9,30 @@ import { logger } from '../utils/logger';
 // single staleness window for the status, failures included), and /register must read the
 // indexer fresh because the answer gates the signup.
 
-/** /resolve is the payment path; the badge isn't worth holding the addresses back for. */
-export const RESOLVE_TIMEOUT_MS = 300;
+// Measured 2026-10-18: a lookup on a reused connection takes ~120ms, a new connection ~520ms
+// (TCP + TLS). The agent below keeps connections warm; the budgets cover a cold one.
+
+/** /resolve is the payment path; the badge isn't worth holding the addresses back for long. */
+export const RESOLVE_TIMEOUT_MS = 800;
 /** /register gates a decision, and the user is already waiting on a database write. */
 export const REGISTER_TIMEOUT_MS = 1_000;
+
+/**
+ * Idle indexer connections are kept this long. It must stay below the idle timeout of the proxy
+ * in front of the indexer (Coolify's Traefik): reusing a socket the proxy is closing at that
+ * moment fails with a reset. Measured 2026-10-18: the proxy kept an idle connection open for
+ * 125s and still reused it (Traefik's default idle timeout is 180s), so 30s is well clear.
+ */
+export const KEEPALIVE_MS = 30_000;
+
+const agent = new Agent({ keepAliveTimeout: KEEPALIVE_MS, keepAliveMaxTimeout: KEEPALIVE_MS });
+
+/** Errors from writing onto a connection the other end just closed. */
+const RESET_CODES = new Set(['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET']);
+const isReset = (err: unknown): boolean => {
+  const code = (err as { cause?: { code?: unknown } })?.cause?.code;
+  return typeof code === 'string' && RESET_CODES.has(code);
+};
 
 export type OnchainLookup =
   | { kind: 'owner'; owner: string }
@@ -51,8 +72,9 @@ export class CircuitBreaker {
     this.probing = false;
   }
 
-  failure(): void {
-    this.failures += 1;
+  /** `weight` 2 for a timeout: stronger evidence of trouble than a single error. */
+  failure(weight = 1): void {
+    this.failures += weight;
     this.probing = false;
     if (this.failures >= this.threshold) this.openUntil = this.now() + this.openMs;
   }
@@ -69,14 +91,14 @@ const breaker = new CircuitBreaker();
 export const resetOnchainBreaker = (): void => breaker.success();
 
 /** Outcome reporting for one lookup: the shared breaker, or nothing (see `useBreaker`). */
-const NO_BREAKER = { success: () => {}, failure: () => {}, release: () => {} };
+const NO_BREAKER = { success: () => {}, failure: (_weight?: number) => {}, release: () => {} };
 
 /**
  * The on-chain owner of `name` (already normalized and validated). Never throws: any failure
  * is reported as `unavailable` so callers can carry on without the on-chain answer.
  *
  * `useBreaker: false` (for /register) neither consults the breaker nor counts toward it. The
- * reads run on a shorter budget, so an indexer answering in 300ms–1s would open the breaker
+ * reads run on a shorter budget, so an indexer answering in 800ms–1s would open the breaker
  * from public reads alone, and /register would then skip a check it had time for. Signups are
  * rare and per-wallet, so they can always afford the call.
  */
@@ -89,15 +111,33 @@ export const getOnchainOwner = async (
   if (useBreaker && !breaker.allow()) return { kind: 'unavailable' };
   const outcome = useBreaker ? breaker : NO_BREAKER;
 
-  let res: Response;
-  try {
-    res = await fetch(`${env.INDEXER_URL.replace(/\/+$/, '')}/resolve/${encodeURIComponent(name)}`, {
+  const url = `${env.INDEXER_URL.replace(/\/+$/, '')}/resolve/${encodeURIComponent(name)}`;
+  // One budget for the whole lookup, retry included.
+  const signal = AbortSignal.timeout(opts.timeoutMs);
+  const get = () =>
+    fetch(url, {
+      dispatcher: agent,
       headers: env.INDEXER_SERVER_KEY ? { 'x-paytag-server-key': env.INDEXER_SERVER_KEY } : undefined,
-      signal: AbortSignal.timeout(opts.timeoutMs),
+      signal,
     });
+
+  let res: Awaited<ReturnType<typeof fetch>>;
+  try {
+    try {
+      res = await get();
+    } catch (err) {
+      // A GET is safe to repeat. One retry covers a kept-alive socket the proxy closed just as we
+      // wrote to it; only the final outcome is reported to the breaker.
+      if (!isReset(err) || signal.aborted) throw err;
+      res = await get();
+    }
   } catch (err) {
-    outcome.failure();
-    logger.warn('onchain.lookup_failed', { name, reason: (err as Error).name });
+    const timedOut = signal.aborted || (err as Error).name === 'TimeoutError';
+    outcome.failure(timedOut ? 2 : 1);
+    logger.warn('onchain.lookup_failed', {
+      name,
+      reason: timedOut ? 'TimeoutError' : ((err as { cause?: { code?: string } }).cause?.code ?? (err as Error).name),
+    });
     return { kind: 'unavailable' };
   }
 
