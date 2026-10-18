@@ -1,5 +1,6 @@
 import { isIPv4, isIPv6 } from 'node:net';
 import { RequestHandler } from 'express';
+import { logger } from '../utils/logger';
 
 // Per-client token buckets, in memory (the same scheme as the indexer's limiter). The counter is
 // per machine: the real ceiling is the configured rate × however many Fly machines are running.
@@ -109,11 +110,11 @@ function expandIPv6(addr: string): number[] {
 export const rateLimit =
   (limiter: RateLimiter, opts: { viaEdge?: boolean } = {}): RequestHandler =>
   (req, res, next) => {
-    const ip =
-      (opts.viaEdge ? req.header('cf-connecting-ip') : undefined) ??
-      req.header('fly-client-ip') ??
-      req.socket.remoteAddress ??
-      'unknown';
+    const visitor = opts.viaEdge ? req.header('cf-connecting-ip') : undefined;
+    // Cloudflare always sets it on proxied requests; if it's ever missing, everyone on that edge
+    // server shares one bucket, so say so.
+    if (opts.viaEdge && !visitor) logger.warn('ratelimit.no_cf_connecting_ip', { path: req.path });
+    const ip = visitor ?? req.header('fly-client-ip') ?? req.socket.remoteAddress ?? 'unknown';
     const d = limiter.check(clientKey(ip));
     res.setHeader('RateLimit-Limit', String(d.limit));
     res.setHeader('RateLimit-Remaining', String(d.remaining));

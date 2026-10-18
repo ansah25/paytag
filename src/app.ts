@@ -50,8 +50,10 @@ export const createApp = (): Application => {
   // such as ?wallet=, so nested/array query syntax isn't needed.
   app.set('query parser', 'simple');
 
-  app.use(edgeGuard(env.EDGE_SECRET));
+  // CORS first, so a browser refused by the guard sees the readable DIRECT_ACCESS body rather
+  // than an opaque CORS error. Preflights carry no data and are answered here.
   app.use(splitCors());
+  app.use(edgeGuard(env.EDGE_SECRET));
   app.use(express.json({ limit: '100kb' }));
 
   app.use(router);

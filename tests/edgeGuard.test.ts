@@ -75,3 +75,40 @@ describe('rateLimit behind the edge', () => {
     expect((await visit(app, '203.0.113.2')).status).toBe(429);
   });
 });
+
+describe('createApp with EDGE_SECRET (real wiring)', () => {
+  let app: express.Express;
+  beforeAll(() => {
+    const saved = { secret: process.env.EDGE_SECRET, limit: process.env.PUBLIC_RATE_LIMIT_PER_MIN };
+    process.env.EDGE_SECRET = SECRET;
+    process.env.PUBLIC_RATE_LIMIT_PER_MIN = '1';
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      app = require('../src/app').createApp();
+    });
+    process.env.EDGE_SECRET = saved.secret;
+    process.env.PUBLIC_RATE_LIMIT_PER_MIN = saved.limit;
+  });
+  const viaEdge = (path: string, visitor: string) =>
+    request(app).get(path).set(EDGE_HEADER, SECRET).set('Fly-Client-IP', '162.158.1.1').set('CF-Connecting-IP', visitor);
+
+  it('refuses direct requests with a CORS-readable body, but keeps /health open', async () => {
+    const direct = await request(app).get('/resolve/derrick').set('Origin', 'https://example.com');
+    expect(direct.status).toBe(403);
+    expect(direct.body.code).toBe('DIRECT_ACCESS');
+    expect(direct.headers['access-control-allow-origin']).toBeDefined();
+    expect((await request(app).get('/health')).status).toBe(200);
+  });
+
+  it('serves /ping through the edge', async () => {
+    expect((await viaEdge('/ping', '203.0.113.9')).status).toBe(200);
+  });
+
+  it('rate-limits per visitor behind a shared edge server', async () => {
+    // Validation rejects the malformed wallet after the limiter, so no database is needed.
+    const path = '/available/alice?wallet=nope';
+    expect((await viaEdge(path, '203.0.113.1')).status).toBe(400);
+    expect((await viaEdge(path, '203.0.113.2')).status).toBe(400);
+    expect((await viaEdge(path, '203.0.113.1')).status).toBe(429);
+  });
+});

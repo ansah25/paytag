@@ -57,7 +57,9 @@ async function timed<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<{ valu
 
 async function probeApi(): Promise<StatusReport['api']> {
   const { value, ms } = await timed(async (signal) => {
-    const res = await fetch(`${API_URL}/health`, { signal, cache: 'no-store' });
+    // /ping, not /health: it's behind the API's Cloudflare edge check, so a misconfigured edge
+    // (every real request refused) shows here as down.
+    const res = await fetch(`${API_URL}/ping`, { signal, cache: 'no-store' });
     const body = (await res.json()) as { status?: string };
     return res.ok && body.status === 'ok';
   });

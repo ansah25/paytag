@@ -13,7 +13,14 @@ export const router = Router();
 // One budget shared by the public reads: each can trigger an indexer lookup.
 const publicReads = rateLimit(new RateLimiter(env.PUBLIC_RATE_LIMIT_PER_MIN), { viaEdge: !!env.EDGE_SECRET });
 
+// Liveness for Fly's checks, which reach the machine directly: exempt from the edge guard.
 router.get('/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
+// Same answer, but behind the edge guard: www.paytag.dev/status probes this, so a Cloudflare /
+// EDGE_SECRET mismatch (every real request refused) shows as the API being down.
+router.get('/ping', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
