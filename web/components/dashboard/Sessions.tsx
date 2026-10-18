@@ -16,6 +16,8 @@ interface Props {
 export function Sessions({ wallet, onSignOut }: Props) {
   const [sessions, setSessions] = useState<SessionInfo[] | null>(null);
   const [signingOut, setSigningOut] = useState(false);
+  const [signingOutAll, setSigningOutAll] = useState(false);
+  const [allError, setAllError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -27,6 +29,20 @@ export function Sessions({ wallet, onSignOut }: Props) {
       cancelled = true;
     };
   }, []);
+
+  // Revokes every token for the account on the server, then clears this browser too.
+  const signOutEverywhere = async () => {
+    setSigningOutAll(true);
+    setAllError(null);
+    try {
+      await api.logoutAll();
+      await onSignOut();
+    } catch {
+      setAllError('Couldn’t sign out other sessions. Try again.');
+    } finally {
+      setSigningOutAll(false);
+    }
+  };
 
   const signOut = async () => {
     setSigningOut(true);
@@ -74,13 +90,28 @@ export function Sessions({ wallet, onSignOut }: Props) {
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <span className="max-w-[360px] text-[13px] leading-[1.5] text-ink3">
-            Sessions are signatures, not passwords. Signing out clears this browser; sessions on other devices
-            expire on their own.
+            Sessions are signatures, not passwords, and last up to 24 hours. Sign out clears this browser. Sign out
+            everywhere also ends every other session for this account, e.g. on a lost device.
           </span>
-          <Button variant="danger-outline" loading={signingOut} loadingLabel="Signing out…" onClick={() => void signOut()}>
-            Sign out
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="danger-outline" loading={signingOut} loadingLabel="Signing out…" onClick={() => void signOut()}>
+              Sign out
+            </Button>
+            <Button
+              variant="danger-outline"
+              loading={signingOutAll}
+              loadingLabel="Signing out…"
+              onClick={() => void signOutEverywhere()}
+            >
+              Sign out everywhere
+            </Button>
+          </div>
         </div>
+        {allError && (
+          <p role="alert" className="text-sm font-medium text-danger">
+            {allError}
+          </p>
+        )}
       </Card>
     </div>
   );

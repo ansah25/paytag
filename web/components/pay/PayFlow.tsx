@@ -87,6 +87,7 @@ export function PayFlow({
   username,
   recipient,
   verified,
+  onchainLinked = false,
   otherWallet,
   onSwitchChain,
   onBusyChange,
@@ -430,7 +431,8 @@ export function PayFlow({
     );
   } else {
     // review / signing / confirming
-    const { head, tail } = splitAddress(recipient);
+    // The whole address, not head…tail: a vanity address can match a few characters at each end.
+    const { head, mid, tail } = splitAddress(recipient);
     live =
       stage === 'signing'
         ? `Confirm the transaction in your ${meta.walletName}`
@@ -443,8 +445,15 @@ export function PayFlow({
         <dl className="rounded-inset-xl bg-surface2 px-5 py-1.5">
           <ReviewRow term="To">
             <span className="font-mono text-sm font-medium">@{username}</span>
-            <span className="mt-0.5 block font-mono text-xs text-ink2">
-              <span className="font-bold text-ink">{head}</span>…<span className="font-bold text-ink">{tail}</span>
+            <span className="mt-0.5 block break-all font-mono text-xs leading-[1.6] text-ink2">
+              <span className="font-bold text-ink">{head}</span>
+              {mid}
+              <span className="font-bold text-ink">{tail}</span>
+            </span>
+            {/* Two namespaces can hold the same name: say which one this address came from. */}
+            <span className="mt-1 block text-xs text-ink3">
+              Paytag account paytag.dev/{username}
+              {onchainLinked ? ' · on-chain @' + username + ' is linked' : ''}
             </span>
           </ReviewRow>
           <ReviewRow term="Amount">

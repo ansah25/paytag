@@ -148,6 +148,7 @@ export default function ProfilePage({ params }: Props) {
             chains={chains}
             addresses={resolution.addresses}
             verified={verified}
+            onchainLinked={onchain === 'linked'}
             hideProfileLink
           />
         </div>

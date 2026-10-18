@@ -99,8 +99,13 @@ const request = async <T>(path: string, opts: RequestOptions = {}): Promise<T> =
   return payload as T;
 };
 
+/** This site's host, as the sign-in message names it. */
+const signInDomain = (): string => window.location.host;
+
 export interface NonceResponse {
   nonce: string;
+  /** The exact text to sign (EIP-4361). */
+  message: string;
 }
 export interface VerifyResponse {
   token: string;
@@ -193,14 +198,22 @@ const meSingleFlight = (_signal?: AbortSignal): Promise<MeResponse> => {
 };
 
 export const api = {
+  /**
+   * The sign-in (SIWE) message comes from the API and is signed exactly as given; it names this
+   * site's host, which the API checks against its allowlist and the request's Origin.
+   */
   getNonce: (wallet: string) =>
-    request<NonceResponse>(`/auth/nonce?wallet=${encodeURIComponent(wallet)}`),
-  /** `nonce`: the one from getNonce that was signed, so the API checks exactly that one. */
+    request<NonceResponse>(
+      `/auth/nonce?wallet=${encodeURIComponent(wallet)}&domain=${encodeURIComponent(signInDomain())}`,
+    ),
+  /** `nonce`: the one from getNonce whose message was signed. */
   verify: (wallet: string, signature: string, nonce: string) =>
     request<VerifyResponse>('/auth/verify', {
       method: 'POST',
-      body: { wallet, signature, nonce },
+      body: { wallet, signature, nonce, domain: signInDomain() },
     }),
+  /** Invalidates every session of the signed-in account, this one included. */
+  logoutAll: () => request<{ revoked: true }>('/auth/logout-all', { method: 'POST', auth: true }),
   register: (username: string) =>
     request<RegisterResponse>('/register', {
       method: 'POST',
@@ -284,5 +297,3 @@ export const api = {
     sdk.available(username, { signal, wallet }).catch(wrapPaytagError),
 };
 
-export const buildSignMessage = (nonce: string): string =>
-  `Paytag authentication\n\nSign this message to log in.\n\nNonce: ${nonce}`;

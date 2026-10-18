@@ -39,6 +39,8 @@ export interface PayPanelProps {
   chains: PaytagChain[];
   addresses: Partial<Record<PaytagChain, string>>;
   verified?: Partial<Record<PaytagChain, boolean>>;
+  /** The on-chain name of the same spelling is linked to this account. */
+  onchainLinked?: boolean;
   /** Hide "View profile →" in the empty state (when already on the profile). */
   hideProfileLink?: boolean;
   className?: string;
@@ -49,6 +51,7 @@ export function PayPanel({
   chains,
   addresses,
   verified = {},
+  onchainLinked = false,
   hideProfileLink = false,
   className,
 }: PayPanelProps) {
@@ -120,6 +123,7 @@ export function PayPanel({
           username={username}
           recipient={addresses[chain] ?? ''}
           verified={!!verified[chain]}
+          onchainLinked={onchainLinked}
           otherWallet={otherChain ? { chain: otherChain } : null}
           onSwitchChain={setPicked}
           onBusyChange={setBusy}

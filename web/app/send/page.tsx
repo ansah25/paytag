@@ -268,6 +268,7 @@ export default function SendPage() {
             chains={activeChains}
             addresses={resolution.addresses}
             verified={resolution.verified}
+            onchainLinked={resolution.onchain?.status === 'linked'}
           />
         </div>
       )}
