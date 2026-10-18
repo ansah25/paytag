@@ -5,11 +5,13 @@ import type { Address } from 'viem';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Field, type FieldStatus } from '@/components/ui/Field';
+import { api, ApiError } from '@/lib/api';
 import { REGISTRY_ADDRESS } from '@/lib/onchain/generated/deployment';
 import { normalizeName } from '@/lib/onchain/generated/names';
 import { PaytagRegistryAbi } from '@/lib/onchain/generated/PaytagRegistryAbi';
 import { RESERVED_NODES } from '@/lib/onchain/generated/reservedNodes';
 import { indexer, type Availability } from '@/lib/onchain/indexer';
+import { accountLinksTo } from '@/lib/onchain/linking';
 import {
   MIN_COMMITMENT_AGE,
   PENDING_COMMIT_GRACE_MS,
@@ -35,6 +37,14 @@ type Check =
   | { kind: 'unreachable' };
 
 const DEBOUNCE_MS = 350;
+
+/**
+ * The Paytag account (off-chain) with the same name, for the connected wallet. `other`: it
+ * exists and the connected wallet isn't its verified Ethereum address, so registering here
+ * won't link the two. `key` is the wallet + name it was looked up for. On an error nothing is
+ * shown (`unknown`).
+ */
+type PaytagAccount = { key: string; kind: 'none' | 'yours' | 'other' | 'unknown' };
 
 /** Where the current name's two-step registration stands. */
 type Step =
@@ -66,10 +76,20 @@ export function RegisterPanel() {
   const [txLabel, setTxLabel] = useState<string | null>(null);
   // Chain time minus local time (seconds), so the countdown follows the chain, not the device clock.
   const [chainOffset, setChainOffset] = useState(0);
+  const [paytag, setPaytag] = useState<PaytagAccount | null>(null);
+  // The wallet + name whose "belongs to a different wallet" warning the user accepted.
+  const [acceptedFor, setAcceptedFor] = useState<string | null>(null);
   const [, setTick] = useState(0);
   const { publicClient, address } = tx;
   // The wallet + name the panel shows right now, for async callbacks that outlive a change.
   const currentKey = useRef('');
+
+  // ?name= prefills the form (the dashboard links here with the account's name). Read after
+  // mount rather than through the page's searchParams, so the page stays static.
+  useEffect(() => {
+    const prefill = new URLSearchParams(window.location.search).get('name');
+    if (prefill) setInput(prefill.slice(0, 21));
+  }, []);
 
   const parsed = useMemo(() => (input.trim() ? normalizeName(input.trim()) : null), [input]);
 
@@ -95,6 +115,41 @@ export function RegisterPanel() {
   }, [parsed, recheck]);
 
   const name = parsed?.ok ? parsed.name : null;
+
+  // Only worth asking once the name is free on-chain and a wallet is connected. Keyed by wallet +
+  // name, so a result (or an accepted warning) never carries over to another wallet or name.
+  const freeOnchain = check.kind === 'result' && check.result.available;
+  const lookupKey = name && freeOnchain && address ? `${address.toLowerCase()}:${name}` : null;
+  useEffect(() => {
+    if (!lookupKey || !name || !address) return;
+    const controller = new AbortController();
+    // A slow API mustn't hold Reserve back for long: after 4s, carry on without the warning.
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 4_000);
+    api
+      .resolve(name, controller.signal)
+      .then((resolution) =>
+        setPaytag({ key: lookupKey, kind: accountLinksTo(resolution, address) ? 'yours' : 'other' }),
+      )
+      .catch((err) => {
+        if (controller.signal.aborted && !timedOut) return;
+        const missing = err instanceof ApiError && (err.code === 'USER_NOT_FOUND' || err.status === 404);
+        setPaytag({ key: lookupKey, kind: missing ? 'none' : 'unknown' });
+      })
+      .finally(() => clearTimeout(timer));
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [lookupKey, name, address]);
+  const account = paytag && paytag.key === lookupKey ? paytag : null;
+  // Reserve waits for the lookup, so a quick click can't skip the warning.
+  const accountPending = lookupKey !== null && account === null;
+  const needsAccept = account?.kind === 'other' && acceptedFor !== lookupKey;
+
   currentKey.current = `${address?.toLowerCase() ?? ''}:${name ?? ''}`;
   const isCurrent = (r: Reservation) => currentKey.current === `${r.owner}:${r.name}`;
 
@@ -177,7 +232,11 @@ export function RegisterPanel() {
   // It may also still say "available" if the indexer lagged, so Register stays off either way.
   const justRegistered = registered !== null && registered === name && tx.state.status === 'indexed';
   const canRegister =
-    !!name && !justRegistered && (check.kind === 'unreachable' || (check.kind === 'result' && check.result.available));
+    !!name &&
+    !justRegistered &&
+    !needsAccept &&
+    !accountPending &&
+    (check.kind === 'unreachable' || (check.kind === 'result' && check.result.available));
 
   const reserve = () => {
     if (!name || !address) return;
@@ -379,6 +438,25 @@ export function RegisterPanel() {
           <p className="text-sm font-semibold text-danger" role="alert">
             {connectError}
           </p>
+        )}
+        {accountPending && !justRegistered && (
+          <p className="text-[13px] text-ink2" aria-live="polite">
+            Checking for a Paytag account named @{name}…
+          </p>
+        )}
+        {account?.kind === 'yours' && !justRegistered && (
+          <p className="text-[13px] font-semibold text-ink2">Registering it links it to your Paytag account @{name}.</p>
+        )}
+        {needsAccept && (
+          <div className="grid gap-3 rounded-inset-sm bg-warn-bg px-4 py-3 text-sm text-warn" role="status">
+            <p className="font-semibold">
+              The Paytag account @{name} belongs to a different wallet. Registering it here won’t link the two, and
+              payments to paytag.dev/{name} keep going to that account.
+            </p>
+            <Button variant="outline" size={36} className="justify-self-start" onClick={() => setAcceptedFor(lookupKey)}>
+              Register it anyway
+            </Button>
+          </div>
         )}
         {suggestions.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-sm">

@@ -1,6 +1,7 @@
 import { supabase } from '../config/supabase';
 import { ConflictError, BadRequestError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import { REGISTER_TIMEOUT_MS, RESOLVE_TIMEOUT_MS, getOnchainOwner } from './onchainService';
 
 export const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
 
@@ -109,6 +110,41 @@ export const generateSuggestions = async (
   return suggestions;
 };
 
+export type AvailabilityReason = 'INVALID_FORMAT' | 'RESERVED' | 'TAKEN' | 'TAKEN_ONCHAIN';
+
+export interface Availability {
+  available: boolean;
+  reason?: AvailabilityReason;
+  suggestions: string[];
+}
+
+/**
+ * Whether `rawUsername` can be registered off-chain by `wallet`. A name free off-chain but held
+ * on-chain is `TAKEN_ONCHAIN` unless `wallet` is its on-chain owner (registering it would link
+ * the two). Only the on-chain owner, which is public, is compared with `wallet`; the response
+ * never says which wallet owns an off-chain account. An indexer failure reports the name
+ * available: /register checks again. Suggestions are filtered off-chain only, so a request makes
+ * at most one indexer call. If this is ever cached, `wallet` must be part of the cache key.
+ */
+export const checkAvailability = async (rawUsername: string, wallet?: string): Promise<Availability> => {
+  const username = normalizeUsername(rawUsername);
+  if (!USERNAME_REGEX.test(username)) {
+    return { available: false, reason: 'INVALID_FORMAT', suggestions: [] };
+  }
+  if (isReservedUsername(username)) {
+    return { available: false, reason: 'RESERVED', suggestions: await generateSuggestions(username) };
+  }
+  if (!(await isUsernameAvailable(username))) {
+    return { available: false, reason: 'TAKEN', suggestions: await generateSuggestions(username) };
+  }
+
+  const onchain = await getOnchainOwner(username, { timeoutMs: RESOLVE_TIMEOUT_MS });
+  if (onchain.kind === 'owner' && onchain.owner !== wallet?.toLowerCase()) {
+    return { available: false, reason: 'TAKEN_ONCHAIN', suggestions: await generateSuggestions(username) };
+  }
+  return { available: true, suggestions: [] };
+};
+
 export const findByWallet = async (
   ownerWallet: string,
 ): Promise<UserRecord | null> => {
@@ -138,6 +174,20 @@ export const registerUsername = async (
     throw new ConflictError(
       'This wallet already has a registered username',
       'WALLET_HAS_USERNAME',
+    );
+  }
+
+  // Held on-chain by another wallet: refuse, so the two namespaces don't drift further apart.
+  // Held by this wallet: register, and it comes out linked (this wallet becomes the verified ETH
+  // address below). Read fresh, never through the resolve cache. Fails open: if the indexer is
+  // down or syncing the signup goes ahead, since the permissionless contract can't prevent
+  // collisions anyway. A name taken on-chain between this check and the insert is accepted.
+  // Bypasses the circuit breaker, so public reads can't switch this check off.
+  const onchain = await getOnchainOwner(normalized, { timeoutMs: REGISTER_TIMEOUT_MS, useBreaker: false });
+  if (onchain.kind === 'owner' && onchain.owner !== wallet) {
+    throw new ConflictError(
+      'That username is registered on-chain by a different wallet',
+      'USERNAME_TAKEN_ONCHAIN',
     );
   }
 

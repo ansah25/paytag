@@ -253,7 +253,7 @@ Live at **<https://indexer.paytag.dev>**, self-hosted on Coolify with Postgres. 
 | `POST /graphql` | Ponder's generated GraphQL over the raw tables |
 | `GET /status`, `/ready` | Synced block per chain; 200 once backfill is complete |
 
-**Rate limits**: each client IP gets 120 requests a minute on the REST routes and 60 on `/graphql` (a burst up to the limit, then a steady refill). Over the limit, the answer is `429 { code: "RATE_LIMITED" }` with `Retry-After`; every limited response carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`. `/status`, `/ready` and `/health` aren't limited. The client IP is the rightmost `X-Forwarded-For` entry, the one the reverse proxy appends, so the indexer must only be reachable through that proxy. Server-to-server callers can send `x-paytag-server-key: <INDEXER_SERVER_KEY>` to skip the limit; the web app's server-rendered pages do, because they all share Vercel's addresses. Limits are in memory, per process.
+**Rate limits**: each client IP gets 120 requests a minute on the REST routes and 60 on `/graphql` (a burst up to the limit, then a steady refill). Over the limit, the answer is `429 { code: "RATE_LIMITED" }` with `Retry-After`; every limited response carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`. `/status`, `/ready` and `/health` aren't limited. The client IP is the rightmost `X-Forwarded-For` entry, the one the reverse proxy appends, so the indexer must only be reachable through that proxy. Server-to-server callers can send `x-paytag-server-key: <key>` to skip the limit: the web app's server-rendered pages (they all share Vercel's addresses) and the Paytag API each have their own key. Limits are in memory, per process.
 
 Until backfill completes, every route above answers `503 { code: "NOT_READY" }` rather than serving partial data (which would claim registered names are free). Readiness is read from the deployment's own database, the same flag as `/ready`. Route errors return a generic `{ code: "INTERNAL_ERROR" }`, and GraphQL masks error details when `NODE_ENV=production` (the Docker image sets it).
 
@@ -272,7 +272,7 @@ cd indexer && npm install
 PONDER_RPC_URL_84532=<base-sepolia-rpc> npm run dev
 ```
 
-Production runs the [`Dockerfile`](indexer/Dockerfile) with `DATABASE_URL`, `DATABASE_SCHEMA` (a prefix, e.g. `paytag`) and `PONDER_RPC_URL_84532` set; it uses about 200 MB of RAM. Optional: `INDEXER_SERVER_KEY` (a long random secret, also set in the web app's environment), and `RATE_LIMIT_PER_MIN` / `RATE_LIMIT_GRAPHQL_PER_MIN` to change the defaults (120 / 60).
+Production runs the [`Dockerfile`](indexer/Dockerfile) with `DATABASE_URL`, `DATABASE_SCHEMA` (a prefix, e.g. `paytag`) and `PONDER_RPC_URL_84532` set; it uses about 200 MB of RAM. Optional: `INDEXER_SERVER_KEYS` (comma-separated long random secrets, one per consumer: the web app and the API each get their own, so one can be rotated alone; the older single `INDEXER_SERVER_KEY` is still accepted, but remove it once consumers have their own keys), and `RATE_LIMIT_PER_MIN` / `RATE_LIMIT_GRAPHQL_PER_MIN` to change the defaults (120 / 60).
 
 **Schemas and deploys.** `ponder start` refuses a schema created by a different build of the indexer ("previously used by a different Ponder app") or one another live process still holds. A rolling update (Coolify starts the new container while the old one serves) needs both to be avoided, even when the code didn't change. So [`docker-start.sh`](indexer/docker-start.sh) runs each container on its own schema, `<DATABASE_SCHEMA>_<random id>`, printed at startup. The id is created on the container's first start, so a restart of the same container resumes its schema (crash recovery) and a new deploy syncs a fresh one from the deploy block, which takes seconds because Ponder caches RPC data in a shared schema of its own (`ponder_rpc_cache_1`). Coolify switches over once the new container's `/ready` passes. If a chain reorg ever goes deeper than Ponder's 180-second window, the indexer stops rather than serve state it can't vouch for; redeploy it (not just restart), so a new container syncs a fresh schema. Old schemas stay behind: run `npx ponder db list` inside the running container, then `DROP SCHEMA <name> CASCADE;` the old `paytag_*` ones. `npx ponder db prune` also works, but it drops every Ponder schema in the database whose process isn't heartbeating right now, including the live one if it happens to be restarting.
 
@@ -283,7 +283,7 @@ Operational note: Ponder's own logs print the full RPC URL when an RPC request f
 - **Free, first-come, permanent registration.** Commit-reveal stops a pending reveal from being raced, as long as it lands within 15 seconds of being broadcast (before a competitor's fresh commitment could mature), but not first-come squatting: anyone can register any free name for the gas of a commit and a register, with no fees or expiry. That's acceptable on a testnet; a mainnet deployment would want pricing or expiry.
 - **Registration is two transactions,** at least 15 seconds apart. The app runs the countdown and keeps the commitment's secret in the browser until the reveal; losing it just means reserving again.
 - **A transfer clears everything, including a return.** After a transfer away and back (A → B → A), A starts from empty records and has to set them again. The app shows such a name as *Unconfigured*, and the indexer reports `recordsReset`, rather than letting it quietly resolve to nothing.
-- **Two separate namespaces.** On-chain names (the Base registry, at `/on-chain/<name>`) and Paytag accounts (the off-chain API, at `paytag.dev/<name>`) are independent: owning `@alice` in one doesn't reserve it in the other, so the two can belong to different people. The on-chain app and name pages say they're separate from Paytag accounts; linking or unifying the two is on the roadmap.
+- **Two namespaces, linked by ownership.** On-chain names (the Base registry, at `/on-chain/<name>`) and Paytag accounts (the off-chain API, at `paytag.dev/<name>`) keep separate records. A Paytag account is **linked** when the on-chain name of the same spelling is owned by the account's *verified* Ethereum address; the API checks the indexer when it builds a resolution (cached in memory for 30s, like the rest of it) and stores nothing in the database. New Paytag signups can't take a name held on-chain by another wallet (`409 USERNAME_TAKEN_ONCHAIN`), but the contract is permissionless, so the reverse can't be enforced: the `/on-chain` app warns and asks for confirmation instead. Only public data is compared, so the link status never reveals which wallet registered an account. While the registry is on testnet, on-chain isn't canonical: if the indexer is down, signups go ahead.
 - **On-chain reads cost a registry call.** `addr` and `reverse` read the current epoch from the registry, about 5.4k gas inside a transaction. Free off-chain.
 - **ASCII-only names.** This removes Unicode homoglyphs entirely. ASCII lookalikes (`0`/`o`, `1`/`l`) remain, so names are displayed in a monospace font.
 - **Fixed reserved list.** The contract has no admin, so the blocklist can't change after deployment. Adding a reserved name means a redeploy, and the drift test enforces that.
@@ -310,10 +310,12 @@ cd contracts && forge test
 | DELETE | `/address/:chain` | JWT | Remove the address for a chain |
 | POST | `/verify-address/nonce` | JWT | Get a single-use message to sign with a mapped address (Ethereum, Solana) |
 | POST | `/verify-address` | JWT | Submit the signature; marks the address verified |
-| GET | `/resolve/:username` | — | Resolve username → addresses, verification and profile |
-| GET | `/available/:username` | — | Check availability, with suggestions |
+| GET | `/resolve/:username` | — | Resolve username → addresses, verification, profile and on-chain link status |
+| GET | `/available/:username?wallet=0x…` | — | Check availability, with suggestions. `TAKEN_ONCHAIN` when the name is held on-chain by a wallet other than `wallet` |
 
-Public read endpoints (`/resolve`, `/available`, `/health`) are CORS-open. `/resolve` responses carry `Cache-Control: public, max-age=30, stale-while-revalidate=60`.
+Public read endpoints (`/resolve`, `/available`, `/health`) are CORS-open. `/resolve` responses carry `Cache-Control: public, max-age=30, stale-while-revalidate=60`. `/resolve` and `/available` share a limit of 120 requests a minute per client IP (per API machine); over it, `429 { code: "RATE_LIMITED" }` with `Retry-After`.
+
+`onchain.status` is `linked` (the on-chain name's owner is the verified `ethereum` address), `not_linked` (held on-chain, by another address), `none` (not registered on-chain), or `syncing` / `unavailable` when the indexer couldn't answer. The API reads the indexer with `INDEXER_URL` and its own `INDEXER_SERVER_KEY`; with those unset, the status is always `unavailable` and nothing is gated.
 
 **Resolution response**
 
@@ -328,7 +330,8 @@ Public read endpoints (`/resolve`, `/available`, `/health`) are CORS-open. `/res
   "verified": { "ethereum": true },
   "displayName": "Derrick",
   "bio": null,
-  "avatarUrl": null
+  "avatarUrl": null,
+  "onchain": { "status": "linked" }
 }
 ```
 
@@ -397,7 +400,7 @@ The repo is an npm workspace; `npm install` at the root installs everything.
 - [x] On-chain app: register, records, primary names, transfer, public name pages
 - [x] Hardening: indexer rate limits, `/status`, per-deploy indexer schemas
 - [x] Contracts v0.2: transfer epochs (a transfer clears records and the old owner's primary name, in the contract) and commit-reveal registration; SDK 0.4.0
-- [ ] Link on-chain names and Paytag accounts, so one name can't belong to two different people
+- [x] Link on-chain names and Paytag accounts by ownership; SDK 0.5.0
 - [ ] Deferred: gas-sponsored registration (see [Known trade-offs](#known-trade-offs))
 - [ ] Future: ERC-20 / SPL-token sends, payment links with amounts, a mainnet deployment with registration pricing or expiry
 

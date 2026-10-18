@@ -7,7 +7,7 @@ import { type Hex, getAddress, isAddress } from "viem";
 import { RESERVED_NODES } from "../../abis/reservedNodes";
 import { COIN_TYPE } from "../lib/codec";
 import { normalizeName } from "../lib/names";
-import { RateLimiter, positiveInt, rateLimit } from "../lib/rateLimit";
+import { RateLimiter, positiveInt, rateLimit, serverKeysFromEnv } from "../lib/rateLimit";
 import { buildResolveBody, isLiveReverseClaim } from "../lib/resolve";
 
 // Public, read-only HTTP API over the indexed state. Error bodies follow the Paytag API's
@@ -35,14 +35,15 @@ app.use(
 
 // Per-address limits on this API (Ponder's own /health, /ready, /status and /metrics are
 // registered before these routes and aren't limited). GraphQL gets a tighter bucket: one query
-// can do far more work than a REST lookup. The web app's server-side fetches present
-// INDEXER_SERVER_KEY instead, since they all arrive from Vercel's shared addresses.
+// can do far more work than a REST lookup. Server-to-server callers (the web app's server-side
+// fetches, which all arrive from Vercel's shared addresses, and the Paytag API) present their own
+// key from INDEXER_SERVER_KEYS instead.
 app.use(
   "*",
   rateLimit({
     rest: new RateLimiter({ perMinute: positiveInt(process.env.RATE_LIMIT_PER_MIN, 120) }),
     graphql: new RateLimiter({ perMinute: positiveInt(process.env.RATE_LIMIT_GRAPHQL_PER_MIN, 60) }),
-    serverKey: process.env.INDEXER_SERVER_KEY || undefined,
+    serverKeys: serverKeysFromEnv(process.env.INDEXER_SERVER_KEYS, process.env.INDEXER_SERVER_KEY),
   }),
 );
 

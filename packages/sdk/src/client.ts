@@ -46,6 +46,11 @@ export interface ResolveOptions {
 
 export interface AvailableOptions {
   signal?: AbortSignal;
+  /**
+   * The caller's EVM wallet. A name this wallet owns on-chain isn't reported as
+   * `TAKEN_ONCHAIN`, since registering it would link the two.
+   */
+  wallet?: string;
 }
 
 const DEFAULT_TTL_MS = 30_000;
@@ -162,7 +167,8 @@ export class Paytag {
     opts: AvailableOptions = {},
   ): Promise<AvailabilityResponse> {
     const cleaned = normalizeForAvailability(username);
-    const url = `${this.baseUrl}/available/${encodeURIComponent(cleaned)}`;
+    const query = opts.wallet ? `?wallet=${encodeURIComponent(opts.wallet)}` : '';
+    const url = `${this.baseUrl}/available/${encodeURIComponent(cleaned)}${query}`;
     const result = await this.requestJson(url, opts.signal);
     return parseAvailabilityResponse(result);
   }

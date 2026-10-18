@@ -118,6 +118,12 @@ jest.mock('../src/config/supabase', () => {
   };
 });
 
+jest.mock('../src/services/onchainService', () => {
+  const actual = jest.requireActual('../src/services/onchainService');
+  return { ...actual, getOnchainOwner: jest.fn() };
+});
+
+import * as onchainService from '../src/services/onchainService';
 import {
   SUPPORTED_CHAINS,
   validateChainAddress,
@@ -133,10 +139,16 @@ const seedUser = (id: string, username: string, ownerWallet: string, extra: Part
   userStore.set(id, { id, username, owner_wallet: ownerWallet.toLowerCase(), ...extra });
 };
 
+const getOnchainOwner = onchainService.getOnchainOwner as jest.MockedFunction<
+  typeof onchainService.getOnchainOwner
+>;
+
 beforeEach(() => {
   userStore.clear();
   mappingStore.length = 0;
   clearResolveCache();
+  getOnchainOwner.mockReset();
+  getOnchainOwner.mockResolvedValue({ kind: 'unavailable' });
 });
 
 describe('walletService - chain/address validation', () => {
@@ -315,6 +327,7 @@ describe('walletService.resolveByUsername', () => {
       displayName: 'Derrick A.',
       bio: 'Builds things',
       avatarUrl: null,
+      onchain: { status: 'unavailable' },
     });
   });
 
@@ -336,6 +349,48 @@ describe('walletService.resolveByUsername', () => {
     expect((await resolveByUsername('derrick')).addresses.ethereum).toBe('0xold');
     expect((await resolveByUsername('derrick', { fresh: true })).addresses.ethereum).toBe('0xnew');
     expect((await resolveByUsername('derrick')).addresses.ethereum).toBe('0xnew');
+  });
+});
+
+describe('walletService.resolveByUsername — on-chain status', () => {
+  const OWNER = '0x6ad631f215393f9635231de985081b1ccddc7c11';
+
+  it('never asks the indexer about a name with no account', async () => {
+    await expect(resolveByUsername('ghost')).rejects.toBeInstanceOf(NotFoundError);
+    expect(getOnchainOwner).not.toHaveBeenCalled();
+  });
+
+  it('is linked when the on-chain owner is the verified ETH address, within the resolve budget', async () => {
+    seedUser('u1', 'derrick', '0xabc');
+    mappingStore.push({ user_id: 'u1', chain: 'ethereum', address: OWNER, verified_at: '2026-10-01T00:00:00Z' });
+    getOnchainOwner.mockResolvedValue({ kind: 'owner', owner: OWNER });
+
+    expect((await resolveByUsername('derrick')).onchain).toEqual({ status: 'linked' });
+    expect(getOnchainOwner).toHaveBeenCalledWith('derrick', { timeoutMs: onchainService.RESOLVE_TIMEOUT_MS });
+  });
+
+  it('is not linked when the matching ETH address is unverified', async () => {
+    seedUser('u1', 'derrick', '0xabc');
+    mappingStore.push({ user_id: 'u1', chain: 'ethereum', address: OWNER, verified_at: null });
+    getOnchainOwner.mockResolvedValue({ kind: 'owner', owner: OWNER });
+
+    expect((await resolveByUsername('derrick')).onchain).toEqual({ status: 'not_linked' });
+  });
+
+  it('compares the published address, not the wallet that registered the account', async () => {
+    seedUser('u1', 'derrick', OWNER);
+    mappingStore.push({ user_id: 'u1', chain: 'ethereum', address: '0xeee', verified_at: '2026-10-01T00:00:00Z' });
+    getOnchainOwner.mockResolvedValue({ kind: 'owner', owner: OWNER });
+
+    expect((await resolveByUsername('derrick')).onchain).toEqual({ status: 'not_linked' });
+  });
+
+  it('caches a failed lookup with the rest of the resolution', async () => {
+    seedUser('u1', 'derrick', '0xabc');
+    getOnchainOwner.mockResolvedValue({ kind: 'unavailable' });
+    await resolveByUsername('derrick');
+    await resolveByUsername('derrick');
+    expect(getOnchainOwner).toHaveBeenCalledTimes(1);
   });
 });
 

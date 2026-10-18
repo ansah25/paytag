@@ -1,6 +1,6 @@
 {
   "name": "@paytagdev/sdk",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Resolve @paytag usernames to multi-chain wallet addresses (Ethereum, Solana, Bitcoin).",
   "license": "MIT",
   "type": "module",

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
-import { RateLimiter, clientKey, hasServerKey, positiveInt, rateLimit } from "../src/lib/rateLimit";
+import { RateLimiter, clientKey, hasServerKey, positiveInt, rateLimit, serverKeysFromEnv } from "../src/lib/rateLimit";
 
 const clock = (start = 0) => {
   let t = start;
@@ -72,17 +72,33 @@ describe("clientKey", () => {
 });
 
 describe("hasServerKey", () => {
-  it("matches only the configured key", () => {
-    expect(hasServerKey("s3cret", "s3cret")).toBe(true);
-    expect(hasServerKey("s3cret!", "s3cret")).toBe(false);
-    expect(hasServerKey("nope00", "s3cret")).toBe(false);
-    expect(hasServerKey(undefined, "s3cret")).toBe(false);
+  it("matches only a configured key", () => {
+    expect(hasServerKey("s3cret", ["s3cret"])).toBe(true);
+    expect(hasServerKey("s3cret!", ["s3cret"])).toBe(false);
+    expect(hasServerKey("nope00", ["s3cret"])).toBe(false);
+    expect(hasServerKey(undefined, ["s3cret"])).toBe(false);
+  });
+
+  it("accepts any of several per-consumer keys", () => {
+    const keys = ["vercel-key", "fly-key-00"];
+    expect(hasServerKey("vercel-key", keys)).toBe(true);
+    expect(hasServerKey("fly-key-00", keys)).toBe(true);
+    expect(hasServerKey("other-key0", keys)).toBe(false);
   });
 
   it("never bypasses when no key is configured", () => {
-    expect(hasServerKey("", undefined)).toBe(false);
-    expect(hasServerKey("anything", undefined)).toBe(false);
-    expect(hasServerKey("", "")).toBe(false);
+    expect(hasServerKey("", [])).toBe(false);
+    expect(hasServerKey("anything", [])).toBe(false);
+    expect(hasServerKey("", [""])).toBe(false);
+  });
+});
+
+describe("serverKeysFromEnv", () => {
+  it("splits the list, keeps the legacy key, drops blanks and duplicates", () => {
+    expect(serverKeysFromEnv(" a1 , b2,,", "c3")).toEqual(["a1", "b2", "c3"]);
+    expect(serverKeysFromEnv("a1", "a1")).toEqual(["a1"]);
+    expect(serverKeysFromEnv(undefined, undefined)).toEqual([]);
+    expect(serverKeysFromEnv("", " ")).toEqual([]);
   });
 });
 
@@ -104,7 +120,7 @@ describe("rateLimit middleware", () => {
       rateLimit({
         rest: new RateLimiter({ perMinute: 2 }, clock().now),
         graphql: new RateLimiter({ perMinute: 1 }, clock().now),
-        serverKey,
+        serverKeys: serverKey ? [serverKey] : [],
       }),
     );
     app.all("*", (c) => c.text("ok"));

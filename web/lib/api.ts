@@ -273,8 +273,9 @@ export const api = {
   },
   resolve: (username: string, signal?: AbortSignal): Promise<ResolveResponse> =>
     sdk.resolve(username, { signal }).catch(wrapPaytagError),
-  available: (username: string, signal?: AbortSignal): Promise<AvailabilityResponse> =>
-    sdk.available(username, { signal }).catch(wrapPaytagError),
+  /** `wallet`: the connected wallet, so a name it owns on-chain isn't reported TAKEN_ONCHAIN. */
+  available: (username: string, signal?: AbortSignal, wallet?: string): Promise<AvailabilityResponse> =>
+    sdk.available(username, { signal, wallet }).catch(wrapPaytagError),
 };
 
 export const buildSignMessage = (nonce: string): string =>

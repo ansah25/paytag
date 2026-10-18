@@ -2,12 +2,24 @@ export const SUPPORTED_CHAINS = ['ethereum', 'solana', 'bitcoin'] as const;
 
 export type ChainId = (typeof SUPPORTED_CHAINS)[number];
 
+/**
+ * Whether the on-chain name of the same spelling belongs to this account:
+ * - `linked`: its on-chain owner is the account's verified Ethereum address.
+ * - `not_linked`: someone holds it on-chain, but not that address.
+ * - `none`: not registered on-chain.
+ * - `syncing` / `unavailable`: the API couldn't tell right now (indexer syncing / unreachable).
+ */
+export type OnchainLinkStatus = 'linked' | 'not_linked' | 'none' | 'syncing' | 'unavailable';
+
 export interface ResolveResponse {
   username: string;
   addresses: Partial<Record<ChainId, string>>;
+  /** From `resolve` (the API) only; absent on older API versions. */
+  onchain?: { status: OnchainLinkStatus };
 }
 
-export type UnavailableReason = 'TAKEN' | 'INVALID_FORMAT' | 'RESERVED';
+/** `TAKEN_ONCHAIN`: free off-chain, but registered on-chain by a different wallet. */
+export type UnavailableReason = 'TAKEN' | 'INVALID_FORMAT' | 'RESERVED' | 'TAKEN_ONCHAIN';
 
 export interface AvailabilityResponse {
   available: boolean;
@@ -31,7 +43,7 @@ export interface OnchainRecord {
 }
 
 /** `resolveViaIndexer` result: the `resolve` shape plus on-chain ownership and raw records. */
-export interface OnchainResolveResponse extends ResolveResponse {
+export interface OnchainResolveResponse extends Omit<ResolveResponse, 'onchain'> {
   node: string;
   owner: string;
   /** Registration time, unix seconds. */

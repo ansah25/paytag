@@ -37,6 +37,7 @@ const resolution: walletService.Resolution = {
   displayName: null,
   bio: null,
   avatarUrl: null,
+  onchain: { status: 'linked' },
 };
 
 beforeEach(() => {
@@ -104,5 +105,18 @@ describe('address mutation responses', () => {
     const res = await request(app).delete('/address/bitcoin');
     expect(res.status).toBe(401);
     expect(wallet.removeAddress).not.toHaveBeenCalled();
+  });
+});
+
+describe('public reads', () => {
+  it('rejects a malformed wallet on /available before doing any work', async () => {
+    const res = await request(app).get('/available/alice?wallet=nope');
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rate-limits /resolve and /available per client', async () => {
+    const res = await request(app).get('/available/alice?wallet=nope');
+    expect(res.headers['ratelimit-limit']).toBe('120');
   });
 });

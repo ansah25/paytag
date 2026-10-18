@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { USERNAME_PATTERN, normalizeUsername } from '@/lib/username';
@@ -12,6 +13,7 @@ import { Card } from '@/components/ui/Card';
 import { ChainDot } from '@/components/ui/ChainDot';
 import { Skeleton, SkeletonStatus } from '@/components/ui/Skeleton';
 import { api, ApiError, type ResolveResponse } from '@/lib/api';
+import { linkStatusOf } from '@/lib/onchain/linking';
 import type { PaytagChain } from '@/lib/chains';
 import { CHAIN_META, CHAIN_ORDER } from '@/lib/pay/meta';
 import { useCopy } from '@/lib/useCopy';
@@ -81,6 +83,7 @@ export default function ProfilePage({ params }: Props) {
   const verified = resolution.verified ?? {};
   const chains = CHAIN_ORDER.filter((c) => resolution.addresses[c]);
   const verifiedCount = chains.filter((c) => verified[c]).length;
+  const onchain = linkStatusOf(resolution);
 
   return (
     <section className="mx-auto grid w-full max-w-content gap-7 px-6 pb-24 pt-12">
@@ -121,7 +124,20 @@ export default function ProfilePage({ params }: Props) {
                 {verifiedCount} verified wallet{verifiedCount === 1 ? '' : 's'}
               </Badge>
             )}
+            {onchain === 'linked' && (
+              <Link href={`/on-chain/${name}`} title={`@${name} on Base is owned by this account’s verified Ethereum address`}>
+                <Badge className="hover:underline">On-chain</Badge>
+              </Link>
+            )}
           </div>
+          {onchain === 'not_linked' && (
+            <p className="mt-2 text-[13px] text-ink3">
+              <Link href={`/on-chain/${name}`} className="underline">
+                @{name} on-chain
+              </Link>{' '}
+              isn’t linked to this account. Payments here go to the addresses on this page.
+            </p>
+          )}
         </div>
       </div>
 

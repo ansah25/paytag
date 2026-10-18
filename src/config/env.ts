@@ -17,6 +17,16 @@ const envSchema = z.object({
   //   "https://paytag.dev,https://www.paytag.dev"
   // Leave unset in dev to allow any origin.
   CORS_ORIGIN: z.string().optional(),
+
+  // On-chain registry indexer (e.g. https://indexer.paytag.dev). Unset: every on-chain
+  // lookup reports `unavailable` and nothing is gated on it.
+  INDEXER_URL: z.string().url().optional(),
+  // This API's own key from the indexer's INDEXER_SERVER_KEYS, so its lookups aren't limited
+  // per address. Server-side only.
+  INDEXER_SERVER_KEY: z.string().min(1).optional(),
+
+  // Requests per minute per client IP on the public reads (/resolve, /available).
+  PUBLIC_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(120),
 });
 
 const parsed = envSchema.safeParse(process.env);

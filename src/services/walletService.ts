@@ -4,6 +4,7 @@ import { BadRequestError, NotFoundError } from '../utils/errors';
 import { normalizeUsername } from './userService';
 import { TtlCache } from '../utils/cache';
 import { logger } from '../utils/logger';
+import { RESOLVE_TIMEOUT_MS, getOnchainOwner, linkStatus, type OnchainStatus } from './onchainService';
 
 export const SUPPORTED_CHAINS = ['ethereum', 'solana', 'bitcoin'] as const;
 export type Chain = (typeof SUPPORTED_CHAINS)[number];
@@ -58,8 +59,15 @@ export interface Resolution {
   displayName: string | null;
   bio: string | null;
   avatarUrl: string | null;
+  /** Whether the on-chain name of the same spelling belongs to this account (onchainService). */
+  onchain: { status: OnchainStatus };
 }
 
+// Staleness window: 30s in this cache for everything in a resolution, including the on-chain
+// status and a failed indexer lookup (kept so resolve stays fast while the indexer is down).
+// Writes through this API invalidate it; on-chain changes don't. Clients add their own window on
+// top: /resolve sends `max-age=30, stale-while-revalidate=60` (walletController), so a viewer can
+// see a status up to ~120s old in the worst case.
 const RESOLVE_TTL_MS = 30_000;
 const resolveCache = new TtlCache<Resolution>(RESOLVE_TTL_MS);
 
@@ -214,6 +222,9 @@ export const resolveByUsername = async (
     }
   }
 
+  // Only after the account is found, so made-up names never reach the indexer.
+  const lookup = await getOnchainOwner(row.username, { timeoutMs: RESOLVE_TIMEOUT_MS });
+
   const resolution: Resolution = {
     username: row.username,
     addresses,
@@ -221,6 +232,7 @@ export const resolveByUsername = async (
     displayName: row.display_name ?? null,
     bio: row.bio ?? null,
     avatarUrl: row.avatar_url ?? null,
+    onchain: { status: linkStatus(lookup, verified.ethereum ? addresses.ethereum : undefined) },
   };
   resolveCache.set(username, resolution);
   logger.info('resolve.miss', { username });

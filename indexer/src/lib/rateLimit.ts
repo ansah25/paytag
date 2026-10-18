@@ -96,14 +96,30 @@ export function clientKey(forwardedFor: string | undefined, socketAddress: strin
 
 /**
  * Server-to-server callers (the web app's server-rendered pages, which all share Vercel's
- * egress addresses) present a shared secret instead of being limited per address. No key
- * configured means no bypass.
+ * egress addresses, and the Paytag API) present a shared secret instead of being limited per
+ * address. Each consumer gets its own key, so one can be rotated or revoked without touching the
+ * others. Every configured key is compared, so the time taken doesn't reveal which one matched.
+ * No keys configured means no bypass.
  */
-export function hasServerKey(presented: string | undefined, expected: string | undefined): boolean {
-  if (!expected || !presented) return false;
+export function hasServerKey(presented: string | undefined, expected: readonly string[]): boolean {
+  if (!presented) return false;
   const a = Buffer.from(presented);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
+  let match = false;
+  for (const key of expected) {
+    const b = Buffer.from(key);
+    if (b.length > 0 && a.length === b.length && timingSafeEqual(a, b)) match = true;
+  }
+  return match;
+}
+
+/**
+ * INDEXER_SERVER_KEYS (comma-separated, one per consumer) plus the legacy single
+ * INDEXER_SERVER_KEY, accepted while consumers move to their own keys. Remove the legacy
+ * variable once they have: left set, it stays a valid credential.
+ */
+export function serverKeysFromEnv(keys: string | undefined, legacy: string | undefined): string[] {
+  const all = [...(keys ?? "").split(","), legacy ?? ""].map((k) => k.trim()).filter(Boolean);
+  return [...new Set(all)];
 }
 
 export function positiveInt(raw: string | undefined, fallback: number): number {
@@ -114,8 +130,8 @@ export function positiveInt(raw: string | undefined, fallback: number): number {
 export interface RateLimitOptions {
   rest: RateLimiter;
   graphql: RateLimiter;
-  /** INDEXER_SERVER_KEY; unset disables the bypass. */
-  serverKey?: string;
+  /** Accepted server keys (see serverKeysFromEnv); empty disables the bypass. */
+  serverKeys: readonly string[];
 }
 
 type NodeEnv = { incoming?: { socket?: { remoteAddress?: string } } } | undefined;
@@ -125,9 +141,9 @@ type NodeEnv = { incoming?: { socket?: { remoteAddress?: string } } } | undefine
  * token from the GraphQL or REST bucket for their address. Every limited response carries the
  * RateLimit-* headers; a refusal is a 429 in the API's `{ error, code }` shape with Retry-After.
  */
-export function rateLimit({ rest, graphql, serverKey }: RateLimitOptions): MiddlewareHandler {
+export function rateLimit({ rest, graphql, serverKeys }: RateLimitOptions): MiddlewareHandler {
   return async (c, next) => {
-    if (c.req.method === "OPTIONS" || hasServerKey(c.req.header("x-paytag-server-key"), serverKey)) return next();
+    if (c.req.method === "OPTIONS" || hasServerKey(c.req.header("x-paytag-server-key"), serverKeys)) return next();
     const socket = (c.env as NodeEnv)?.incoming?.socket;
     const key = clientKey(c.req.header("x-forwarded-for"), socket?.remoteAddress);
     const d = (c.req.path.startsWith("/graphql") ? graphql : rest).check(key);
