@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0
+
+- `ResolveResponse` gains optional `onchain: { status }` (`linked` · `not_linked` · `none` · `syncing` · `unavailable`): whether the on-chain name of the same spelling belongs to the Paytag account. Absent from `resolveViaIndexer` results.
+- `available` can return `reason: 'TAKEN_ONCHAIN'` (free off-chain, registered on-chain by another wallet), and takes `{ wallet }` so a name the caller owns on-chain isn't reported as taken.
+
 ## 0.4.0
 
 Matches contracts v0.2 on Base Sepolia. **Breaking** (pre-1.0).

@@ -70,10 +70,14 @@ await client.resolve('derrick');
 
 Look up a username and return its registered addresses.
 
+`onchain.status` is `linked` when the on-chain name of the same spelling is owned by the account's verified Ethereum address. The two keep separate records: `addresses` are always the Paytag account's; use `resolveViaIndexer` for the on-chain ones. `syncing` and `unavailable` mean the API couldn't check just then.
+
 ```ts
 type ResolveResponse = {
   username: string;
   addresses: Partial<Record<'ethereum' | 'solana' | 'bitcoin', string>>;
+  // Whether the on-chain name of the same spelling belongs to this account.
+  onchain?: { status: 'linked' | 'not_linked' | 'none' | 'syncing' | 'unavailable' };
 };
 
 type ResolveOptions = {
@@ -123,8 +127,13 @@ Check whether a username is free to claim. Unlike `resolve`, this does **not** v
 ```ts
 type AvailabilityResponse = {
   available: boolean;
-  reason?: 'TAKEN' | 'INVALID_FORMAT' | 'RESERVED';
+  reason?: 'TAKEN' | 'INVALID_FORMAT' | 'RESERVED' | 'TAKEN_ONCHAIN';
   suggestions: string[];
+};
+
+type AvailableOptions = {
+  signal?: AbortSignal;
+  wallet?: string; // the caller's EVM wallet: a name it owns on-chain isn't TAKEN_ONCHAIN
 };
 
 const { available, reason, suggestions } = await available('derrick');

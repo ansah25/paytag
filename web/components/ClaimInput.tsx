@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { useAccount } from 'wagmi';
 import type { FormEvent, ReactNode } from 'react';
 import { api, type AvailabilityResponse } from '@/lib/api';
 import { cx } from '@/lib/cx';
@@ -13,10 +14,19 @@ import { Field, type FieldStatus } from './ui/Field';
 // Re-exported so existing imports keep working; the rules live (and are tested) in lib/username.
 export { USERNAME_PATTERN, normalizeUsername } from '@/lib/username';
 
-export type ClaimStatus = 'idle' | 'checking' | 'available' | 'taken' | 'reserved' | 'invalid' | 'offline';
+export type ClaimStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'taken'
+  | 'onchain'
+  | 'reserved'
+  | 'invalid'
+  | 'offline';
 
 const REASON_STATUS: Record<NonNullable<AvailabilityResponse['reason']>, ClaimStatus> = {
   TAKEN: 'taken',
+  TAKEN_ONCHAIN: 'onchain',
   RESERVED: 'reserved',
   INVALID_FORMAT: 'invalid',
 };
@@ -26,6 +36,7 @@ const MESSAGE: Record<ClaimStatus, string> = {
   checking: 'Checking…',
   available: 'Available — it’s yours.',
   taken: 'Already taken.',
+  onchain: 'Registered on-chain. Claim it with the wallet that owns it.',
   reserved: 'That name is reserved.',
   invalid: '3–20 lowercase letters, numbers or underscores.',
   offline: 'Couldn’t check right now — try again in a moment.',
@@ -36,12 +47,17 @@ const FIELD_STATUS: Record<ClaimStatus, FieldStatus> = {
   checking: 'checking',
   available: 'valid',
   taken: 'error',
+  // Not an error: the on-chain owner can still claim it, once that wallet is connected.
+  onchain: 'idle',
   reserved: 'error',
   invalid: 'error',
   offline: 'idle',
 };
 
 const DEBOUNCE_MS = 280;
+
+/** Statuses that go on to the claim flow (which handles connecting the on-chain owner). */
+const CAN_CONTINUE = new Set<ClaimStatus>(['available', 'onchain']);
 
 interface Props {
   /** xl = 26px (landing hero), lg = 22px (final CTA, wizard pick step). */
@@ -74,6 +90,7 @@ export function ClaimInput({
   className,
 }: Props) {
   const router = useRouter();
+  const { address } = useAccount();
   const [value, setValue] = useState('');
   const [status, setStatus] = useState<ClaimStatus>('idle');
   const [suggestions, setSuggestions] = useState<string[]>([]);
@@ -106,7 +123,7 @@ export function ClaimInput({
       const controller = new AbortController();
       abort.current = controller;
       try {
-        const res = await api.available(name, controller.signal);
+        const res = await api.available(name, controller.signal, address);
         if (controller.signal.aborted) return;
         if (res.available) {
           setStatus('available');
@@ -123,7 +140,7 @@ export function ClaimInput({
       clearTimeout(timer.current);
       abort.current?.abort();
     };
-  }, [value]);
+  }, [value, address]);
 
   useEffect(() => {
     onStatusChangeRef.current?.(status, normalizeUsername(value));
@@ -133,7 +150,7 @@ export function ClaimInput({
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (status !== 'available') return;
+    if (!CAN_CONTINUE.has(status)) return;
     const name = normalizeUsername(value);
     if (onSubmitName) onSubmitName(name);
     else router.push(`/claim/${name}`);
@@ -163,7 +180,7 @@ export function ClaimInput({
         messageTone={status === 'available' ? 'ok' : isError ? 'danger' : 'muted'}
         hint="3–20 letters, numbers, _"
         trailing={
-          <Button type="submit" size={48} disabled={status !== 'available'} className="self-stretch">
+          <Button type="submit" size={48} disabled={!CAN_CONTINUE.has(status)} className="self-stretch">
             {submitLabel}
           </Button>
         }

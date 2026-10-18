@@ -17,6 +17,7 @@ import { GateCard } from './GateCard';
 import { ProfileForm } from './ProfileForm';
 import { ReceiveCard } from './ReceiveCard';
 import { Sessions } from './Sessions';
+import { OnchainCard } from './OnchainCard';
 import { SetupCard } from './SetupCard';
 
 type Tab = 'overview' | 'profile' | 'settings';
@@ -277,6 +278,7 @@ export function Dashboard() {
             <div className="grid grid-cols-[repeat(auto-fit,minmax(min(300px,100%),1fr))] gap-4">
               <ReceiveCard username={name} />
               <SetupCard username={name} addresses={addresses} loading={!resolution} />
+              <OnchainCard username={name} resolution={resolution} />
             </div>
             <AddressManager
               addresses={addresses}

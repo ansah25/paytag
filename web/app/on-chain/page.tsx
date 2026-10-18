@@ -7,7 +7,9 @@ export const metadata: Metadata = {
   description: 'Register and resolve Paytag names on the Base registry.',
 };
 
-export default function OnchainPage() {
+export default function OnchainPage({ searchParams }: { searchParams: { name?: string | string[] } }) {
+  // ?name= prefills the form (the dashboard links here with the account's name).
+  const initialName = typeof searchParams.name === 'string' ? searchParams.name.slice(0, 21) : '';
   return (
     <section className="mx-auto grid w-full max-w-content gap-7 px-6 pb-24 pt-12">
       <div className="animate-enter">
@@ -19,7 +21,7 @@ export default function OnchainPage() {
           anyone can resolve it without an account.
         </p>
       </div>
-      <RegisterPanel />
+      <RegisterPanel initialName={initialName} />
       <LookupPanel />
     </section>
   );

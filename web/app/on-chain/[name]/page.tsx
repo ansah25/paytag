@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { MessageScreen } from '@/components/MessageScreen';
 import { CopyButton } from '@/components/onchain/CopyButton';
+import { PaytagAccountLink } from '@/components/onchain/PaytagAccountLink';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { ChainDot } from '@/components/ui/ChainDot';
@@ -98,6 +99,7 @@ export default async function OnchainNamePage({ params }: Props) {
             </a>
           </span>
           {primary && <Badge>Primary name</Badge>}
+          <PaytagAccountLink name={data.username} />
         </div>
       </div>
 

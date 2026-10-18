@@ -5,11 +5,13 @@ import type { Address } from 'viem';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Field, type FieldStatus } from '@/components/ui/Field';
+import { api, ApiError } from '@/lib/api';
 import { REGISTRY_ADDRESS } from '@/lib/onchain/generated/deployment';
 import { normalizeName } from '@/lib/onchain/generated/names';
 import { PaytagRegistryAbi } from '@/lib/onchain/generated/PaytagRegistryAbi';
 import { RESERVED_NODES } from '@/lib/onchain/generated/reservedNodes';
 import { indexer, type Availability } from '@/lib/onchain/indexer';
+import { accountLinksTo } from '@/lib/onchain/linking';
 import {
   MIN_COMMITMENT_AGE,
   PENDING_COMMIT_GRACE_MS,
@@ -36,6 +38,13 @@ type Check =
 
 const DEBOUNCE_MS = 350;
 
+/**
+ * The Paytag account (off-chain) with the same name, for the connected wallet. `other`: it
+ * exists and the connected wallet isn't its verified Ethereum address, so registering here
+ * won't link the two. Best-effort: on any error nothing is shown.
+ */
+type PaytagAccount = { name: string; kind: 'none' | 'yours' | 'other' | 'unknown' };
+
 /** Where the current name's two-step registration stands. */
 type Step =
   | { kind: 'none' }
@@ -54,10 +63,10 @@ type Step =
  * it. The secret is kept in localStorage so a refresh during the wait doesn't lose it; whatever
  * is stored is re-checked against the chain before use, and cleared if it expired or is gone.
  */
-export function RegisterPanel() {
+export function RegisterPanel({ initialName = '' }: { initialName?: string }) {
   const tx = useOnchainTx();
   const { connect, connecting, error: connectError } = useConnectWallet();
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(initialName);
   const [check, setCheck] = useState<Check>({ kind: 'empty' });
   const [recheck, setRecheck] = useState(0);
   const [registered, setRegistered] = useState<string | null>(null);
@@ -66,6 +75,9 @@ export function RegisterPanel() {
   const [txLabel, setTxLabel] = useState<string | null>(null);
   // Chain time minus local time (seconds), so the countdown follows the chain, not the device clock.
   const [chainOffset, setChainOffset] = useState(0);
+  const [paytag, setPaytag] = useState<PaytagAccount | null>(null);
+  // The name whose "belongs to a different wallet" warning the user accepted.
+  const [acceptedFor, setAcceptedFor] = useState<string | null>(null);
   const [, setTick] = useState(0);
   const { publicClient, address } = tx;
   // The wallet + name the panel shows right now, for async callbacks that outlive a change.
@@ -95,6 +107,24 @@ export function RegisterPanel() {
   }, [parsed, recheck]);
 
   const name = parsed?.ok ? parsed.name : null;
+
+  // Only worth asking once the name is free on-chain and a wallet is connected.
+  const freeOnchain = check.kind === 'result' && check.result.available;
+  useEffect(() => {
+    if (!name || !freeOnchain || !address) return setPaytag(null);
+    const controller = new AbortController();
+    api
+      .resolve(name, controller.signal)
+      .then((resolution) => setPaytag({ name, kind: accountLinksTo(resolution, address) ? 'yours' : 'other' }))
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        const missing = err instanceof ApiError && (err.code === 'USER_NOT_FOUND' || err.status === 404);
+        setPaytag({ name, kind: missing ? 'none' : 'unknown' });
+      });
+    return () => controller.abort();
+  }, [name, freeOnchain, address]);
+  const needsAccept = paytag?.name === name && paytag.kind === 'other' && acceptedFor !== name;
+
   currentKey.current = `${address?.toLowerCase() ?? ''}:${name ?? ''}`;
   const isCurrent = (r: Reservation) => currentKey.current === `${r.owner}:${r.name}`;
 
@@ -177,7 +207,10 @@ export function RegisterPanel() {
   // It may also still say "available" if the indexer lagged, so Register stays off either way.
   const justRegistered = registered !== null && registered === name && tx.state.status === 'indexed';
   const canRegister =
-    !!name && !justRegistered && (check.kind === 'unreachable' || (check.kind === 'result' && check.result.available));
+    !!name &&
+    !justRegistered &&
+    !needsAccept &&
+    (check.kind === 'unreachable' || (check.kind === 'result' && check.result.available));
 
   const reserve = () => {
     if (!name || !address) return;
@@ -379,6 +412,20 @@ export function RegisterPanel() {
           <p className="text-sm font-semibold text-danger" role="alert">
             {connectError}
           </p>
+        )}
+        {paytag?.name === name && paytag.kind === 'yours' && !justRegistered && (
+          <p className="text-[13px] font-semibold text-ink2">Registering it links it to your Paytag account @{name}.</p>
+        )}
+        {needsAccept && (
+          <div className="grid gap-3 rounded-inset-sm bg-warn-bg px-4 py-3 text-sm text-warn" role="status">
+            <p className="font-semibold">
+              The Paytag account @{name} belongs to a different wallet. Registering it here won’t link the two, and
+              payments to paytag.dev/{name} keep going to that account.
+            </p>
+            <Button variant="outline" size={36} className="justify-self-start" onClick={() => setAcceptedFor(name)}>
+              Register it anyway
+            </Button>
+          </div>
         )}
         {suggestions.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 text-sm">

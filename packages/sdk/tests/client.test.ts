@@ -316,6 +316,22 @@ describe('Paytag.available', () => {
     );
   });
 
+  it('passes the wallet so a name the caller owns on-chain is not TAKEN_ONCHAIN', async () => {
+    const fetchMock = jest.fn(async () =>
+      mockResponse(true, 200, { available: false, reason: 'TAKEN_ONCHAIN', suggestions: ['alice_pay'] }),
+    );
+    const client = new Paytag({ baseUrl, fetch: fetchMock });
+    const wallet = '0x6aD631F215393f9635231de985081B1ccDDC7C11';
+
+    const result = await client.available('alice', { wallet });
+
+    expect(result.reason).toBe('TAKEN_ONCHAIN');
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${baseUrl}/available/alice?wallet=${wallet}`,
+      expect.any(Object),
+    );
+  });
+
   it('does not validate locally — short usernames hit the API', async () => {
     const fetchMock = jest.fn(async () =>
       mockResponse(true, 200, {

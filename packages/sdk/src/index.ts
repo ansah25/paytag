@@ -21,6 +21,7 @@ export type {
   ResolveResponse,
   OnchainResolveResponse,
   OnchainRecord,
+  OnchainLinkStatus,
   AvailabilityResponse,
   UnavailableReason,
 } from './types';

@@ -97,6 +97,9 @@ export function ClaimWizard({ username: routeName }: Props) {
     };
   }, []);
 
+  // Read inside effects that must not re-run when a wallet connects mid-flow.
+  const addressRef = useRef(address);
+  addressRef.current = address;
   const connected = walletStatus === 'connected' && !!address;
   const shownName = username ?? (draft || 'yourname');
 
@@ -163,7 +166,7 @@ export function ClaimWizard({ username: routeName }: Props) {
         }
       }
       try {
-        const res = await api.available(username);
+        const res = await api.available(username, undefined, addressRef.current);
         if (cancelled) return;
         if (res.available) {
           setStep('connect');
@@ -237,13 +240,24 @@ export function ClaimWizard({ username: routeName }: Props) {
       } catch (err) {
         if (!mounted.current) return;
         const code = err instanceof ApiError ? err.code : '';
-        if (code === 'USERNAME_TAKEN' || code === 'USERNAME_RESERVED' || code === 'USERNAME_INVALID_FORMAT') {
+        if (
+          code === 'USERNAME_TAKEN' ||
+          code === 'USERNAME_TAKEN_ONCHAIN' ||
+          code === 'USERNAME_RESERVED' ||
+          code === 'USERNAME_INVALID_FORMAT'
+        ) {
           // Lost a race (or the name was never valid) — offer alternatives.
-          const res = await api.available(username).catch(() => null);
+          const res = await api.available(username, undefined, addressRef.current).catch(() => null);
           setUnavailable({
             reason:
               res?.reason ??
-              (code === 'USERNAME_RESERVED' ? 'RESERVED' : code === 'USERNAME_INVALID_FORMAT' ? 'INVALID_FORMAT' : 'TAKEN'),
+              (code === 'USERNAME_RESERVED'
+                ? 'RESERVED'
+                : code === 'USERNAME_INVALID_FORMAT'
+                  ? 'INVALID_FORMAT'
+                  : code === 'USERNAME_TAKEN_ONCHAIN'
+                    ? 'TAKEN_ONCHAIN'
+                    : 'TAKEN'),
             suggestions: res?.suggestions ?? [],
           });
           setStep('unavailable');
@@ -412,11 +426,24 @@ export function ClaimWizard({ username: routeName }: Props) {
                 ? `@${username} is reserved.`
                 : reason === 'INVALID_FORMAT'
                   ? `@${username} isn’t a valid name.`
-                  : `@${username} is already taken.`
+                  : reason === 'TAKEN_ONCHAIN'
+                    ? `@${username} is registered on-chain.`
+                    : `@${username} is already taken.`
             }
           >
-            {reason === 'INVALID_FORMAT' ? 'Names are 3–20 lowercase letters, numbers or underscores.' : null}
+            {reason === 'INVALID_FORMAT'
+              ? 'Names are 3–20 lowercase letters, numbers or underscores.'
+              : reason === 'TAKEN_ONCHAIN'
+                ? connected
+                  ? 'The connected wallet doesn’t own it in the on-chain registry. If it’s yours, connect the wallet that does to claim the Paytag account too.'
+                  : 'Someone holds it in the on-chain registry. If it’s yours, connect the wallet that owns it to claim the Paytag account too.'
+                : null}
           </StepHeading>
+          {reason === 'TAKEN_ONCHAIN' && (
+            <Button size={48} variant="outline" onClick={useAnotherWallet} className="justify-self-start">
+              {connected ? 'Use the wallet that owns it' : 'Connect the wallet that owns it'}
+            </Button>
+          )}
           {suggestions.length > 0 && (
             <div>
               <div className="mb-2.5 text-[13px] font-semibold text-ink2">Try one of these</div>
