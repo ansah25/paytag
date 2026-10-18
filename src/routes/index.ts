@@ -1,12 +1,17 @@
 import { Router } from 'express';
 import { validate } from '../middleware/validate';
 import { requireAuth } from '../middleware/auth';
+import { RateLimiter, rateLimit } from '../middleware/rateLimit';
+import { env } from '../config/env';
 import * as authController from '../controllers/authController';
 import * as userController from '../controllers/userController';
 import * as walletController from '../controllers/walletController';
 import * as availabilityController from '../controllers/availabilityController';
 
 export const router = Router();
+
+// One budget shared by the public reads: each can trigger an indexer lookup.
+const publicReads = rateLimit(new RateLimiter(env.PUBLIC_RATE_LIMIT_PER_MIN));
 
 router.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
@@ -70,12 +75,15 @@ router.post(
 
 router.get(
   '/resolve/:username',
+  publicReads,
   validate(walletController.resolveParamsSchema, 'params'),
   walletController.resolve,
 );
 
 router.get(
   '/available/:username',
+  publicReads,
   validate(availabilityController.availabilityParamsSchema, 'params'),
+  validate(availabilityController.availabilityQuerySchema, 'query'),
   availabilityController.checkAvailability,
 );

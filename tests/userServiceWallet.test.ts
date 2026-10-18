@@ -128,7 +128,14 @@ jest.mock('../src/config/supabase', () => {
   };
 });
 
+jest.mock('../src/services/onchainService', () => {
+  const actual = jest.requireActual('../src/services/onchainService');
+  return { ...actual, getOnchainOwner: jest.fn() };
+});
+
+import * as onchainService from '../src/services/onchainService';
 import {
+  checkAvailability,
   findByWallet,
   registerUsername,
 } from '../src/services/userService';
@@ -136,10 +143,16 @@ import { ConflictError } from '../src/utils/errors';
 
 void UniqueViolation; // keep import-style consistent
 
+const getOnchainOwner = onchainService.getOnchainOwner as jest.MockedFunction<
+  typeof onchainService.getOnchainOwner
+>;
+
 beforeEach(() => {
   userStore.clear();
   mappingStore.length = 0;
   nextUserId = 1;
+  getOnchainOwner.mockReset();
+  getOnchainOwner.mockResolvedValue({ kind: 'none' });
 });
 
 describe('userService.findByWallet', () => {
@@ -189,5 +202,82 @@ describe('userService.registerUsername — uniqueness', () => {
     await expect(
       registerUsername('derrick', '0xabc0000000000000000000000000000000000005'),
     ).rejects.toMatchObject({ errorCode: 'USERNAME_TAKEN' });
+  });
+});
+
+describe('userService.registerUsername — on-chain names', () => {
+  const MINE = '0xabc0000000000000000000000000000000000010';
+  const THEIRS = '0xabc0000000000000000000000000000000000011';
+
+  it('refuses a name held on-chain by a different wallet, before inserting', async () => {
+    getOnchainOwner.mockResolvedValue({ kind: 'owner', owner: THEIRS });
+    await expect(registerUsername('alice', MINE)).rejects.toMatchObject({
+      status: 409,
+      errorCode: 'USERNAME_TAKEN_ONCHAIN',
+    });
+    expect(userStore.size).toBe(0);
+  });
+
+  it('registers a name this wallet holds on-chain (any casing)', async () => {
+    getOnchainOwner.mockResolvedValue({ kind: 'owner', owner: MINE });
+    const user = await registerUsername('alice', MINE.toUpperCase().replace('0X', '0x'));
+    expect(user.username).toBe('alice');
+  });
+
+  it.each(['syncing', 'unavailable'] as const)('fails open when the indexer is %s', async (kind) => {
+    getOnchainOwner.mockResolvedValue({ kind });
+    expect((await registerUsername('alice', MINE)).username).toBe('alice');
+  });
+
+  it('reads the indexer fresh on every attempt, with the register budget', async () => {
+    getOnchainOwner.mockResolvedValue({ kind: 'owner', owner: THEIRS });
+    await expect(registerUsername('alice', MINE)).rejects.toBeInstanceOf(ConflictError);
+    await expect(registerUsername('alice', MINE)).rejects.toBeInstanceOf(ConflictError);
+    expect(getOnchainOwner).toHaveBeenCalledTimes(2);
+    expect(getOnchainOwner).toHaveBeenCalledWith('alice', { timeoutMs: onchainService.REGISTER_TIMEOUT_MS });
+  });
+});
+
+describe('userService.checkAvailability', () => {
+  const OWNER = '0xabc0000000000000000000000000000000000020';
+
+  it('reports a name held on-chain as TAKEN_ONCHAIN, with suggestions', async () => {
+    getOnchainOwner.mockImplementation(async (name) =>
+      name === 'alice' ? { kind: 'owner', owner: OWNER } : { kind: 'none' },
+    );
+    const result = await checkAvailability('alice');
+    expect(result.available).toBe(false);
+    expect(result.reason).toBe('TAKEN_ONCHAIN');
+    expect(result.suggestions.length).toBeGreaterThan(0);
+    // Suggestions are filtered off-chain only: one indexer call per request.
+    expect(getOnchainOwner).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the name available to its on-chain owner', async () => {
+    getOnchainOwner.mockResolvedValue({ kind: 'owner', owner: OWNER });
+    expect(await checkAvailability('alice', OWNER.toUpperCase().replace('0X', '0x'))).toEqual({
+      available: true,
+      suggestions: [],
+    });
+  });
+
+  it('reports TAKEN for an off-chain account without saying who owns it', async () => {
+    await registerUsername('alice', OWNER);
+    getOnchainOwner.mockClear();
+    const result = await checkAvailability('alice', OWNER);
+    expect(result.reason).toBe('TAKEN');
+    expect(Object.keys(result).sort()).toEqual(['available', 'reason', 'suggestions']);
+    expect(getOnchainOwner).not.toHaveBeenCalled();
+  });
+
+  it('fails open when the indexer is unavailable', async () => {
+    getOnchainOwner.mockResolvedValue({ kind: 'unavailable' });
+    expect((await checkAvailability('alice')).available).toBe(true);
+  });
+
+  it('rejects malformed and reserved names without asking the indexer', async () => {
+    expect((await checkAvailability('a!')).reason).toBe('INVALID_FORMAT');
+    expect((await checkAvailability('status')).reason).toBe('RESERVED');
+    expect(getOnchainOwner).not.toHaveBeenCalled();
   });
 });
