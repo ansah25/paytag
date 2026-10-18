@@ -3,7 +3,9 @@ import { RequestHandler } from 'express';
 
 // Per-client token buckets, in memory (the same scheme as the indexer's limiter). The counter is
 // per machine: the real ceiling is the configured rate × however many Fly machines are running.
-// Accurate today with one; with more, divide the setting or move the counter to a shared store.
+// Fly runs two, one auto-stopped, so up to 2× while both are up; and a machine that auto-starts
+// begins with empty buckets, so a burst that wakes it gets a fresh allowance rather than sharing
+// the first machine's count. With more machines, divide the setting or use a shared store.
 
 export interface Decision {
   allowed: boolean;
@@ -97,20 +99,28 @@ function expandIPv6(addr: string): number[] {
 }
 
 /**
- * Express middleware limiting each client IP. Fly's proxy sets Fly-Client-IP to the connecting
- * client; the API is only reachable through it, which must replace any value a client sends
- * (checked after deploy with a spoofed header). Without it (local dev) the socket address is
- * used. A refusal is a 429 in the API's `{ error, code }` shape with Retry-After.
+ * Express middleware limiting each client IP. Behind Cloudflare (`viaEdge`: edgeGuard has
+ * already refused anything without the edge secret), the visitor is CF-Connecting-IP, which
+ * Cloudflare sets; Fly-Client-IP there is a Cloudflare edge server shared by many visitors.
+ * Otherwise Fly's proxy sets Fly-Client-IP to the connecting client, and without it (local dev)
+ * the socket address is used. A refusal is a 429 in the API's `{ error, code }` shape with
+ * Retry-After.
  */
-export const rateLimit = (limiter: RateLimiter): RequestHandler => (req, res, next) => {
-  const key = clientKey(req.header('fly-client-ip') ?? req.socket.remoteAddress ?? 'unknown');
-  const d = limiter.check(key);
-  res.setHeader('RateLimit-Limit', String(d.limit));
-  res.setHeader('RateLimit-Remaining', String(d.remaining));
-  if (d.allowed) {
-    next();
-    return;
-  }
-  res.setHeader('Retry-After', String(d.retryAfter));
-  res.status(429).json({ error: 'Too many requests; slow down and retry shortly', code: 'RATE_LIMITED' });
-};
+export const rateLimit =
+  (limiter: RateLimiter, opts: { viaEdge?: boolean } = {}): RequestHandler =>
+  (req, res, next) => {
+    const ip =
+      (opts.viaEdge ? req.header('cf-connecting-ip') : undefined) ??
+      req.header('fly-client-ip') ??
+      req.socket.remoteAddress ??
+      'unknown';
+    const d = limiter.check(clientKey(ip));
+    res.setHeader('RateLimit-Limit', String(d.limit));
+    res.setHeader('RateLimit-Remaining', String(d.remaining));
+    if (d.allowed) {
+      next();
+      return;
+    }
+    res.setHeader('Retry-After', String(d.retryAfter));
+    res.status(429).json({ error: 'Too many requests; slow down and retry shortly', code: 'RATE_LIMITED' });
+  };

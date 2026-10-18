@@ -3,6 +3,7 @@ import cors, { CorsOptions } from 'cors';
 import { env } from './config/env';
 import { router } from './routes';
 import { errorHandler } from './middleware/errorHandler';
+import { edgeGuard } from './middleware/edgeGuard';
 
 const buildCorsOptions = (): CorsOptions => {
   if (!env.CORS_ORIGIN) {
@@ -49,6 +50,7 @@ export const createApp = (): Application => {
   // such as ?wallet=, so nested/array query syntax isn't needed.
   app.set('query parser', 'simple');
 
+  app.use(edgeGuard(env.EDGE_SECRET));
   app.use(splitCors());
   app.use(express.json({ limit: '100kb' }));
 

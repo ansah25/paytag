@@ -11,7 +11,7 @@ import * as availabilityController from '../controllers/availabilityController';
 export const router = Router();
 
 // One budget shared by the public reads: each can trigger an indexer lookup.
-const publicReads = rateLimit(new RateLimiter(env.PUBLIC_RATE_LIMIT_PER_MIN));
+const publicReads = rateLimit(new RateLimiter(env.PUBLIC_RATE_LIMIT_PER_MIN), { viaEdge: !!env.EDGE_SECRET });
 
 router.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
