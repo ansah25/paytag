@@ -153,7 +153,9 @@ export const verifySignatureAndIssueToken = async (
     throw new Error(`Failed to record nonce: ${error.message}`);
   }
   // In the background: the nonce is already spent, so a prune failure must not fail the sign-in.
-  void pruneUsedNonces().catch((err: Error) => logger.warn('auth.used_nonce_prune_failed', { message: err.message }));
+  void pruneUsedNonces().catch((err: unknown) =>
+    logger.warn('auth.used_nonce_prune_failed', { message: err instanceof Error ? err.message : String(err) }),
+  );
 
   const payload: JwtPayload = { sub: wallet };
   const options: SignOptions = { expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'] };

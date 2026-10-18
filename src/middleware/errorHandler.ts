@@ -10,7 +10,7 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
   }
 
   // A malformed %-escape in a route parameter: Express raises a URIError with status 400.
-  if (err instanceof URIError) {
+  if (err instanceof URIError && (err as { status?: unknown }).status === 400) {
     res.status(400).json({ error: 'Malformed URL', code: 'MALFORMED_URL' });
     return;
   }
