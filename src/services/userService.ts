@@ -64,8 +64,17 @@ export const USER_COLUMNS = 'id, username, owner_wallet, created_at, display_nam
 // becomes "k"), which would let input the on-chain registry rejects pass here. Leaving non-ASCII
 // untouched makes USERNAME_REGEX reject it, matching the contract. A leading "@" is not stripped
 // here (clients strip it before calling), so "@name" is rejected as malformed.
-export const normalizeUsername = (username: string): string =>
-  username.replace(/^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g, '').replace(/[A-Z]/g, (c) => c.toLowerCase());
+// The trim is a plain scan: a regex like /^\s+|\s+$/ backtracks quadratically on a long run of
+// whitespace followed by anything else.
+const isAsciiSpace = (code: number): boolean => code === 32 || (code >= 9 && code <= 13);
+
+export const normalizeUsername = (username: string): string => {
+  let start = 0;
+  let end = username.length;
+  while (start < end && isAsciiSpace(username.charCodeAt(start))) start++;
+  while (end > start && isAsciiSpace(username.charCodeAt(end - 1))) end--;
+  return username.slice(start, end).replace(/[A-Z]/g, (c) => c.toLowerCase());
+};
 
 export const validateUsername = (username: string): void => {
   if (!USERNAME_REGEX.test(username)) {

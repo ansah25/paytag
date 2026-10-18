@@ -164,7 +164,7 @@ export function Dashboard() {
     try {
       const { nonce } = await api.getNonce(address);
       const signature = await signMessageAsync({ message: buildSignMessage(nonce) });
-      const { token: newToken, wallet } = await api.verify(address, signature);
+      const { token: newToken, wallet } = await api.verify(address, signature, nonce);
       saveAuth({ token: newToken, wallet });
     } catch (err) {
       setGateError(

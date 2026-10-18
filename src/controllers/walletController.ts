@@ -3,26 +3,27 @@ import { z } from 'zod';
 import * as walletService from '../services/walletService';
 import * as verificationService from '../services/verificationService';
 import { UnauthorizedError } from '../utils/errors';
+import { MAX_LEN, bounded } from './limits';
 
 export const addAddressBodySchema = z.object({
-  chain: z.string().min(1),
-  address: z.string().min(1),
+  chain: bounded(MAX_LEN.chain),
+  address: bounded(MAX_LEN.address),
 });
 
 export const resolveParamsSchema = z.object({
-  username: z.string().min(1),
+  username: bounded(MAX_LEN.username),
 });
 
 export const chainParamsSchema = z.object({
-  chain: z.string().min(1),
+  chain: bounded(MAX_LEN.chain),
 });
 
 export const verificationChallengeBodySchema = z.object({
-  chain: z.string().min(1),
+  chain: bounded(MAX_LEN.chain),
 });
 
 export const verifyAddressBodySchema = z.object({
-  chain: z.string().min(1),
+  chain: bounded(MAX_LEN.chain),
   // EVM hex signatures are 132 chars, ed25519 base64 is 88 — leave headroom.
   signature: z.string().min(1).max(512),
 });

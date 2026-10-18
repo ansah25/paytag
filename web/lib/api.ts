@@ -190,10 +190,11 @@ const meSingleFlight = (_signal?: AbortSignal): Promise<MeResponse> => {
 export const api = {
   getNonce: (wallet: string) =>
     request<NonceResponse>(`/auth/nonce?wallet=${encodeURIComponent(wallet)}`),
-  verify: (wallet: string, signature: string) =>
+  /** `nonce`: the one from getNonce that was signed, so the API checks exactly that one. */
+  verify: (wallet: string, signature: string, nonce: string) =>
     request<VerifyResponse>('/auth/verify', {
       method: 'POST',
-      body: { wallet, signature },
+      body: { wallet, signature, nonce },
     }),
   register: (username: string) =>
     request<RegisterResponse>('/register', {

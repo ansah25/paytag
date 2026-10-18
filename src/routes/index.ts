@@ -12,6 +12,9 @@ export const router = Router();
 
 // One budget shared by the public reads: each can trigger an indexer lookup.
 const publicReads = rateLimit(new RateLimiter(env.PUBLIC_RATE_LIMIT_PER_MIN), { viaEdge: !!env.EDGE_SECRET });
+// Sign-in and signup: unauthenticated writes (a nonce row, a JWT, a username), so a tighter budget.
+// A normal sign-in is two requests.
+const authWrites = rateLimit(new RateLimiter(env.AUTH_RATE_LIMIT_PER_MIN), { viaEdge: !!env.EDGE_SECRET });
 
 // Liveness for Fly's checks, which reach the machine directly: exempt from the edge guard.
 router.get('/health', (_req, res) => {
@@ -26,18 +29,21 @@ router.get('/ping', (_req, res) => {
 
 router.get(
   '/auth/nonce',
+  authWrites,
   validate(authController.nonceQuerySchema, 'query'),
   authController.getNonce,
 );
 
 router.post(
   '/auth/verify',
+  authWrites,
   validate(authController.verifyBodySchema),
   authController.verify,
 );
 
 router.post(
   '/register',
+  authWrites,
   requireAuth,
   validate(userController.registerBodySchema),
   userController.register,

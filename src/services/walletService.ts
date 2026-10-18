@@ -1,8 +1,8 @@
-import { ethers } from 'ethers';
 import { supabase } from '../config/supabase';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import { normalizeUsername } from './userService';
 import { TtlCache } from '../utils/cache';
+import { canonicalAddress, isBitcoinAddress, isEthereumAddress, isSolanaAddress } from '../utils/addresses';
 import { logger } from '../utils/logger';
 import { RESOLVE_TIMEOUT_MS, getOnchainOwner, linkStatus, type OnchainStatus } from './onchainService';
 
@@ -22,14 +22,10 @@ export const assertSupportedChain = (chain: string): Chain => {
   return chain;
 };
 
-const SOLANA_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
-const BITCOIN_LEGACY_REGEX = /^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/;
-const BITCOIN_BECH32_REGEX = /^bc1[ac-hj-np-z02-9]{8,87}$/i;
-
 const validators: Record<Chain, (address: string) => boolean> = {
-  ethereum: (addr) => ethers.isAddress(addr),
-  solana: (addr) => SOLANA_REGEX.test(addr),
-  bitcoin: (addr) => BITCOIN_LEGACY_REGEX.test(addr) || BITCOIN_BECH32_REGEX.test(addr),
+  ethereum: isEthereumAddress,
+  solana: isSolanaAddress,
+  bitcoin: isBitcoinAddress,
 };
 
 export const validateChainAddress = (chain: string, address: string): Chain => {
@@ -43,8 +39,7 @@ export const validateChainAddress = (chain: string, address: string): Chain => {
   return supported;
 };
 
-const canonicalizeAddress = (chain: Chain, address: string): string =>
-  chain === 'ethereum' ? address.toLowerCase() : address;
+const canonicalizeAddress = canonicalAddress;
 
 export interface AddressEntry {
   chain: Chain;

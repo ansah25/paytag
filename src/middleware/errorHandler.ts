@@ -9,6 +9,17 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     return;
   }
 
+  // express.json errors: malformed JSON or a body over the limit are the client's fault.
+  const parserType = (err as { type?: unknown })?.type;
+  if (parserType === 'entity.parse.failed') {
+    res.status(400).json({ error: 'Malformed JSON body', code: 'INVALID_JSON' });
+    return;
+  }
+  if (parserType === 'entity.too.large') {
+    res.status(413).json({ error: 'Request body too large', code: 'PAYLOAD_TOO_LARGE' });
+    return;
+  }
+
   if (err instanceof ZodError) {
     res.status(400).json({
       error: 'Validation failed',

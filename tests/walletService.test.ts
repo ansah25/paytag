@@ -191,6 +191,58 @@ describe('walletService - chain/address validation', () => {
   });
 });
 
+describe('walletService - stricter address formats', () => {
+  it.each([
+    ['ethereum', 'XE7338O073KYGTWWZN0F2WZ0R8PX5ZPPZS', 'ICAP'],
+    ['ethereum', '0x6aD631F215393f9635231de985081B1ccDDC7C1A', 'bad EIP-55 checksum'],
+    ['solana', '7Gk2pQv9xYt3LmN8rB4sW6cD1eF5hJ9kZ2aUmQ9xAb', 'not 32 bytes'],
+    ['bitcoin', '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN3', 'bad base58check'],
+    ['bitcoin', '1bvbmseystwetqtfn5au4m4gfg7xjanvn2', 'lowercased legacy'],
+    ['bitcoin', 'bc1QW508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', 'mixed-case bech32'],
+    ['bitcoin', 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5', 'bad bech32 checksum'],
+    ['bitcoin', 'bc1zzzzzzzzzzzzzzzzzzzzzzzzzzzz', 'garbage'],
+    ['bitcoin', 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx', 'testnet'],
+  ])('rejects %s %s (%s)', (chain, address) => {
+    expect(() => validateChainAddress(chain, address)).toThrow(BadRequestError);
+  });
+
+  it.each([
+    ['ethereum', '0x6aD631F215393f9635231de985081B1ccDDC7C11'],
+    ['solana', '4Nd1mYz7K8jM2QpRzWxV3Y5tF7gH9JkLm2NoP4Qr5SsT'],
+    ['bitcoin', '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2'],
+    ['bitcoin', '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy'],
+    ['bitcoin', 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4'],
+    ['bitcoin', 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4'],
+    ['bitcoin', 'bc1p5d7rjq7g6rdk2yhzks9smlaqtedr4dekq08ge8ztwac72sfr9rusxg3297'],
+  ])('accepts %s %s', (chain, address) => {
+    expect(validateChainAddress(chain, address)).toBe(chain);
+  });
+
+  it('stores a legacy Bitcoin address byte-for-byte and resolves it unchanged', async () => {
+    const owner = ethers.Wallet.createRandom();
+    seedUser('u1', 'derrick', owner.address);
+    const legacy = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2';
+
+    await addAddress(owner.address, 'bitcoin', legacy);
+    expect(mappingStore[0].address).toBe(legacy);
+    expect((await resolveByUsername('derrick', { fresh: true })).addresses.bitcoin).toBe(legacy);
+  });
+
+  it('stores an uppercase bech32 address lowercased (bech32 is case-insensitive)', async () => {
+    const owner = ethers.Wallet.createRandom();
+    seedUser('u1', 'derrick', owner.address);
+    await addAddress(owner.address, 'bitcoin', 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4');
+    expect(mappingStore[0].address).toBe('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
+  });
+
+  it('stores a Solana address byte-for-byte', async () => {
+    const owner = ethers.Wallet.createRandom();
+    seedUser('u1', 'derrick', owner.address);
+    await addAddress(owner.address, 'solana', '4Nd1mYz7K8jM2QpRzWxV3Y5tF7gH9JkLm2NoP4Qr5SsT');
+    expect(mappingStore[0].address).toBe('4Nd1mYz7K8jM2QpRzWxV3Y5tF7gH9JkLm2NoP4Qr5SsT');
+  });
+});
+
 describe('walletService.addAddress', () => {
   it('rejects when wallet has no registered username', async () => {
     const w = ethers.Wallet.createRandom();
@@ -258,11 +310,11 @@ describe('walletService.addAddress', () => {
     mappingStore.push({
       user_id: 'u1',
       chain: 'solana',
-      address: '4Nd1mYz7K8jM2QpRzWxV3Y5tF7gH9JkLm2NoP4Qr5SsT',
+      address: 'So11111111111111111111111111111111111111112',
       verified_at: '2026-09-01T00:00:00Z',
     });
 
-    await addAddress(owner.address, 'solana', '7Gk2pQv9xYt3LmN8rB4sW6cD1eF5hJ9kZ2aUmQ9xAb');
+    await addAddress(owner.address, 'solana', '4Nd1mYz7K8jM2QpRzWxV3Y5tF7gH9JkLm2NoP4Qr5SsT');
     expect(mappingStore[0].verified_at).toBeNull();
   });
 });
