@@ -1,3 +1,4 @@
+import { isIPv4, isIPv6 } from 'node:net';
 import { RequestHandler } from 'express';
 
 // Per-client token buckets, in memory (the same scheme as the indexer's limiter). The counter is
@@ -63,12 +64,31 @@ export class RateLimiter {
 }
 
 /**
+ * The bucket key for a client address. IPv6 clients are keyed on their /64: one subscriber or
+ * cloud host usually holds a whole /64 and can rotate through it, so a per-address key would
+ * give them an endless supply of fresh buckets. IPv4-mapped IPv6 counts as the IPv4 address.
+ */
+export function clientKey(ip: string): string {
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(ip);
+  if (mapped && isIPv4(mapped[1])) return mapped[1];
+  if (!isIPv6(ip)) return ip;
+  const [head, tail = ''] = ip.toLowerCase().split('%')[0].split('::');
+  const left = head ? head.split(':') : [];
+  const right = tail ? tail.split(':') : [];
+  const groups = ip.includes('::')
+    ? [...left, ...Array(8 - left.length - right.length).fill('0'), ...right]
+    : left;
+  return `${groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, '')).join(':')}::/64`;
+}
+
+/**
  * Express middleware limiting each client IP. Fly's proxy sets Fly-Client-IP to the connecting
- * client, replacing any value the client sent; without it (local dev) the socket address is
+ * client; the API is only reachable through it, which must replace any value a client sends
+ * (checked after deploy with a spoofed header). Without it (local dev) the socket address is
  * used. A refusal is a 429 in the API's `{ error, code }` shape with Retry-After.
  */
 export const rateLimit = (limiter: RateLimiter): RequestHandler => (req, res, next) => {
-  const key = req.header('fly-client-ip') ?? req.socket.remoteAddress ?? 'unknown';
+  const key = clientKey(req.header('fly-client-ip') ?? req.socket.remoteAddress ?? 'unknown');
   const d = limiter.check(key);
   res.setHeader('RateLimit-Limit', String(d.limit));
   res.setHeader('RateLimit-Remaining', String(d.remaining));

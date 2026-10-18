@@ -34,11 +34,20 @@ describe('getOnchainOwner', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it('maps 404 to none and 503 to syncing', async () => {
-    reply(404, { code: 'USER_NOT_FOUND' });
+  it("maps the indexer's own 404 to none and 503 to syncing", async () => {
+    reply(404, { error: 'not registered', code: 'USER_NOT_FOUND' });
     expect(await lookup()).toEqual({ kind: 'none' });
-    reply(503, { code: 'NOT_READY' });
+    reply(503, { error: 'syncing', code: 'NOT_READY' });
     expect(await lookup()).toEqual({ kind: 'syncing' });
+  });
+
+  it("doesn't trust a 404 or 503 from something else (proxy, wrong path)", async () => {
+    fetchMock.mockResolvedValueOnce(new Response('<html>404 page not found</html>', { status: 404 }));
+    expect(await lookup()).toEqual({ kind: 'unavailable' });
+    fetchMock.mockResolvedValueOnce(new Response('no available server', { status: 503 }));
+    expect(await lookup()).toEqual({ kind: 'unavailable' });
+    reply(404, { code: 'NOT_FOUND' });
+    expect(await lookup()).toEqual({ kind: 'unavailable' });
   });
 
   it('reports unavailable, never throws, on errors, timeouts, 5xx, 429 and bad bodies', async () => {
@@ -64,9 +73,33 @@ describe('getOnchainOwner', () => {
     expect(fetchMock).toHaveBeenCalledTimes(5); // open: no request
   });
 
+  it('lets a lookup without the breaker through while it is open, and never trips it', async () => {
+    const read = () => getOnchainOwner('alice', { timeoutMs: 300 });
+    const register = () => getOnchainOwner('alice', { timeoutMs: REGISTER_TIMEOUT_MS, useBreaker: false });
+    for (let i = 0; i < 5; i++) {
+      fetchMock.mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'));
+      await read();
+    }
+    expect(await read()).toEqual({ kind: 'unavailable' }); // open
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+
+    reply(200, { owner: OWNER });
+    expect(await register()).toEqual({ kind: 'owner', owner: OWNER.toLowerCase() });
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+
+    // ...and its failures don't count either.
+    resetOnchainBreaker();
+    for (let i = 0; i < 6; i++) {
+      reply(500);
+      await register();
+    }
+    reply(200, { owner: OWNER });
+    expect(await read()).toEqual({ kind: 'owner', owner: OWNER.toLowerCase() });
+  });
+
   it("doesn't count syncing toward the breaker", async () => {
     for (let i = 0; i < 8; i++) {
-      reply(503);
+      reply(503, { code: 'NOT_READY' });
       expect(await lookup()).toEqual({ kind: 'syncing' });
     }
     expect(fetchMock).toHaveBeenCalledTimes(8);

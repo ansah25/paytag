@@ -4,6 +4,7 @@
 
 - `ResolveResponse` gains optional `onchain: { status }` (`linked` · `not_linked` · `none` · `syncing` · `unavailable`): whether the on-chain name of the same spelling belongs to the Paytag account. Absent from `resolveViaIndexer` results.
 - `available` can return `reason: 'TAKEN_ONCHAIN'` (free off-chain, registered on-chain by another wallet), and takes `{ wallet }` so a name the caller owns on-chain isn't reported as taken.
+- **Type change:** `UnavailableReason` gains `'TAKEN_ONCHAIN'`. Code with an exhaustive `switch` or a `Record<UnavailableReason, …>` over it needs a case for the new value.
 
 ## 0.4.0
 

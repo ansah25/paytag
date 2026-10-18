@@ -41,9 +41,10 @@ const DEBOUNCE_MS = 350;
 /**
  * The Paytag account (off-chain) with the same name, for the connected wallet. `other`: it
  * exists and the connected wallet isn't its verified Ethereum address, so registering here
- * won't link the two. Best-effort: on any error nothing is shown.
+ * won't link the two. `key` is the wallet + name it was looked up for. On an error nothing is
+ * shown (`unknown`).
  */
-type PaytagAccount = { name: string; kind: 'none' | 'yours' | 'other' | 'unknown' };
+type PaytagAccount = { key: string; kind: 'none' | 'yours' | 'other' | 'unknown' };
 
 /** Where the current name's two-step registration stands. */
 type Step =
@@ -63,10 +64,10 @@ type Step =
  * it. The secret is kept in localStorage so a refresh during the wait doesn't lose it; whatever
  * is stored is re-checked against the chain before use, and cleared if it expired or is gone.
  */
-export function RegisterPanel({ initialName = '' }: { initialName?: string }) {
+export function RegisterPanel() {
   const tx = useOnchainTx();
   const { connect, connecting, error: connectError } = useConnectWallet();
-  const [input, setInput] = useState(initialName);
+  const [input, setInput] = useState('');
   const [check, setCheck] = useState<Check>({ kind: 'empty' });
   const [recheck, setRecheck] = useState(0);
   const [registered, setRegistered] = useState<string | null>(null);
@@ -76,12 +77,19 @@ export function RegisterPanel({ initialName = '' }: { initialName?: string }) {
   // Chain time minus local time (seconds), so the countdown follows the chain, not the device clock.
   const [chainOffset, setChainOffset] = useState(0);
   const [paytag, setPaytag] = useState<PaytagAccount | null>(null);
-  // The name whose "belongs to a different wallet" warning the user accepted.
+  // The wallet + name whose "belongs to a different wallet" warning the user accepted.
   const [acceptedFor, setAcceptedFor] = useState<string | null>(null);
   const [, setTick] = useState(0);
   const { publicClient, address } = tx;
   // The wallet + name the panel shows right now, for async callbacks that outlive a change.
   const currentKey = useRef('');
+
+  // ?name= prefills the form (the dashboard links here with the account's name). Read after
+  // mount rather than through the page's searchParams, so the page stays static.
+  useEffect(() => {
+    const prefill = new URLSearchParams(window.location.search).get('name');
+    if (prefill) setInput(prefill.slice(0, 21));
+  }, []);
 
   const parsed = useMemo(() => (input.trim() ? normalizeName(input.trim()) : null), [input]);
 
@@ -108,22 +116,39 @@ export function RegisterPanel({ initialName = '' }: { initialName?: string }) {
 
   const name = parsed?.ok ? parsed.name : null;
 
-  // Only worth asking once the name is free on-chain and a wallet is connected.
+  // Only worth asking once the name is free on-chain and a wallet is connected. Keyed by wallet +
+  // name, so a result (or an accepted warning) never carries over to another wallet or name.
   const freeOnchain = check.kind === 'result' && check.result.available;
+  const lookupKey = name && freeOnchain && address ? `${address.toLowerCase()}:${name}` : null;
   useEffect(() => {
-    if (!name || !freeOnchain || !address) return setPaytag(null);
+    if (!lookupKey || !name || !address) return;
     const controller = new AbortController();
+    // A slow API mustn't hold Reserve back for long: after 4s, carry on without the warning.
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 4_000);
     api
       .resolve(name, controller.signal)
-      .then((resolution) => setPaytag({ name, kind: accountLinksTo(resolution, address) ? 'yours' : 'other' }))
+      .then((resolution) =>
+        setPaytag({ key: lookupKey, kind: accountLinksTo(resolution, address) ? 'yours' : 'other' }),
+      )
       .catch((err) => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted && !timedOut) return;
         const missing = err instanceof ApiError && (err.code === 'USER_NOT_FOUND' || err.status === 404);
-        setPaytag({ name, kind: missing ? 'none' : 'unknown' });
-      });
-    return () => controller.abort();
-  }, [name, freeOnchain, address]);
-  const needsAccept = paytag?.name === name && paytag.kind === 'other' && acceptedFor !== name;
+        setPaytag({ key: lookupKey, kind: missing ? 'none' : 'unknown' });
+      })
+      .finally(() => clearTimeout(timer));
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [lookupKey, name, address]);
+  const account = paytag && paytag.key === lookupKey ? paytag : null;
+  // Reserve waits for the lookup, so a quick click can't skip the warning.
+  const accountPending = lookupKey !== null && account === null;
+  const needsAccept = account?.kind === 'other' && acceptedFor !== lookupKey;
 
   currentKey.current = `${address?.toLowerCase() ?? ''}:${name ?? ''}`;
   const isCurrent = (r: Reservation) => currentKey.current === `${r.owner}:${r.name}`;
@@ -210,6 +235,7 @@ export function RegisterPanel({ initialName = '' }: { initialName?: string }) {
     !!name &&
     !justRegistered &&
     !needsAccept &&
+    !accountPending &&
     (check.kind === 'unreachable' || (check.kind === 'result' && check.result.available));
 
   const reserve = () => {
@@ -413,7 +439,7 @@ export function RegisterPanel({ initialName = '' }: { initialName?: string }) {
             {connectError}
           </p>
         )}
-        {paytag?.name === name && paytag.kind === 'yours' && !justRegistered && (
+        {account?.kind === 'yours' && !justRegistered && (
           <p className="text-[13px] font-semibold text-ink2">Registering it links it to your Paytag account @{name}.</p>
         )}
         {needsAccept && (
@@ -422,7 +448,7 @@ export function RegisterPanel({ initialName = '' }: { initialName?: string }) {
               The Paytag account @{name} belongs to a different wallet. Registering it here won’t link the two, and
               payments to paytag.dev/{name} keep going to that account.
             </p>
-            <Button variant="outline" size={36} className="justify-self-start" onClick={() => setAcceptedFor(name)}>
+            <Button variant="outline" size={36} className="justify-self-start" onClick={() => setAcceptedFor(lookupKey)}>
               Register it anyway
             </Button>
           </div>

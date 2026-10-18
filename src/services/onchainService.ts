@@ -68,16 +68,26 @@ const breaker = new CircuitBreaker();
 /** Tests only. */
 export const resetOnchainBreaker = (): void => breaker.success();
 
+/** Outcome reporting for one lookup: the shared breaker, or nothing (see `useBreaker`). */
+const NO_BREAKER = { success: () => {}, failure: () => {}, release: () => {} };
+
 /**
  * The on-chain owner of `name` (already normalized and validated). Never throws: any failure
  * is reported as `unavailable` so callers can carry on without the on-chain answer.
+ *
+ * `useBreaker: false` (for /register) neither consults the breaker nor counts toward it. The
+ * reads run on a shorter budget, so an indexer answering in 300ms–1s would open the breaker
+ * from public reads alone, and /register would then skip a check it had time for. Signups are
+ * rare and per-wallet, so they can always afford the call.
  */
 export const getOnchainOwner = async (
   name: string,
-  opts: { timeoutMs: number },
+  opts: { timeoutMs: number; useBreaker?: boolean },
 ): Promise<OnchainLookup> => {
   if (!env.INDEXER_URL) return { kind: 'unavailable' };
-  if (!breaker.allow()) return { kind: 'unavailable' };
+  const useBreaker = opts.useBreaker ?? true;
+  if (useBreaker && !breaker.allow()) return { kind: 'unavailable' };
+  const outcome = useBreaker ? breaker : NO_BREAKER;
 
   let res: Response;
   try {
@@ -86,31 +96,33 @@ export const getOnchainOwner = async (
       signal: AbortSignal.timeout(opts.timeoutMs),
     });
   } catch (err) {
-    breaker.failure();
+    outcome.failure();
     logger.warn('onchain.lookup_failed', { name, reason: (err as Error).name });
     return { kind: 'unavailable' };
   }
 
-  if (res.status === 404) {
-    breaker.success();
+  // 404 and 503 are only trusted with the indexer's own error code: a reverse proxy answers 404
+  // when no route matches and 503 while a container is swapped, and a wrong INDEXER_URL path
+  // 404s too. Read as "not registered", those would let a held name through.
+  const body = (await res.json().catch(() => null)) as { owner?: unknown; code?: unknown } | null;
+  if (res.status === 404 && body?.code === 'USER_NOT_FOUND') {
+    outcome.success();
     return { kind: 'none' };
   }
-  // A 503 is the indexer answering quickly that it's still syncing, not a sign of trouble, so it
-  // doesn't count toward the breaker. Known choice: an indexer stuck syncing for a long time
+  // The indexer's 503 NOT_READY is a quick answer that it's still syncing, not a sign of trouble,
+  // so it doesn't count toward the breaker. Known choice: an indexer stuck syncing for a long time
   // keeps taking one call per lookup. Fine at the current volume.
-  if (res.status === 503) {
-    breaker.release();
+  if (res.status === 503 && body?.code === 'NOT_READY') {
+    outcome.release();
     return { kind: 'syncing' };
   }
-  if (res.ok) {
-    const body = (await res.json().catch(() => null)) as { owner?: unknown } | null;
-    if (typeof body?.owner === 'string') {
-      breaker.success();
-      return { kind: 'owner', owner: body.owner.toLowerCase() };
-    }
+  if (res.ok && typeof body?.owner === 'string') {
+    outcome.success();
+    return { kind: 'owner', owner: body.owner.toLowerCase() };
   }
-  // Other 5xx, 429 (our key missing or wrong) and malformed bodies all count as failures.
-  breaker.failure();
+  // Other 5xx, 429 (our key missing or wrong), foreign 404/503s and malformed bodies all count
+  // as failures.
+  outcome.failure();
   logger.warn('onchain.lookup_failed', { name, status: res.status });
   return { kind: 'unavailable' };
 };

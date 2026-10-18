@@ -76,7 +76,12 @@ export function ClaimWizard({ username: routeName }: Props) {
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<{ message: string; at: number } | null>(null);
   const [inlineError, setInlineError] = useState<string | null>(null);
-  const [unavailable, setUnavailable] = useState<{ reason: UnavailableReason; suggestions: string[] } | null>(null);
+  const [unavailable, setUnavailable] = useState<{
+    reason: UnavailableReason;
+    suggestions: string[];
+    /** Lowercased wallet the check was made with ('' for none). */
+    checkedWith: string;
+  } | null>(null);
   const [existing, setExisting] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [signing, setSigning] = useState(false);
@@ -171,7 +176,11 @@ export function ClaimWizard({ username: routeName }: Props) {
         if (res.available) {
           setStep('connect');
         } else {
-          setUnavailable({ reason: res.reason ?? 'TAKEN', suggestions: res.suggestions });
+          setUnavailable({
+            reason: res.reason ?? 'TAKEN',
+            suggestions: res.suggestions,
+            checkedWith: addressRef.current?.toLowerCase() ?? '',
+          });
           setStep('unavailable');
         }
       } catch (err) {
@@ -182,6 +191,28 @@ export function ClaimWizard({ username: routeName }: Props) {
       cancelled = true;
     };
   }, [username, attempt, showDone, fail]);
+
+  // "Registered on-chain" was decided for one wallet (or none, e.g. checked before wagmi
+  // reconnected). When a different wallet is connected, ask again: it may be the owner.
+  useEffect(() => {
+    if (step !== 'unavailable' || unavailable?.reason !== 'TAKEN_ONCHAIN' || !username || !connected || !address) {
+      return;
+    }
+    const wallet = address.toLowerCase();
+    if (unavailable.checkedWith === wallet) return;
+    let cancelled = false;
+    api
+      .available(username, undefined, address)
+      .then((res) => {
+        if (cancelled) return;
+        if (res.available) setStep('connect');
+        else setUnavailable({ reason: res.reason ?? 'TAKEN', suggestions: res.suggestions, checkedWith: wallet });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [step, unavailable, username, connected, address]);
 
   // Pick route: a wallet that already owns a name can't claim another.
   useEffect(() => {
@@ -259,6 +290,7 @@ export function ClaimWizard({ username: routeName }: Props) {
                     ? 'TAKEN_ONCHAIN'
                     : 'TAKEN'),
             suggestions: res?.suggestions ?? [],
+            checkedWith: addressRef.current?.toLowerCase() ?? '',
           });
           setStep('unavailable');
         } else if (code === 'WALLET_HAS_USERNAME') {

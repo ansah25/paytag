@@ -182,7 +182,8 @@ export const registerUsername = async (
   // address below). Read fresh, never through the resolve cache. Fails open: if the indexer is
   // down or syncing the signup goes ahead, since the permissionless contract can't prevent
   // collisions anyway. A name taken on-chain between this check and the insert is accepted.
-  const onchain = await getOnchainOwner(normalized, { timeoutMs: REGISTER_TIMEOUT_MS });
+  // Bypasses the circuit breaker, so public reads can't switch this check off.
+  const onchain = await getOnchainOwner(normalized, { timeoutMs: REGISTER_TIMEOUT_MS, useBreaker: false });
   if (onchain.kind === 'owner' && onchain.owner !== wallet) {
     throw new ConflictError(
       'That username is registered on-chain by a different wallet',

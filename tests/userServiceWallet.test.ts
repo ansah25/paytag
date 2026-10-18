@@ -229,12 +229,15 @@ describe('userService.registerUsername — on-chain names', () => {
     expect((await registerUsername('alice', MINE)).username).toBe('alice');
   });
 
-  it('reads the indexer fresh on every attempt, with the register budget', async () => {
+  it('reads the indexer fresh on every attempt, with the register budget and no breaker', async () => {
     getOnchainOwner.mockResolvedValue({ kind: 'owner', owner: THEIRS });
     await expect(registerUsername('alice', MINE)).rejects.toBeInstanceOf(ConflictError);
     await expect(registerUsername('alice', MINE)).rejects.toBeInstanceOf(ConflictError);
     expect(getOnchainOwner).toHaveBeenCalledTimes(2);
-    expect(getOnchainOwner).toHaveBeenCalledWith('alice', { timeoutMs: onchainService.REGISTER_TIMEOUT_MS });
+    expect(getOnchainOwner).toHaveBeenCalledWith('alice', {
+      timeoutMs: onchainService.REGISTER_TIMEOUT_MS,
+      useBreaker: false,
+    });
   });
 });
 
