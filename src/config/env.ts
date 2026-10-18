@@ -51,6 +51,33 @@ if (!parsed.success) {
 
 export const env = parsed.data;
 
+/** Longest token lifetime the API issues, whatever JWT_EXPIRES_IN says. */
+export const MAX_TOKEN_SECONDS = 24 * 60 * 60;
+
+/**
+ * JWT_EXPIRES_IN as seconds: a bare number of seconds or <n>s|m|h|d. Anything longer than
+ * MAX_TOKEN_SECONDS is capped (with a warning) rather than refused, so a stale long value in the
+ * deploy environment can't stretch tokens and can't take the API down either. Unparseable or
+ * zero values stop the boot.
+ */
+export const jwtExpiresInSeconds: number = (() => {
+  const raw = env.JWT_EXPIRES_IN.trim();
+  const match = /^(\d+)([smhd]?)$/.exec(raw);
+  const unit: Record<string, number> = { '': 1, s: 1, m: 60, h: 3600, d: 86400 };
+  const seconds = match ? Number(match[1]) * unit[match[2]] : NaN;
+  if (!Number.isSafeInteger(seconds) || seconds <= 0) {
+    // eslint-disable-next-line no-console
+    console.error(`Invalid JWT_EXPIRES_IN "${raw}": use seconds or <n>s|m|h|d, e.g. "24h"`);
+    process.exit(1);
+  }
+  if (seconds > MAX_TOKEN_SECONDS) {
+    // eslint-disable-next-line no-console
+    console.warn(`JWT_EXPIRES_IN "${raw}" is longer than 24h; tokens are capped at 24h`);
+    return MAX_TOKEN_SECONDS;
+  }
+  return seconds;
+})();
+
 const DOMAIN_PATTERN = /^[a-z0-9.-]+(:\d{1,5})?$/;
 
 /**

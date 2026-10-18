@@ -13,6 +13,7 @@ interface UsedRow {
 }
 const used: UsedRow[] = [];
 const sessionVersions = new Map<string, number>(); // owner_wallet -> session_version
+const failures = { usersRead: false };
 const touchedTables = new Set<string>();
 
 jest.mock('../src/config/supabase', () => {
@@ -53,6 +54,7 @@ jest.mock('../src/config/supabase', () => {
         return b;
       },
       maybeSingle: () => {
+        if (failures.usersRead) return Promise.resolve({ data: null, error: { message: 'db down' } });
         const v = sessionVersions.get(eqs.owner_wallet as string);
         return Promise.resolve({ data: v === undefined ? null : { session_version: v }, error: null });
       },
@@ -102,7 +104,8 @@ const at = (ms: number) => jest.spyOn(Date, 'now').mockReturnValue(ms);
 const flushPrune = () => new Promise((resolve) => setImmediate(resolve));
 const issuedAtOf = (nonce: string) => parseInt(nonce.slice(0, 16), 16);
 
-const issue = (wallet: ethers.HDNodeWallet, domain = DOMAIN) => createNonce(wallet.address, domain, `https://${domain}`);
+const originFor = (domain: string) => `${domain.startsWith('localhost') ? 'http' : 'https'}://${domain}`;
+const issue = (wallet: ethers.HDNodeWallet, domain = DOMAIN) => createNonce(wallet.address, domain, originFor(domain));
 const signIn = async (wallet: ethers.HDNodeWallet) => {
   const { nonce, message } = await issue(wallet);
   return verifySignatureAndIssueToken(wallet.address, await wallet.signMessage(message), nonce, DOMAIN, ORIGIN);
@@ -111,6 +114,7 @@ const signIn = async (wallet: ethers.HDNodeWallet) => {
 beforeEach(() => {
   used.length = 0;
   sessionVersions.clear();
+  failures.usersRead = false;
   touchedTables.clear();
   resetUsedNoncePrune();
   jest.restoreAllMocks();
@@ -158,6 +162,17 @@ describe('domain and origin', () => {
     for (const origin of ['https://evil.example', 'https://www.paytag.dev.evil.example', 'null']) {
       await expect(createNonce(wallet.address, DOMAIN, origin)).rejects.toMatchObject({ errorCode: 'ORIGIN_MISMATCH' });
     }
+  });
+
+  it('refuses an Origin with the right host but the wrong scheme', async () => {
+    const wallet = ethers.Wallet.createRandom();
+    await expect(createNonce(wallet.address, DOMAIN, 'http://www.paytag.dev')).rejects.toMatchObject({
+      errorCode: 'ORIGIN_MISMATCH',
+    });
+    await expect(createNonce(wallet.address, 'localhost:3002', 'https://localhost:3002')).rejects.toMatchObject({
+      errorCode: 'ORIGIN_MISMATCH',
+    });
+    await expect(createNonce(wallet.address, 'localhost:3002', 'http://localhost:3002')).resolves.toBeDefined();
   });
 
   it('allows a request without Origin (non-browser), the allowlist still applying', async () => {
@@ -399,6 +414,7 @@ describe('tokens and sessions', () => {
       jwt.sign({ sub }, secret), // a pre-SIWE token
       jwt.sign({ sub, sv: 0 }, 'wrong-secret-must-be-32-chars-long-x', good),
       jwt.sign({ sub, sv: 0 }, '', { ...good, algorithm: 'none' }),
+      jwt.sign({ sub, sv: 0 }, secret, { ...good, algorithm: 'HS384' }), // HS256 is pinned
     ];
     for (const token of bad) expect(() => verifyToken(token)).toThrow(UnauthorizedError);
   });
@@ -424,7 +440,47 @@ describe('tokens and sessions', () => {
     expect((await call(signSessionToken('0x' + '2'.repeat(40), 0))).status).toBe(200);
   });
 
+  it('fails closed when the session version cannot be read', async () => {
+    failures.usersRead = true;
+    const res = await call(signSessionToken('0x' + '4'.repeat(40), 0));
+    expect(res.status).toBe(500);
+    expect(res.body.sub).toBeUndefined();
+  });
+
   it('refuses to revoke for a wallet with no account', async () => {
     await expect(revokeAllSessions('0x' + '3'.repeat(40))).rejects.toMatchObject({ errorCode: 'USER_NOT_FOUND' });
+  });
+});
+
+describe('token lifetime', () => {
+  const lifetimeWith = (value: string): number => {
+    const saved = process.env.JWT_EXPIRES_IN;
+    process.env.JWT_EXPIRES_IN = value;
+    let seconds = 0;
+    jest.isolateModules(() => {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      seconds = require('../src/config/env').jwtExpiresInSeconds;
+    });
+    if (saved === undefined) delete process.env.JWT_EXPIRES_IN;
+    else process.env.JWT_EXPIRES_IN = saved;
+    return seconds;
+  };
+
+  it('caps a configured lifetime above 24h (e.g. a stale "7d" deploy secret)', () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(lifetimeWith('7d')).toBe(24 * 3600);
+    expect(lifetimeWith('90000')).toBe(24 * 3600);
+  });
+
+  it('keeps shorter lifetimes as configured', () => {
+    expect(lifetimeWith('1h')).toBe(3600);
+    expect(lifetimeWith('24h')).toBe(24 * 3600);
+    expect(lifetimeWith('900')).toBe(900);
+  });
+
+  it('issues tokens that expire within the cap', async () => {
+    const { token } = await signIn(ethers.Wallet.createRandom());
+    const { iat, exp } = jwt.decode(token) as { iat: number; exp: number };
+    expect(exp - iat).toBeLessThanOrEqual(24 * 3600);
   });
 });

@@ -13,7 +13,7 @@ declare module 'express-serve-static-core' {
  * "sign out everywhere" carries an older version and is refused.
  *
  * A wallet with no account (no users row) has nothing to compare against, so its token can't be
- * revoked and stays valid until it expires (JWT_EXPIRES_IN, 24h). It can still reach real actions,
+ * revoked and stays valid until it expires (at most 24h, see MAX_TOKEN_SECONDS). It can still reach real actions,
  * notably /register; the lifetime cap is the only bound there.
  */
 export const requireAuth: RequestHandler = async (req, _res, next) => {

@@ -36,9 +36,14 @@ export function Sessions({ wallet, onSignOut }: Props) {
     setAllError(null);
     try {
       await api.logoutAll();
-      await onSignOut();
     } catch {
       setAllError('Couldn’t sign out other sessions. Try again.');
+      setSigningOutAll(false);
+      return;
+    }
+    // Every session is revoked now, this one included; clearing this browser is all that's left.
+    try {
+      await onSignOut();
     } finally {
       setSigningOutAll(false);
     }

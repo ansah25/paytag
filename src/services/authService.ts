@@ -2,7 +2,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'crypto';
 import { ethers } from 'ethers';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { supabase } from '../config/supabase';
-import { env, siweDomains } from '../config/env';
+import { env, jwtExpiresInSeconds, siweDomains } from '../config/env';
 import { BadRequestError, NotFoundError, UnauthorizedError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
@@ -72,7 +72,8 @@ export const SIWE_CHAIN_ID = 1;
 const SIWE_STATEMENT = 'Sign in to Paytag.';
 
 const isLocalHost = (domain: string): boolean => /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(domain);
-const siweUri = (domain: string): string => `${isLocalHost(domain) ? 'http' : 'https'}://${domain}`;
+const siweScheme = (domain: string): 'http' | 'https' => (isLocalHost(domain) ? 'http' : 'https');
+const siweUri = (domain: string): string => `${siweScheme(domain)}://${domain}`;
 
 /**
  * The exact text signed. Issued At comes from the nonce and Expiration Time is Issued At plus
@@ -104,13 +105,17 @@ const assertSignInDomain = (domain: string, origin: string | undefined): void =>
     throw new BadRequestError('Sign-in is not available for this site', 'DOMAIN_NOT_ALLOWED');
   }
   if (origin === undefined) return;
+  // Host and scheme: the page asking must be exactly the origin the message's URI names.
   let originHost: string | null = null;
+  let originScheme: string | null = null;
   try {
-    originHost = new URL(origin).host;
+    const url = new URL(origin);
+    originHost = url.host;
+    originScheme = url.protocol;
   } catch {
     originHost = null;
   }
-  if (originHost !== domain) {
+  if (originHost !== domain || originScheme !== `${siweScheme(domain)}:`) {
     throw new BadRequestError('Sign-in domain does not match this site', 'ORIGIN_MISMATCH');
   }
 };
@@ -250,7 +255,7 @@ export const getSessionVersion = async (wallet: string): Promise<number | null> 
 export const signSessionToken = (wallet: string, sessionVersion: number): string => {
   const payload: JwtPayload = { sub: wallet.toLowerCase(), sv: sessionVersion };
   const options: SignOptions = {
-    expiresIn: env.JWT_EXPIRES_IN as SignOptions['expiresIn'],
+    expiresIn: jwtExpiresInSeconds,
     issuer: JWT_ISSUER,
     audience: JWT_AUDIENCE,
     algorithm: 'HS256',
