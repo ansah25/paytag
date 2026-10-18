@@ -302,7 +302,8 @@ cd contracts && forge test
 |---|---|---|---|
 | GET | `/health` | — | Health check |
 | GET | `/auth/nonce?wallet=0x…` | — | Issue nonce for wallet signing |
-| POST | `/auth/verify` | — | Verify signed nonce (`{ wallet, signature, nonce }`), return JWT |
+| POST | `/auth/verify` | — | Verify the signed SIWE message (`{ wallet, signature, nonce, domain }`), return JWT |
+| POST | `/auth/logout-all` | JWT | Revoke every session of the account |
 | POST | `/register` | JWT | Register a username |
 | GET | `/me` | JWT | The wallet's username and profile |
 | PATCH | `/me/profile` | JWT | Update display name (≤ 40) and bio (≤ 120); `null` clears |
@@ -345,10 +346,12 @@ Public read endpoints (`/resolve`, `/available`, `/health`) are CORS-open. `/res
 
 ## Auth flow
 
-1. Client calls `GET /auth/nonce?wallet=0x…` → receives `{ nonce }`
-2. Client signs message: `Paytag authentication\n\nSign this message to log in.\n\nNonce: <nonce>`
-3. Client POSTs `{ wallet, signature, nonce }` to `/auth/verify` → receives `{ token, wallet }`. Without `nonce` the API answers `400 CLIENT_OUTDATED`.
-4. Client uses `Authorization: Bearer <token>` on protected routes
+1. Client calls `GET /auth/nonce?wallet=0x…&domain=<its host>` → receives `{ nonce, message }`. `domain` must be on the API's `SIWE_DOMAINS` allowlist and, from a browser, match the request's `Origin`.
+2. Client signs `message` exactly as given: a [Sign-In with Ethereum (EIP-4361)](https://eips.ethereum.org/EIPS/eip-4361) message naming the domain, so wallets warn when another site asks for it.
+3. Client POSTs `{ wallet, signature, nonce, domain }` to `/auth/verify` → receives `{ token, wallet }`. The API rebuilds the message itself; without `nonce`/`domain` it answers `400 CLIENT_OUTDATED`.
+4. Client uses `Authorization: Bearer <token>` on protected routes. Tokens last 24 h, name their issuer and audience, and carry the account's session version: `POST /auth/logout-all` signs the account out everywhere.
+
+Sign-in is EOA-only (ecrecover); smart-contract wallets (EIP-1271) can't sign in yet.
 
 Nonces are stateless (issued with a MAC binding them to the wallet; nothing stored at issue), TTL-bounded (default 300 s) and single-use: a successful sign-in records the nonce in `auth_nonces_used`, kept well past the TTL, so a replay is refused.
 
