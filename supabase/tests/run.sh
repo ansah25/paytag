@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Runs migrations 0001..0006 in a throwaway Postgres and checks 0006_lockdown.
-# Usage (from the repo root): bash supabase/tests/run-0006.sh   (needs Docker)
+# Runs the migrations in a throwaway Postgres and checks 0006_lockdown and 0007_default_privileges.
+# Usage (from the repo root): bash supabase/tests/run.sh   (needs Docker)
 # Checks capture output before matching: `cmd | grep -q` under pipefail fails when grep exits early.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -14,6 +14,7 @@ psql_run() { docker exec -i "$NAME" psql -v ON_ERROR_STOP=1 -q -U postgres -d "$
 fresh_db() {
   docker exec "$NAME" psql -q -U postgres -c "create database $1"
   psql_run "$1" < tests/roles.sql 2>/dev/null || true # roles are cluster-wide; exist after the first db
+  psql_run "$1" < tests/db_setup.sql
 }
 
 migrate() { # db, last migration to apply (inclusive)
@@ -115,5 +116,91 @@ psql_run rbfresh --single-transaction < ops/0006_rollback.sql
 [[ "$(psql_run rbfresh -tAc "select string_agg(privilege_type, ',') from information_schema.role_table_grants where table_name = 'users' and grantee = 'anon'")" == SELECT ]]
 psql_run legacy -c "select 1 from auth_nonces limit 1" >/dev/null
 echo "ok   rollback"
+
+# --- 0007_default_privileges ---------------------------------------------------------------------
+
+# Rows from ops/exposure_check.sql, as an optional role ($2). Empty output = pass.
+findings() {
+  local pre=(); [[ -n "${2:-}" ]] && pre=(-c "set role $2")
+  local raw; raw=$(psql_run "$1" -tA -F'|' "${pre[@]}" -f - < ops/exposure_check.sql)
+  printf '%s
+' "$raw" | sed '/^$/d'
+}
+
+# 6. Before 0007, the exposure check flags what a new table/sequence/function would get. (Control:
+#    proves the check sees the gap, so a clean result after 0007 means something.)
+fresh_db pre7
+psql_run pre7 < tests/legacy_default_grants.sql
+migrate pre7 0006
+out=$(findings pre7)
+[[ "$out" == *"new tables"* && "$out" == *"new sequences"* && "$out" == *"new functions"* ]] \
+  || { echo "FAIL exposure check missed the default-privilege gap:"; echo "$out"; exit 1; }
+echo "ok   exposure check flags open defaults before 0007"
+
+# 7. After 0007: the check is clean, and real new objects created by postgres are closed to the
+#    public roles but still usable by service_role.
+psql_run pre7 --single-transaction < migrations/0007_default_privileges.sql
+out=$(findings pre7)
+[[ -z "$out" ]] || { echo "FAIL exposure check after 0007:"; echo "$out"; exit 1; }
+psql_run pre7 -c "create table public.later (id int)" -c "create sequence public.later_seq" \
+  -c "create function public.later_fn() returns int language sql as 'select 1'"
+[[ "$(psql_run pre7 -tAc "select has_table_privilege('anon','public.later','select') or has_table_privilege('authenticated','public.later','insert')
+  or has_sequence_privilege('anon','public.later_seq','usage') or has_function_privilege('anon','public.later_fn()','execute')
+  or has_function_privilege('authenticated','public.later_fn()','execute')")" == f ]] \
+  || { echo "FAIL new objects still open after 0007"; exit 1; }
+[[ "$(psql_run pre7 -tAc "select has_table_privilege('service_role','public.later','select,insert')")" == t ]] \
+  || { echo "FAIL service_role lost its default grant"; exit 1; }
+echo "ok   0007 closes new objects; service_role keeps access"
+
+# 8. The exposure check flags an existing open object (a table that slipped through with a grant).
+psql_run pre7 -c "grant select on public.later to anon"
+out=$(findings pre7)
+[[ "$out" == *"public.later"*"anon"* ]] || { echo "FAIL exposure check missed an open table:"; echo "$out"; exit 1; }
+psql_run pre7 -c "drop table public.later; drop sequence public.later_seq; drop function public.later_fn()"
+echo "ok   exposure check flags an open existing table"
+
+# 8b. ...a column-level grant (has_table_privilege alone doesn't see it).
+psql_run pre7 -c "grant select (username) on public.users to anon"
+out=$(findings pre7)
+[[ "$out" == *"public.users"*"anon"* ]] || { echo "FAIL exposure check missed a column grant:"; echo "$out"; exit 1; }
+psql_run pre7 -c "revoke select (username) on public.users from anon"
+echo "ok   exposure check flags a column-level grant"
+
+# 8c. ...a foreign table (no RLS possible), and an extension installed in public.
+psql_run pre7 -c "create extension postgres_fdw; create server loop foreign data wrapper postgres_fdw;
+  create foreign table public.ft (id int) server loop; create extension citext schema public"
+out=$(findings pre7)
+[[ "$out" == *"foreign table|public.ft"* && "$out" == *"extension in public|citext"* ]] \
+  || { echo "FAIL exposure check missed a foreign table or extension:"; echo "$out"; exit 1; }
+psql_run pre7 -c "drop foreign table public.ft; drop server loop; drop extension postgres_fdw; drop extension citext"
+[[ -z "$(findings pre7)" ]] || { echo "FAIL leftovers after 8c"; exit 1; }
+echo "ok   exposure check flags a foreign table and an extension in public"
+
+# 8d. Run as a role that can't create in public: the probe is reported as skipped, and the other
+#     sections still run (a planted open table is still found).
+psql_run pre7 -c "create role no_create; create table public.leak (id int); alter table public.leak enable row level security; grant select on public.leak to anon"
+out=$(findings pre7 no_create)
+[[ "$out" == *"probe skipped"* && "$out" == *"public.leak"*"anon"* ]] \
+  || { echo "FAIL probe-skip path:"; echo "$out"; exit 1; }
+psql_run pre7 -c "drop table public.leak; drop role no_create"
+echo "ok   probe skipped without CREATE; other checks still run"
+
+# 9. Default privileges are per creating role: another role's defaults are untouched by 0007, and
+#    the check, run as that role, says so. (This is why 0007 names `postgres` explicitly.)
+psql_run pre7 -c "create role other_creator; grant create, usage on schema public to other_creator" \
+  -c "alter default privileges for role other_creator in schema public grant all on tables to anon"
+out=$(findings pre7 other_creator)
+[[ "$out" == *"new tables"*"other_creator"* ]] || { echo "FAIL per-role control:"; echo "$out"; exit 1; }
+echo "ok   per-role defaults: other roles unaffected, and the check reports it"
+
+# 10. supabase_admin: changed when permitted, skipped with a notice when the role doesn't exist.
+fresh_db sbadmin
+psql_run sbadmin -c "create role supabase_admin" \
+  -c "alter default privileges for role supabase_admin in schema public grant all on tables to anon, authenticated"
+migrate sbadmin 0007
+[[ "$(psql_run sbadmin -tAc "select count(*) from pg_default_acl d, aclexplode(d.defaclacl) a
+  where d.defaclrole = 'supabase_admin'::regrole and a.grantee = 'anon'::regrole")" == 0 ]] \
+  || { echo "FAIL supabase_admin defaults not revoked"; exit 1; }
+echo "ok   supabase_admin defaults revoked when permitted"
 
 echo "ALL SCENARIOS PASSED"
