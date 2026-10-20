@@ -14,6 +14,7 @@ psql_run() { docker exec -i "$NAME" psql -v ON_ERROR_STOP=1 -q -U postgres -d "$
 fresh_db() {
   docker exec "$NAME" psql -q -U postgres -c "create database $1"
   psql_run "$1" < tests/roles.sql 2>/dev/null || true # roles are cluster-wide; exist after the first db
+  psql_run "$1" < tests/db_setup.sql
 }
 
 migrate() { # db, last migration to apply (inclusive)
@@ -157,6 +158,32 @@ out=$(findings pre7)
 [[ "$out" == *"public.later"*"anon"* ]] || { echo "FAIL exposure check missed an open table:"; echo "$out"; exit 1; }
 psql_run pre7 -c "drop table public.later; drop sequence public.later_seq; drop function public.later_fn()"
 echo "ok   exposure check flags an open existing table"
+
+# 8b. ...a column-level grant (has_table_privilege alone doesn't see it).
+psql_run pre7 -c "grant select (username) on public.users to anon"
+out=$(findings pre7)
+[[ "$out" == *"public.users"*"anon"* ]] || { echo "FAIL exposure check missed a column grant:"; echo "$out"; exit 1; }
+psql_run pre7 -c "revoke select (username) on public.users from anon"
+echo "ok   exposure check flags a column-level grant"
+
+# 8c. ...a foreign table (no RLS possible), and an extension installed in public.
+psql_run pre7 -c "create extension postgres_fdw; create server loop foreign data wrapper postgres_fdw;
+  create foreign table public.ft (id int) server loop; create extension citext schema public"
+out=$(findings pre7)
+[[ "$out" == *"foreign table|public.ft"* && "$out" == *"extension in public|citext"* ]] \
+  || { echo "FAIL exposure check missed a foreign table or extension:"; echo "$out"; exit 1; }
+psql_run pre7 -c "drop foreign table public.ft; drop server loop; drop extension postgres_fdw; drop extension citext"
+[[ -z "$(findings pre7)" ]] || { echo "FAIL leftovers after 8c"; exit 1; }
+echo "ok   exposure check flags a foreign table and an extension in public"
+
+# 8d. Run as a role that can't create in public: the probe is reported as skipped, and the other
+#     sections still run (a planted open table is still found).
+psql_run pre7 -c "create role no_create; create table public.leak (id int); alter table public.leak enable row level security; grant select on public.leak to anon"
+out=$(findings pre7 no_create)
+[[ "$out" == *"probe skipped"* && "$out" == *"public.leak"*"anon"* ]] \
+  || { echo "FAIL probe-skip path:"; echo "$out"; exit 1; }
+psql_run pre7 -c "drop table public.leak; drop role no_create"
+echo "ok   probe skipped without CREATE; other checks still run"
 
 # 9. Default privileges are per creating role: another role's defaults are untouched by 0007, and
 #    the check, run as that role, says so. (This is why 0007 names `postgres` explicitly.)

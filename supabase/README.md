@@ -9,7 +9,9 @@ Supabase Postgres. Only the API touches it, as `service_role` (`src/config/supab
 - **Test in Docker before running in production:** `bash supabase/tests/run.sh`.
   - Add scenarios for each new migration.
   - Include a control that proves each check can fail, because a check that can't fail looks like protection.
-- **After running a migration that adds a table, sequence, view or function,** run `ops/exposure_check.sql` in the SQL editor. Every row it returns is a finding, and an empty result is the pass.
+- **Functions `postgres` creates are executable by nobody else by default, in any schema** (0007 revokes PUBLIC's EXECUTE globally). If `service_role` must call one (e.g. a column DEFAULT or CHECK uses it), grant EXECUTE explicitly. Triggers don't need it.
+- **Install extensions into the `extensions` schema, not `public`.** Their functions would otherwise be callable through PostgREST's `/rpc`.
+- **After running a migration that adds a table, sequence, view, function or extension,** run `ops/exposure_check.sql` in the SQL editor. Every row it returns is a finding, and an empty result is the pass.
 
 ## Running migrations
 
