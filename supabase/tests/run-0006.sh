@@ -59,6 +59,8 @@ migrate baddata 0005
 psql_run baddata -c "insert into users (username, owner_wallet) values ('bad', '0x000000000000000000000000000000000000dead')" \
   -c "insert into wallet_mappings (user_id, chain, address) select id, 'bitcoin', 'not-an-address' from users"
 expect_migration_failure baddata "guard: bad existing row" "Rows would fail the new CHECKs"
+psql_run baddata < ops/0006_preflight.sql | grep -q "not-an-address"
+echo "ok   preflight lists the bad row"
 
 # 4. Guard: a view over users would survive the revokes -> refuses.
 fresh_db viewdb
@@ -67,10 +69,44 @@ migrate viewdb 0005
 psql_run viewdb -c "create view public_profiles as select username, owner_wallet from users"
 expect_migration_failure viewdb "guard: exposing view" "would still expose"
 
-# 5. Rollback restores the old shape (policies, grants, an empty auth_nonces).
+guarded_db() { # db, setup sql -> a 0005 database with that exposure added
+  fresh_db "$1"
+  psql_run "$1" < tests/legacy_default_grants.sql
+  migrate "$1" 0005
+  psql_run "$1" -c "$2"
+}
+
+# 4b. ...a materialized view (information_schema doesn't list them).
+guarded_db matview "create materialized view mv as select username, owner_wallet from users"
+expect_migration_failure matview "guard: materialized view" "materialized view public.mv"
+
+# 4c. ...a SECURITY DEFINER function with a SQL-standard body (no prosrc text to match).
+guarded_db atomicfn "create function public.dump() returns setof users language sql security definer begin atomic select * from public.users; end"
+expect_migration_failure atomicfn "guard: BEGIN ATOMIC function" "function public.dump"
+
+# 4d. ...a view in another schema, owned by another role: reported under its own schema.
+guarded_db otherview "create role someone_else; create schema reporting; create view reporting.v as select owner_wallet from public.users; alter view reporting.v owner to someone_else"
+expect_migration_failure otherview "guard: view in another schema" "view reporting.v"
+
+# 4e. A SECURITY DEFINER function over Supabase's own auth.users must NOT block the lockdown.
+guarded_db authfn "create schema auth; create table auth.users (id uuid primary key); create function public.handle_new_user() returns trigger language plpgsql security definer as \$f\$ begin insert into public.profiles_stub select new.id from auth.users limit 0; return new; end \$f\$"
+psql_run authfn --single-transaction < migrations/0006_lockdown.sql
+echo "ok   auth.users-only function doesn't block"
+
+# 4f. A grant to PUBLIC is revoked too.
+guarded_db publicgrant "grant select on users to public"
+psql_run publicgrant --single-transaction < migrations/0006_lockdown.sql
+[[ "$(psql_run publicgrant -tAc "select count(*) from information_schema.role_table_grants where table_name = 'users' and grantee = 'PUBLIC'")" == 0 ]]
+echo "ok   PUBLIC grant revoked"
+
+# 5. Rollback restores the public reads (select only), the policies and an empty auth_nonces.
 psql_run legacy --single-transaction < ops/0006_rollback.sql
 [[ "$(psql_run legacy -tAc "select count(*) from pg_policies where policyname in ('users_public_read','wallet_mappings_public_read')")" == 2 ]]
 psql_run legacy -c "set role anon" -c "select count(*) from users" >/dev/null
+fresh_db rbfresh
+migrate rbfresh 0006
+psql_run rbfresh --single-transaction < ops/0006_rollback.sql
+[[ "$(psql_run rbfresh -tAc "select string_agg(privilege_type, ',') from information_schema.role_table_grants where table_name = 'users' and grantee = 'anon'")" == SELECT ]]
 psql_run legacy -c "select 1 from auth_nonces limit 1" >/dev/null
 echo "ok   rollback"
 

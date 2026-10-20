@@ -43,12 +43,26 @@ begin
       bad_chain, bad_eth, bad_sol, bad_btc, bad_owner, bad_vchain;
   end if;
 
-  -- Revoking table grants doesn't close a view or a SECURITY DEFINER function over the same rows.
+  -- Revoking table grants doesn't close a view, materialized view or SECURITY DEFINER function over
+  -- the same rows. Read from the catalogs (pg_depend), not information_schema, which hides objects
+  -- owned by roles the operator isn't a member of and doesn't list materialized views.
   select string_agg(distinct x, ', ') into exposures from (
-    select format('view %I.%I', v.table_schema, v.view_name) as x
-    from information_schema.view_table_usage v
-    where v.table_schema = 'public' and v.table_name in ('users', 'wallet_mappings')
+    with t as (
+      select c.oid as rel, c.reltype as typ from pg_class c
+      where c.oid in ('public.users'::regclass, 'public.wallet_mappings'::regclass)
+    )
+    -- Views and materialized views, any schema, any owner.
+    select format('%s %I.%I', case v.relkind when 'm' then 'materialized view' else 'view' end, vn.nspname, v.relname) as x
+    from pg_depend d
+    join pg_rewrite r on d.classid = 'pg_rewrite'::regclass and d.objid = r.oid
+    join pg_class v on v.oid = r.ev_class
+    join pg_namespace vn on vn.oid = v.relnamespace
+    where d.refclassid = 'pg_class'::regclass and d.refobjid in (select rel from t)
+      and v.oid not in (select rel from t)
     union all
+    -- SECURITY DEFINER functions: a recorded dependency (SQL-standard BEGIN ATOMIC bodies, row-type
+    -- arguments or results) or the table name in the body text (plpgsql and plain SQL bodies record
+    -- none). Supabase's own auth.users doesn't count.
     select format('function %I.%I', n.nspname, p.proname)
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
@@ -56,7 +70,15 @@ begin
       and n.nspname not in ('pg_catalog', 'information_schema', 'auth', 'storage', 'realtime',
                             'extensions', 'graphql', 'graphql_public', 'pgsodium', 'vault',
                             'supabase_functions', 'net', 'cron', 'pgbouncer')
-      and p.prosrc ~* '\m(users|wallet_mappings)\M'
+      and (
+        exists (
+          select 1 from pg_depend d
+          where d.classid = 'pg_proc'::regclass and d.objid = p.oid
+            and ((d.refclassid = 'pg_class'::regclass and d.refobjid in (select rel from t))
+              or (d.refclassid = 'pg_type'::regclass and d.refobjid in (select typ from t)))
+        )
+        or regexp_replace(coalesce(p.prosrc, ''), 'auth\s*\.\s*"?users"?', '', 'gi') ~* '\m(users|wallet_mappings)\M'
+      )
   ) e;
   if exposures is not null then
     raise exception 'These would still expose users/wallet_mappings after the lockdown: %. Review them first.', exposures;
@@ -72,6 +94,8 @@ drop policy if exists wallet_mappings_public_read on wallet_mappings;
 -- 2. Public roles get nothing ------------------------------------------------------------------
 
 revoke all on table users, wallet_mappings from anon, authenticated;
+-- PUBLIC too: RLS (no policies) would still hide every row, but not if RLS is ever turned off.
+revoke all on table users, wallet_mappings from public;
 
 -- 3. service_role: exactly what the API does ------------------------------------------------------
 -- (upsert needs insert + update; deletes on users happen only by cascade.)

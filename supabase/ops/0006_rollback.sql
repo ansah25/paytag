@@ -16,8 +16,9 @@ create table if not exists auth_nonces (
 alter table auth_nonces enable row level security;
 grant select, insert, update, delete on table auth_nonces to service_role;
 
--- Grants and policies as they were.
-grant all on table users, wallet_mappings to anon, authenticated;
+-- The public reads, as before. Only select: the old blanket grants included writes that RLS
+-- blocked anyway, and on a project without them `grant all` would add TRUNCATE (not subject to RLS).
+grant select on table users, wallet_mappings to anon, authenticated;
 
 drop policy if exists users_public_read on users;
 create policy users_public_read on users for select using (true);
