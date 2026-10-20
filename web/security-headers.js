@@ -16,11 +16,17 @@ const CSP_REPORT_PATH = '/api/csp-report';
  * @param {string} [name] env var the value came from, for the error message
  */
 const originOf = (url, name) => {
+  let parsed;
   try {
-    return new URL(url).origin;
+    parsed = new URL(url);
   } catch {
-    throw new Error(`security-headers: ${name ?? 'endpoint'} is not an absolute URL: ${JSON.stringify(url)}`);
+    parsed = null;
   }
+  // `localhost:3000` parses as scheme "localhost:" with origin "null", so check the scheme too.
+  if (!parsed || (parsed.protocol !== 'https:' && parsed.protocol !== 'http:')) {
+    throw new Error(`security-headers: ${name ?? 'endpoint'} is not an http(s) URL: ${JSON.stringify(url)}`);
+  }
+  return parsed.origin;
 };
 
 /** @param {Record<string, string | undefined>} env @param {string} name @param {string} fallback */

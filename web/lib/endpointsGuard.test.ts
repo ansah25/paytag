@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 // The CSP's connect-src is built from lib/endpoints.json. That only holds if every browser request
 // takes its URL from lib/endpoints.ts, so: no hard-coded URLs in network calls, and no bare
 // `http()` transport (which would fall back to viem's chain default, off the CSP).
+// Best effort: it sees literal arguments only. A URL routed through a local constant, `new URL(...)`
+// or an alias slips past; the CSP reports (/api/csp-report) are the backstop for those.
 
 const WEB = join(__dirname, '..');
 const CALL = /\b(fetch|http|new Connection|new WebSocket|new EventSource)\(\s*([^,)\s]*)/g;

@@ -83,6 +83,9 @@ describe('buildCsp', () => {
   });
 
   it('names the env var when an override is not an absolute URL', () => {
-    expect(() => buildCsp({ ...prod, NEXT_PUBLIC_API_BASE_URL: 'api.paytag.dev' })).toThrow(/NEXT_PUBLIC_API_BASE_URL/);
+    for (const bad of ['api.paytag.dev', 'localhost:3000', 'api.paytag.dev:443', 'ftp://x.example']) {
+      expect(() => buildCsp({ ...prod, NEXT_PUBLIC_API_BASE_URL: bad })).toThrow(/NEXT_PUBLIC_API_BASE_URL/);
+    }
+    expect(directive(buildCsp({ ...prod, NEXT_PUBLIC_API_BASE_URL: 'http://localhost:4000/' }), 'connect-src')).toContain('http://localhost:4000');
   });
 });
