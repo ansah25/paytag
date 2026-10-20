@@ -11,8 +11,20 @@ const CSP_ENFORCE = false;
 
 const CSP_REPORT_PATH = '/api/csp-report';
 
-/** @param {string} url */
-const originOf = (url) => new URL(url).origin;
+/**
+ * @param {string} url
+ * @param {string} [name] env var the value came from, for the error message
+ */
+const originOf = (url, name) => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    throw new Error(`security-headers: ${name ?? 'endpoint'} is not an absolute URL: ${JSON.stringify(url)}`);
+  }
+};
+
+/** @param {Record<string, string | undefined>} env @param {string} name @param {string} fallback */
+const envOrigin = (env, name, fallback) => (env[name] ? originOf(env[name], name) : originOf(fallback));
 
 /**
  * script-src keeps 'unsafe-inline': the App Router inlines its RSC payload and we inline the theme
@@ -34,11 +46,11 @@ function buildCsp(env) {
   const solana = Object.values(endpoints.solanaRpc).map(originOf);
   const connect = [
     "'self'",
-    originOf(env.NEXT_PUBLIC_API_BASE_URL || endpoints.apiDefault),
-    originOf(env.NEXT_PUBLIC_INDEXER_URL || endpoints.indexerDefault),
+    envOrigin(env, 'NEXT_PUBLIC_API_BASE_URL', endpoints.apiDefault),
+    envOrigin(env, 'NEXT_PUBLIC_INDEXER_URL', endpoints.indexerDefault),
     originOf(endpoints.evmRpc.mainnet),
     originOf(endpoints.evmRpc.sepolia),
-    originOf(env.NEXT_PUBLIC_BASE_SEPOLIA_RPC || endpoints.evmRpc.baseSepolia),
+    envOrigin(env, 'NEXT_PUBLIC_BASE_SEPOLIA_RPC', endpoints.evmRpc.baseSepolia),
     ...solana,
     // @solana/web3.js confirms transactions over a websocket on the RPC host.
     ...solana.map((o) => o.replace(/^https:/, 'wss:')),
@@ -75,8 +87,9 @@ function buildCsp(env) {
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
-    // Local dev runs on plain http; upgrading would break it.
-    ...(dev ? [] : ['upgrade-insecure-requests']),
+    // Local dev runs on plain http; upgrading would break it. Browsers ignore (and warn about) it
+    // in a report-only policy, so it arrives with enforcement.
+    ...(dev || !CSP_ENFORCE ? [] : ['upgrade-insecure-requests']),
     `report-uri ${CSP_REPORT_PATH}`,
   ];
   return directives.join('; ');
@@ -94,4 +107,4 @@ function securityHeaders(env) {
   ];
 }
 
-module.exports = { securityHeaders, buildCsp, CSP_REPORT_PATH };
+module.exports = { securityHeaders, buildCsp, CSP_REPORT_PATH, CSP_ENFORCE };

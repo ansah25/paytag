@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as endpoints from './endpoints';
-import { buildCsp, securityHeaders } from '../security-headers';
+import { buildCsp, CSP_ENFORCE, securityHeaders } from '../security-headers';
 
 const prod = { NODE_ENV: 'production' };
 
@@ -42,7 +42,7 @@ describe('buildCsp', () => {
   });
 
   it('allows every origin the app fetches (lib/endpoints.ts)', () => {
-    const connect = directive(buildCsp({ ...prod, ...process.env }), 'connect-src');
+    const connect = directive(buildCsp({ ...process.env, ...prod }), 'connect-src');
     const urls = [
       endpoints.API_URL,
       endpoints.INDEXER_URL,
@@ -77,8 +77,12 @@ describe('buildCsp', () => {
     expect(directive(buildCsp({ ...prod, VERCEL_ENV: 'preview' }), 'script-src')).toContain('https://vercel.live');
   });
 
-  it('upgrades insecure requests except in local development', () => {
-    expect(buildCsp(prod)).toContain('upgrade-insecure-requests');
+  it('upgrades insecure requests only when enforced, and never in local development', () => {
+    expect(buildCsp(prod).includes('upgrade-insecure-requests')).toBe(CSP_ENFORCE);
     expect(buildCsp({ NODE_ENV: 'development' })).not.toContain('upgrade-insecure-requests');
+  });
+
+  it('names the env var when an override is not an absolute URL', () => {
+    expect(() => buildCsp({ ...prod, NEXT_PUBLIC_API_BASE_URL: 'api.paytag.dev' })).toThrow(/NEXT_PUBLIC_API_BASE_URL/);
   });
 });
