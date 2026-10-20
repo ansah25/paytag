@@ -41,6 +41,8 @@ router.post(
   authController.verify,
 );
 
+router.post('/auth/logout-all', authWrites, requireAuth, authController.logoutAll);
+
 router.post(
   '/register',
   authWrites,

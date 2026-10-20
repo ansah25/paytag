@@ -18,7 +18,7 @@ const WALLET = '0xabc0000000000000000000000000000000000001';
 
 beforeEach(() => {
   jest.clearAllMocks();
-  auth.createNonce.mockResolvedValue('nonce-123');
+  auth.createNonce.mockResolvedValue({ nonce: 'nonce-123', message: 'msg' });
 });
 
 describe('query string parsing', () => {
@@ -32,14 +32,14 @@ describe('query string parsing', () => {
   });
 
   it('still reads flat params like ?wallet= on /auth/nonce', async () => {
-    const res = await request(app).get(`/auth/nonce?wallet=${WALLET}`);
+    const res = await request(app).get(`/auth/nonce?wallet=${WALLET}&domain=www.paytag.dev`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ nonce: 'nonce-123' });
-    expect(auth.createNonce).toHaveBeenCalledWith(WALLET);
+    expect(res.body).toEqual({ nonce: 'nonce-123', message: 'msg' });
+    expect(auth.createNonce).toHaveBeenCalledWith(WALLET, 'www.paytag.dev', undefined);
   });
 
   it('rejects bracket syntax instead of treating it as the wallet param', async () => {
-    const res = await request(app).get(`/auth/nonce?wallet[x]=${WALLET}`);
+    const res = await request(app).get(`/auth/nonce?wallet[x]=${WALLET}&domain=www.paytag.dev`);
     expect(res.status).toBe(400);
     expect(auth.createNonce).not.toHaveBeenCalled();
   });

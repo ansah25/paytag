@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { SegmentedRail, type RailItem } from '@/components/ui/SegmentedRail';
 import { Skeleton, SkeletonStatus } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
-import { api, ApiError, buildSignMessage, type MeResponse, type ResolveResponse } from '@/lib/api';
+import { api, ApiError, type MeResponse, type ResolveResponse } from '@/lib/api';
 import { clearAuth, getAuth, saveAuth, subscribeAuth, syncAuthWithServer, type AuthState } from '@/lib/auth';
 import { shortAddress } from '@/lib/format';
 import { walletErrorMessage } from '@/lib/pay/errors';
@@ -162,8 +162,8 @@ export function Dashboard() {
     setGateError(null);
     setBusy('signing');
     try {
-      const { nonce } = await api.getNonce(address);
-      const signature = await signMessageAsync({ message: buildSignMessage(nonce) });
+      const { nonce, message } = await api.getNonce(address);
+      const signature = await signMessageAsync({ message });
       const { token: newToken, wallet } = await api.verify(address, signature, nonce);
       saveAuth({ token: newToken, wallet });
     } catch (err) {

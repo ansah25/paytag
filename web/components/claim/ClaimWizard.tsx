@@ -12,7 +12,6 @@ import { PulseDot } from '@/components/ui/Skeleton';
 import {
   api,
   ApiError,
-  buildSignMessage,
   type AvailabilityResponse,
   type MeResponse,
   type ResolveResponse,
@@ -348,15 +347,16 @@ export function ClaimWizard({ username: routeName }: Props) {
     setSigning(true);
     try {
       let nonce: string;
+      let message: string;
       try {
-        ({ nonce } = await api.getNonce(address));
+        ({ nonce, message } = await api.getNonce(address));
       } catch (err) {
         fail(err instanceof ApiError ? err.message : 'Couldn’t start sign-in.', 2);
         return;
       }
       let signature: string;
       try {
-        signature = await signMessageAsync({ message: buildSignMessage(nonce) });
+        signature = await signMessageAsync({ message });
       } catch (err) {
         // Wallet errors stay on the sign step; only API failures go to error.
         setInlineError(

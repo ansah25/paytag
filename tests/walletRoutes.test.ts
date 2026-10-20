@@ -1,9 +1,13 @@
 import './setup';
-import jwt from 'jsonwebtoken';
 import request from 'supertest';
 
 // Route-level contract: address mutations return the owner's updated
 // resolution, so clients never re-read a possibly cached /resolve.
+// Tokens are checked against the account's session version; this suite has no database.
+jest.mock('../src/services/authService', () => {
+  const actual = jest.requireActual('../src/services/authService');
+  return { ...actual, getSessionVersion: jest.fn().mockResolvedValue(0) };
+});
 jest.mock('../src/services/walletService', () => {
   const actual = jest.requireActual('../src/services/walletService');
   return {
@@ -19,12 +23,13 @@ jest.mock('../src/services/verificationService', () => {
 });
 
 import { createApp } from '../src/app';
+import { signSessionToken } from '../src/services/authService';
 import * as walletService from '../src/services/walletService';
 import * as verificationService from '../src/services/verificationService';
 import { NotFoundError } from '../src/utils/errors';
 
 const WALLET = '0xabc0000000000000000000000000000000000001';
-const token = jwt.sign({ sub: WALLET }, process.env.JWT_SECRET as string, { expiresIn: '1h' });
+const token = signSessionToken(WALLET, 0);
 const app = createApp();
 
 const wallet = walletService as jest.Mocked<typeof walletService>;

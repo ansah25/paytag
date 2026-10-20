@@ -60,6 +60,8 @@ export interface PayFlowProps {
   username: string;
   recipient: string;
   verified: boolean;
+  /** The on-chain name of the same spelling belongs to this Paytag account (API onchain.status). */
+  onchainLinked?: boolean;
   /** Another chain in this panel whose wallet is already connected. */
   otherWallet: { chain: PaytagChain } | null;
   onSwitchChain: (chain: PaytagChain) => void;

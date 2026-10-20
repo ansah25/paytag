@@ -4,3 +4,4 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
 process.env.JWT_SECRET = 'test-secret-must-be-at-least-32-characters-long';
 process.env.JWT_EXPIRES_IN = '1h';
 process.env.NONCE_TTL_SECONDS = '300';
+process.env.SIWE_DOMAINS = 'www.paytag.dev,localhost:3002';
