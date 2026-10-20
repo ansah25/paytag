@@ -89,6 +89,11 @@ expect_migration_failure atomicfn "guard: BEGIN ATOMIC function" "function publi
 guarded_db otherview "create role someone_else; create schema reporting; create view reporting.v as select owner_wallet from public.users; alter view reporting.v owner to someone_else"
 expect_migration_failure otherview "guard: view in another schema" "view reporting.v"
 
+# 4d2. ...a SECURITY DEFINER function in a Supabase-managed schema that depends on public.users
+#      (the text scan skips those schemas; the dependency check doesn't).
+guarded_db authdep "create schema auth; create function auth.peek() returns setof public.users language sql security definer begin atomic select * from public.users; end"
+expect_migration_failure authdep "guard: dependency in auth schema" "function auth.peek"
+
 # 4e. A SECURITY DEFINER function over Supabase's own auth.users must NOT block the lockdown.
 guarded_db authfn "create schema auth; create table auth.users (id uuid primary key); create function public.handle_new_user() returns trigger language plpgsql security definer as \$f\$ begin insert into public.profiles_stub select new.id from auth.users limit 0; return new; end \$f\$"
 psql_run authfn --single-transaction < migrations/0006_lockdown.sql

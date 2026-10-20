@@ -5,7 +5,8 @@
 --   1. drop the `using (true)` read policies that let anyone with the anon key dump
 --      username/owner_wallet/addresses,
 --   2. revoke every privilege the public roles (anon, authenticated) still hold,
---   3. grant service_role exactly what the API does (a fresh project wouldn't grant it at all),
+--   3. grant service_role what the API does (a fresh project wouldn't grant it at all; on an
+--      older project it keeps any extra privileges it already had: it's the trusted API role),
 --   4. drop auth_nonces (unused since sign-in nonces went stateless),
 --   5. add CHECK constraints as a backstop.
 --
@@ -67,17 +68,21 @@ begin
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
     where p.prosecdef
-      and n.nspname not in ('pg_catalog', 'information_schema', 'auth', 'storage', 'realtime',
-                            'extensions', 'graphql', 'graphql_public', 'pgsodium', 'vault',
-                            'supabase_functions', 'net', 'cron', 'pgbouncer')
       and (
+        -- Recorded dependencies are exact, so they're checked in every schema.
         exists (
           select 1 from pg_depend d
           where d.classid = 'pg_proc'::regclass and d.objid = p.oid
             and ((d.refclassid = 'pg_class'::regclass and d.refobjid in (select rel from t))
               or (d.refclassid = 'pg_type'::regclass and d.refobjid in (select typ from t)))
         )
-        or regexp_replace(coalesce(p.prosrc, ''), 'auth\s*\.\s*"?users"?', '', 'gi') ~* '\m(users|wallet_mappings)\M'
+        -- The text match is fuzzy (Supabase's schemas are full of functions about *their* users),
+        -- so it skips Supabase-managed schemas. It fails closed: a mention in a comment, or a
+        -- quoted "auth"."users", is refused and named for review.
+        or (n.nspname not in ('pg_catalog', 'information_schema', 'auth', 'storage', 'realtime',
+                              'extensions', 'graphql', 'graphql_public', 'pgsodium', 'vault',
+                              'supabase_functions', 'net', 'cron', 'pgbouncer')
+            and regexp_replace(coalesce(p.prosrc, ''), 'auth\s*\.\s*"?users"?', '', 'gi') ~* '\m(users|wallet_mappings)\M')
       )
   ) e;
   if exposures is not null then
@@ -97,7 +102,7 @@ revoke all on table users, wallet_mappings from anon, authenticated;
 -- PUBLIC too: RLS (no policies) would still hide every row, but not if RLS is ever turned off.
 revoke all on table users, wallet_mappings from public;
 
--- 3. service_role: exactly what the API does ------------------------------------------------------
+-- 3. service_role: what the API does (nothing it already has is taken away) ------------------------
 -- (upsert needs insert + update; deletes on users happen only by cascade.)
 
 grant usage on schema public to service_role;

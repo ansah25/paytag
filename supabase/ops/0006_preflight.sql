@@ -40,17 +40,21 @@ select format('function %I.%I', n.nspname, p.proname)
 from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
 where p.prosecdef
-  and n.nspname not in ('pg_catalog', 'information_schema', 'auth', 'storage', 'realtime',
-                        'extensions', 'graphql', 'graphql_public', 'pgsodium', 'vault',
-                        'supabase_functions', 'net', 'cron', 'pgbouncer')
   and (
+    -- Recorded dependencies are exact, so they're checked in every schema.
     exists (
       select 1 from pg_depend d
       where d.classid = 'pg_proc'::regclass and d.objid = p.oid
         and ((d.refclassid = 'pg_class'::regclass and d.refobjid in (select rel from t))
           or (d.refclassid = 'pg_type'::regclass and d.refobjid in (select typ from t)))
     )
-    or regexp_replace(coalesce(p.prosrc, ''), 'auth\s*\.\s*"?users"?', '', 'gi') ~* '\m(users|wallet_mappings)\M'
+    -- The text match is fuzzy (Supabase's schemas are full of functions about *their* users),
+    -- so it skips Supabase-managed schemas. It fails closed: a mention in a comment, or a
+    -- quoted "auth"."users", is refused and named for review.
+    or (n.nspname not in ('pg_catalog', 'information_schema', 'auth', 'storage', 'realtime',
+                          'extensions', 'graphql', 'graphql_public', 'pgsodium', 'vault',
+                          'supabase_functions', 'net', 'cron', 'pgbouncer')
+        and regexp_replace(coalesce(p.prosrc, ''), 'auth\s*\.\s*"?users"?', '', 'gi') ~* '\m(users|wallet_mappings)\M')
   );
 
 -- 3. For reference: what the public roles can do today (expect rows before, none after).
