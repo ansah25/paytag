@@ -1,4 +1,4 @@
--- Assertions for migrations/0006_lockdown.sql. Run by supabase/tests/run-0006.sh after 0001..0006.
+-- Assertions for migrations/0006_lockdown.sql. Run by supabase/tests/run.sh after 0001..0006.
 
 create or replace function pg_temp.expect_error(sql text, code text, label text) returns void
 language plpgsql as $$
