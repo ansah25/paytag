@@ -1,20 +1,8 @@
-node_modules
-dist
-.next
-**/.next
-web
-packages
-docs
-tests
-.env
-.env.*
-!.env.example
-.git
-.gitignore
-*.log
-.DS_Store
-README.md
-CLAUDE.md
-fly.toml
-Dockerfile
-.dockerignore
+# Allowlist: the Dockerfile only needs these. Everything else (indexer/, contracts/, web/,
+# packages/, docs/, .env files...) stays out of the build context, which is uploaded on
+# every `flyctl deploy`.
+*
+!package.json
+!package-lock.json
+!tsconfig.json
+!src
