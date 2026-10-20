@@ -6,8 +6,7 @@ import type {
 } from '@paytagdev/sdk';
 import { clearAuth, getToken } from './auth';
 import { describeDevice } from './device';
-
-const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+import { API_URL as BASE_URL } from './endpoints';
 
 // The API marks /resolve cacheable (max-age=30, stale-while-revalidate=60) for
 // third-party SDK users. This app shows data the user may have just changed,

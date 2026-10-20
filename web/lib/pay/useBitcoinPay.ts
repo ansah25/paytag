@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { getDefaultProvider, getProviders } from 'sats-connect';
 import { BITCOIN_NETWORKS, type BitcoinNetwork } from '@/lib/chains';
 import { btcToSats, connectBitcoin, SATS_PER_BTC, sendBtc } from '@/lib/bitcoin';
+import { MEMPOOL_API } from '@/lib/endpoints';
 import { walletErrorMessage } from './errors';
 import { getSessionWallet, setSessionWallet } from './session';
 import type { PayAdapter, PayNetwork } from './types';
@@ -89,8 +90,7 @@ export function useBitcoinPay(recipient: string): PayAdapter {
     },
 
     estimateFee: async () => {
-      const base = network === 'testnet' ? 'https://mempool.space/testnet' : 'https://mempool.space';
-      const res = await fetch(`${base}/api/v1/fees/recommended`, { signal: AbortSignal.timeout(5000) });
+      const res = await fetch(`${MEMPOOL_API[network]}/v1/fees/recommended`, { signal: AbortSignal.timeout(5000) });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const { halfHourFee } = (await res.json()) as { halfHourFee?: unknown };
       if (typeof halfHourFee !== 'number' || halfHourFee <= 0) throw new Error('Unexpected fee payload');

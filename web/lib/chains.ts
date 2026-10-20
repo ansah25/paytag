@@ -35,8 +35,6 @@ export type SolanaNetwork = 'mainnet' | 'devnet';
 export interface SolanaNetworkInfo {
   network: SolanaNetwork;
   label: string;
-  /** Cluster name accepted by `clusterApiUrl(...)`. */
-  cluster: 'mainnet-beta' | 'devnet';
   explorerTxUrl: (sig: string) => string;
 }
 
@@ -44,13 +42,11 @@ export const SOLANA_NETWORKS: Record<SolanaNetwork, SolanaNetworkInfo> = {
   mainnet: {
     network: 'mainnet',
     label: 'Solana mainnet',
-    cluster: 'mainnet-beta',
     explorerTxUrl: (s) => `https://solscan.io/tx/${s}`,
   },
   devnet: {
     network: 'devnet',
     label: 'Solana devnet',
-    cluster: 'devnet',
     explorerTxUrl: (s) => `https://solscan.io/tx/${s}?cluster=devnet`,
   },
 };

@@ -1,6 +1,12 @@
+const { securityHeaders } = require('./security-headers');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  poweredByHeader: false,
+  async headers() {
+    return [{ source: '/:path*', headers: securityHeaders(process.env) }];
+  },
   // The app doesn't use next/image. Turning the optimizer off removes the
   // /_next/image endpoint that several Next 14 advisories target.
   images: { unoptimized: true },

@@ -1,12 +1,12 @@
 import {
-  clusterApiUrl,
   Connection,
   LAMPORTS_PER_SOL,
   PublicKey,
   SystemProgram,
   Transaction,
 } from '@solana/web3.js';
-import { SOLANA_NETWORKS, SolanaNetwork } from './chains';
+import { SolanaNetwork } from './chains';
+import { SOLANA_RPC } from './endpoints';
 
 interface PhantomProvider {
   isPhantom?: boolean;
@@ -70,7 +70,7 @@ export const connectPhantom = async (): Promise<string> => {
 };
 
 export const getConnection = (network: SolanaNetwork): Connection =>
-  new Connection(clusterApiUrl(SOLANA_NETWORKS[network].cluster), 'confirmed');
+  new Connection(SOLANA_RPC[network], 'confirmed');
 
 interface SendSolArgs {
   fromPubkey: string;
