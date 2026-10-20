@@ -2,11 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import type { PaytagChain } from './chains';
+import { PRICES_URL } from './endpoints';
 
 export type UsdPrices = Record<PaytagChain, number>;
 
-const PRICE_URL =
-  'https://api.coingecko.com/api/v3/simple/price?ids=ethereum,solana,bitcoin&vs_currencies=usd';
 const TTL_MS = 60_000;
 /** On a failed refresh, a slightly old price beats hiding the fiat line. */
 const STALE_MS = 10 * 60_000;
@@ -23,7 +22,7 @@ export function getUsdPrices(): Promise<UsdPrices | null> {
   if (fresh) return Promise.resolve(fresh);
   if (inflight) return inflight;
 
-  inflight = fetch(PRICE_URL, { signal: AbortSignal.timeout(5000) })
+  inflight = fetch(PRICES_URL, { signal: AbortSignal.timeout(5000) })
     .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
     .then((body: Partial<Record<PaytagChain, { usd?: unknown }>>) => {
       const prices = {

@@ -1,7 +1,7 @@
 // Health checks for the /status page. Runs on the server only: every probe has a short timeout
 // so one slow dependency can't hold the page, and the verdicts are pure functions (tested).
 
-import { INDEXER_URL } from './onchain/indexer';
+import { API_URL, EVM_RPC, INDEXER_URL } from './endpoints';
 
 export type Health = 'ok' | 'degraded' | 'down';
 
@@ -10,9 +10,7 @@ export const MAX_LAG_BLOCKS = 30;
 export const BASE_BLOCK_SECONDS = 2;
 
 const TIMEOUT_MS = 5_000;
-// Same fallback as lib/api.ts, so /status probes the API the app actually uses.
-const API_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
-const RPC_URL = process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC || 'https://sepolia.base.org';
+const RPC_URL = EVM_RPC.baseSepolia;
 
 export interface IndexerProbe {
   /** /status answered at all (an indexer that's starting up answers with no block yet). */

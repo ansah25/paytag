@@ -3,7 +3,9 @@ import { Paytag, type OnchainResolveResponse } from '@paytagdev/sdk';
 // Read client for the Paytag indexer. Resolution goes through the published SDK; the endpoints
 // the SDK doesn't wrap (availability, names by owner, reverse, sync status) are plain fetches.
 
-export const INDEXER_URL = (process.env.NEXT_PUBLIC_INDEXER_URL || 'https://indexer.paytag.dev').replace(/\/+$/, '');
+import { INDEXER_URL } from '../endpoints';
+
+export { INDEXER_URL };
 
 export class IndexerError extends Error {
   constructor(

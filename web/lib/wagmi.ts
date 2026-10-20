@@ -5,15 +5,16 @@ import { baseSepolia, mainnet, sepolia } from 'wagmi/chains';
 // x402 deps aren't installed and break the webpack build.
 import { injected } from '@wagmi/core';
 
-// Base Sepolia hosts the on-chain registry (/on-chain). Its public RPC is rate-limited;
-// set NEXT_PUBLIC_BASE_SEPOLIA_RPC to a dedicated endpoint in production.
+import { EVM_RPC } from './endpoints';
+
+// Base Sepolia hosts the on-chain registry (/on-chain).
 export const wagmiConfig = createConfig({
   chains: [mainnet, sepolia, baseSepolia],
   connectors: [injected({ shimDisconnect: true })],
   transports: {
-    [mainnet.id]: http(),
-    [sepolia.id]: http(),
-    [baseSepolia.id]: http(process.env.NEXT_PUBLIC_BASE_SEPOLIA_RPC || undefined),
+    [mainnet.id]: http(EVM_RPC.mainnet),
+    [sepolia.id]: http(EVM_RPC.sepolia),
+    [baseSepolia.id]: http(EVM_RPC.baseSepolia),
   },
   ssr: true,
 });

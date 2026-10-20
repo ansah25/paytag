@@ -1,0 +1,18 @@
+{
+  "apiDefault": "http://localhost:3000",
+  "indexerDefault": "https://indexer.paytag.dev",
+  "evmRpc": {
+    "mainnet": "https://ethereum.reth.rs/rpc",
+    "sepolia": "https://11155111.rpc.thirdweb.com",
+    "baseSepolia": "https://sepolia.base.org"
+  },
+  "solanaRpc": {
+    "mainnet": "https://api.mainnet-beta.solana.com",
+    "devnet": "https://api.devnet.solana.com"
+  },
+  "mempoolApi": {
+    "mainnet": "https://mempool.space/api",
+    "testnet": "https://mempool.space/testnet/api"
+  },
+  "pricesUrl": "https://api.coingecko.com/api/v3/simple/price?ids=ethereum,solana,bitcoin&vs_currencies=usd"
+}
