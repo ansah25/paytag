@@ -1,4 +1,4 @@
--- Read-only (everything it creates is rolled back). Run in the Supabase SQL editor after any
+-- Read-only: the probe objects it creates are rolled back; only a session temp table remains. Run in the Supabase SQL editor after any
 -- migration that adds a table, view, sequence, function or extension.
 --
 -- The invariant: only the API (service_role) uses this database, so in schema public the public
@@ -36,7 +36,7 @@ begin
       if sqlerrm <> '__rollback_probes__' then raise; end if;
     when insufficient_privilege or duplicate_table or duplicate_function then
       insert into exposure_findings values ('probe skipped', 'default privileges',
-        format('could not create probe objects as %s (%s); run as postgres. The other checks still ran.', current_user, sqlerrm));
+        format('could not create probe objects as %s (%s): run as postgres, or drop leftover public.__exposure_probe* objects. The other checks still ran.', current_user, sqlerrm));
   end;
   if probe_table then insert into exposure_findings values ('default privileges', 'new tables', format('a table created by %s is open to anon/authenticated', current_user)); end if;
   if probe_seq then insert into exposure_findings values ('default privileges', 'new sequences', format('a sequence created by %s is open to anon/authenticated', current_user)); end if;
