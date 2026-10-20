@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs migrations 0001..0006 in a throwaway Postgres and checks 0006_lockdown.
 # Usage (from the repo root): bash supabase/tests/run-0006.sh   (needs Docker)
+# Checks capture output before matching: `cmd | grep -q` under pipefail fails when grep exits early.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export MSYS_NO_PATHCONV=1
@@ -43,13 +44,13 @@ sleep 2
 fresh_db legacy
 psql_run legacy < tests/legacy_default_grants.sql
 migrate legacy 0006
-psql_run legacy < tests/0006_lockdown_test.sql | grep -q 'ALL 0006 ASSERTIONS PASSED'
+out=$(psql_run legacy < tests/0006_lockdown_test.sql); [[ "$out" == *'ALL 0006 ASSERTIONS PASSED'* ]]
 echo "ok   legacy grants"
 
 # 2. Fresh project: no automatic grants; service_role must work from the migrations alone.
 fresh_db fresh
 migrate fresh 0006
-psql_run fresh < tests/0006_lockdown_test.sql | grep -q 'ALL 0006 ASSERTIONS PASSED'
+out=$(psql_run fresh < tests/0006_lockdown_test.sql); [[ "$out" == *'ALL 0006 ASSERTIONS PASSED'* ]]
 echo "ok   fresh project"
 
 # 3. Guard: existing data that would fail a CHECK -> refuses, changes nothing.
@@ -59,7 +60,7 @@ migrate baddata 0005
 psql_run baddata -c "insert into users (username, owner_wallet) values ('bad', '0x000000000000000000000000000000000000dead')" \
   -c "insert into wallet_mappings (user_id, chain, address) select id, 'bitcoin', 'not-an-address' from users"
 expect_migration_failure baddata "guard: bad existing row" "Rows would fail the new CHECKs"
-psql_run baddata < ops/0006_preflight.sql | grep -q "not-an-address"
+out=$(psql_run baddata < ops/0006_preflight.sql); [[ "$out" == *not-an-address* ]]
 echo "ok   preflight lists the bad row"
 
 # 4. Guard: a view over users would survive the revokes -> refuses.
