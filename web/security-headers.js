@@ -72,7 +72,9 @@ function buildCsp(env) {
 
   // React's dev overlay and webpack HMR evaluate code; production never does.
   if (dev) script.push("'unsafe-eval'");
-  // Vercel's preview toolbar (comments, feedback). Production doesn't load it.
+  // Vercel's preview toolbar (comments, feedback). Kept off production on purpose: Vercel's prod
+  // runtime still injects it for anyone with the __vercel_toolbar=1 cookie (team members only), and
+  // there it's blocked and logs a [csp] report per page view. Ignore those, or clear the cookie.
   if (preview) {
     script.push('https://vercel.live');
     style.push('https://vercel.live');
