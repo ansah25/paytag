@@ -4,10 +4,11 @@
 // app's fetches use (lib/endpoints.ts), so the two can't drift.
 const endpoints = require('./lib/endpoints.json');
 
-// Report-only while it beds in: a missed origin shows up in /api/csp-report (Vercel logs) instead
-// of breaking a feature. Flip to true once the reports are clean. X-Frame-Options below is
-// enforced either way, because report-only ignores frame-ancestors.
-const CSP_ENFORCE = false;
+// Enforced. It ran report-only first (PR #24) and real use produced no reports. Violations still
+// go to /api/csp-report (Vercel logs), so a missed origin shows up there as well as breaking. To
+// roll back, set this to false: the policy goes back to report-only and nothing is blocked.
+// X-Frame-Options below stays either way, for browsers that ignore frame-ancestors.
+const CSP_ENFORCE = true;
 
 const CSP_REPORT_PATH = '/api/csp-report';
 
@@ -94,7 +95,7 @@ function buildCsp(env) {
     "form-action 'self'",
     "frame-ancestors 'none'",
     // Local dev runs on plain http; upgrading would break it. Browsers ignore (and warn about) it
-    // in a report-only policy, so it arrives with enforcement.
+    // in a report-only policy, so it's only sent when enforced.
     ...(dev || !CSP_ENFORCE ? [] : ['upgrade-insecure-requests']),
     `report-uri ${CSP_REPORT_PATH}`,
   ];
