@@ -19,6 +19,13 @@ describe('securityHeaders', () => {
     expect(securityHeaders(prod).find((h) => h.key === 'X-Frame-Options')?.value).toBe('DENY');
   });
 
+  it('enforces the CSP rather than only reporting it', () => {
+    const keys = securityHeaders(prod).map((h) => h.key);
+    expect(CSP_ENFORCE).toBe(true);
+    expect(keys).toContain('Content-Security-Policy');
+    expect(keys).not.toContain('Content-Security-Policy-Report-Only');
+  });
+
   it('leaves hid and usb alone for hardware wallets', () => {
     const pp = securityHeaders(prod).find((h) => h.key === 'Permissions-Policy')!.value;
     expect(pp).not.toMatch(/hid|usb/);

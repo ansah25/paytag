@@ -1,5 +1,6 @@
 // Parsing for /api/csp-report. Browsers POST a violation report whenever the Content-Security-Policy
-// (report-only for now) would block something; these become one log line each in Vercel's logs.
+// blocks something (or would, if it's switched back to report-only); these become one log line
+// each in Vercel's logs.
 
 /** Bigger than any real report; anything past it is dropped unread. */
 export const MAX_REPORT_BYTES = 8 * 1024;
