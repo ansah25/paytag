@@ -53,6 +53,14 @@ const own = (obj: Record<string, unknown>, key: string): unknown =>
 const isNonNegativeInteger = (v: unknown): v is number =>
   typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
 
+const isHttpsUrl = (value: string): boolean => {
+  try {
+    return new URL(value).protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
 const invalid = (message: string): PaytagError => new PaytagError(message, 'INVALID_RESPONSE');
 
 export function deepFreeze<T>(value: T): T {
@@ -114,9 +122,14 @@ export function parseResolveResponse(body: unknown, expectedUsername: string): R
     }
     result.verified = verified;
   }
-  for (const key of ['displayName', 'bio', 'avatarUrl'] as const) {
+  for (const key of ['displayName', 'bio'] as const) {
     const v = profileField(body, key);
     if (v !== undefined) result[key] = v;
+  }
+  // Callers put this in an <img src> or a link: anything but an https URL is dropped.
+  const avatarUrl = profileField(body, 'avatarUrl');
+  if (avatarUrl === null || (avatarUrl !== undefined && isHttpsUrl(avatarUrl))) {
+    result.avatarUrl = avatarUrl;
   }
   const rawOnchain = own(body, 'onchain');
   if (isObject(rawOnchain)) {

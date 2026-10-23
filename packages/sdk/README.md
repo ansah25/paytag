@@ -75,8 +75,9 @@ People pay whatever `resolve` returns, so the SDK doesn't pass a server's answer
 - **The answer is for the name you asked for.** A response for a different username is refused.
 - **Every address is well-formed for its chain.** Ethereum: `0x` + 40 hex. Solana: base58 decoding to a 32-byte key. Bitcoin: a mainnet `bc1…` address with a valid bech32/bech32m checksum, or a legacy `1…`/`3…` address of the right length and version (its SHA-256 checksum is left to the API, as browsers can't compute it synchronously). One bad address fails the whole response with `INVALID_RESPONSE`, since nothing else from that server can be trusted either.
 - **On-chain answers match their records.** For `resolveViaIndexer`, each address must be what its record's bytes encode.
-- **Only known fields come back**, in a fresh object: unknown chains and fields are dropped, as is a malformed optional field (a bad `verified` map hides badges, never adds one).
-- **Results are deep-frozen**, including cached ones, so one caller can't change what another sees. Copy before editing: `{ ...res, addresses: { ...res.addresses } }`.
+- **Only known fields come back**, in a fresh object: unknown chains and fields are dropped, as is a malformed optional field (a bad `verified` map hides badges, never adds one). `avatarUrl` is kept only if it is an `https:` URL.
+- **No redirects.** Requests use `redirect: 'error'`, so an https origin can't send one to plain http.
+- **Results are deep-frozen**, including those from the built-in cache, so one caller can't change what another sees. (A custom `Cache` returns whatever it stored; one that serializes, like Redis, hands back plain unfrozen copies.) Copy before editing: `{ ...res, addresses: { ...res.addresses } }`.
 
 ## API
 
@@ -156,6 +157,10 @@ type AvailableOptions = {
 
 const { available, reason, suggestions } = await available('derrick');
 ```
+
+### `isValidAddress(chain, address)` → `boolean`
+
+The per-chain format check the SDK applies to every address it returns (see [What the SDK checks](#what-the-sdk-checks)). Useful for validating an address from elsewhere before paying it.
 
 ### `client.invalidate(username?)`
 

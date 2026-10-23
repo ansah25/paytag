@@ -18,7 +18,7 @@ import {
 
 export type FetchLike = (
   input: string,
-  init?: { signal?: AbortSignal; headers?: Record<string, string> },
+  init?: { signal?: AbortSignal; headers?: Record<string, string>; redirect?: 'error' },
 ) => Promise<{
   ok: boolean;
   status: number;
@@ -228,21 +228,23 @@ export class Paytag {
     else signal?.addEventListener('abort', onAbort, { once: true });
 
     // Raced as well as aborted, so a custom fetch that ignores the signal still times out.
+    // Whatever error the fetch then rejects with, a request past its deadline is a TIMEOUT:
+    // per the fetch spec, abort() rejects the fetch synchronously, before the race settles.
+    const timeoutError = new PaytagError(`Request timed out after ${this.timeoutMs}ms`, 'TIMEOUT');
+    let expired = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timedOut =
       this.timeoutMs > 0
         ? new Promise<never>((_, reject) => {
             timer = setTimeout(() => {
+              expired = true;
+              reject(timeoutError);
               controller.abort();
-              reject(
-                new PaytagError(`Request timed out after ${this.timeoutMs}ms`, 'TIMEOUT'),
-              );
             }, this.timeoutMs);
           })
         : undefined;
     timedOut?.catch(() => {}); // rejects only while a race is pending; never unhandled
     const bounded = <T>(p: Promise<T>): Promise<T> => (timedOut ? Promise.race([p, timedOut]) : p);
-    const isTimeout = (err: unknown) => err instanceof PaytagError && err.code === 'TIMEOUT';
 
     try {
       let res: Awaited<ReturnType<FetchLike>>;
@@ -251,10 +253,14 @@ export class Paytag {
           this.fetchImpl(url, {
             signal: controller.signal,
             headers: { Accept: 'application/json' },
+            // The https check above only holds if a redirect can't move the request elsewhere
+            // (Node's fetch follows https → http).
+            redirect: 'error',
           }),
         );
       } catch (err) {
-        if (isTimeout(err) || (err as Error)?.name === 'AbortError') throw err;
+        if (expired) throw timeoutError;
+        if ((err as Error)?.name === 'AbortError') throw err;
         throw new PaytagError(
           clip(`Network error: ${(err as Error)?.message ?? 'unknown'}`),
           'NETWORK_ERROR',
@@ -266,7 +272,8 @@ export class Paytag {
         body = await bounded(res.json());
       } catch (err) {
         // A timeout or abort while reading the body is not an empty body.
-        if (isTimeout(err) || controller.signal.aborted) throw err;
+        if (expired) throw timeoutError;
+        if (controller.signal.aborted) throw err;
         // Otherwise the body may legitimately be empty on some errors.
       }
 

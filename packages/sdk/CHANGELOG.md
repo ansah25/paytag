@@ -16,6 +16,9 @@ Hardening: the SDK no longer passes a server's answer through as-is. **Breaking*
 - `available()` refuses `.` and `..`, which would change the request path. Unknown `reason` values and suggestions that aren't valid usernames are dropped.
 - `resolveAddress()` returns `null` for a chain that isn't supported, instead of reading inherited properties like `toString`.
 - Server error messages are clipped to 200 characters.
+- `avatarUrl` is dropped unless it is an `https:` URL.
+- New export `isValidAddress(chain, address)`: the same per-chain check, for validating an address before paying it.
+- **Breaking:** requests are sent with `redirect: 'error'`; a server that redirects now gives `NETWORK_ERROR`.
 
 ## 0.5.0
 

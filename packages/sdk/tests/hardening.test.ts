@@ -145,6 +145,21 @@ describe('resolve: response checks', () => {
     expect(Object.getPrototypeOf(result.addresses)).toBe(Object.prototype);
   });
 
+  it.each<[unknown, unknown]>([
+    ['https://cdn.paytag.dev/a.png', 'https://cdn.paytag.dev/a.png'],
+    [null, null],
+    ['javascript:alert(1)', undefined],
+    ['http://cdn.paytag.dev/a.png', undefined],
+    ['data:image/png;base64,AAAA', undefined],
+    ['not a url', undefined],
+  ])('keeps avatarUrl %p as %p', async (avatarUrl, expected) => {
+    const result = await new Paytag({ baseUrl, fetch: respondWith(resolveBody({ avatarUrl })) }).resolve(
+      'derrick',
+    );
+    expect(result.avatarUrl).toBe(expected);
+    expect('avatarUrl' in result).toBe(expected !== undefined);
+  });
+
   it('drops verified for a chain with no address, and an unknown on-chain status', async () => {
     const body = resolveBody({
       addresses: { ethereum: ETH },
@@ -236,6 +251,44 @@ describe('timeouts and aborts', () => {
       fetch: async () => ({ ok: true, status: 200, json: hang }),
     });
     await rejectsWith(client.resolve('derrick'), 'TIMEOUT');
+  });
+
+  // Browsers (WHATWG fetch) reject inside abort(), before the timeout's own rejection.
+  const abortError = () => Object.assign(new Error('The user aborted a request.'), { name: 'AbortError' });
+  const specFetch =
+    (stage: 'headers' | 'body'): FetchLike =>
+    (_url, init) =>
+      new Promise((resolve, reject) => {
+        const fail = () => reject(abortError());
+        if (stage === 'headers') {
+          init?.signal?.addEventListener('abort', fail);
+          return;
+        }
+        resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            new Promise((_, rejectBody) =>
+              init?.signal?.addEventListener('abort', () => rejectBody(abortError())),
+            ),
+        });
+      });
+
+  it.each(['headers', 'body'] as const)(
+    'reports TIMEOUT when a spec fetch rejects on abort (waiting for %s)',
+    async (stage) => {
+      const client = new Paytag({ baseUrl, timeoutMs: 20, fetch: specFetch(stage) });
+      await rejectsWith(client.resolve('derrick'), 'TIMEOUT');
+    },
+  );
+
+  it('refuses redirects', async () => {
+    const fetchMock = respondWith(resolveBody());
+    await new Paytag({ baseUrl, fetch: fetchMock }).resolve('derrick');
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ redirect: 'error' }),
+    );
   });
 
   it('timeoutMs: 0 disables the timeout', async () => {
