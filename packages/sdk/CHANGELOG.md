@@ -17,7 +17,7 @@ Hardening: the SDK no longer passes a server's answer through as-is. **Breaking*
 - `resolveAddress()` returns `null` for a chain that isn't supported, instead of reading inherited properties like `toString`.
 - Server error messages are clipped to 200 characters.
 - `avatarUrl` is dropped unless it is an `https:` URL.
-- New export `isValidAddress(chain, address)`: the same per-chain check, for validating an address before paying it.
+- New export `isValidAddress(chain, address)`: the same per-chain format check (no EIP-55 or legacy-Bitcoin checksum).
 - **Breaking:** requests are sent with `redirect: 'error'`; a server that redirects now gives `NETWORK_ERROR`.
 
 ## 0.5.0

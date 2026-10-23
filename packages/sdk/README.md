@@ -160,7 +160,7 @@ const { available, reason, suggestions } = await available('derrick');
 
 ### `isValidAddress(chain, address)` → `boolean`
 
-The per-chain format check the SDK applies to every address it returns (see [What the SDK checks](#what-the-sdk-checks)). Useful for validating an address from elsewhere before paying it.
+The per-chain format check the SDK applies to every address it returns (see [What the SDK checks](#what-the-sdk-checks)). It is a format check, not full validation: it doesn't verify EIP-55 checksums or the SHA-256 checksum of legacy `1…`/`3…` Bitcoin addresses, so don't rely on it alone to catch typos in an address a person entered.
 
 ### `client.invalidate(username?)`
 
