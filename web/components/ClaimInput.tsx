@@ -93,7 +93,7 @@ export function ClaimInput({
   const { address } = useAccount();
   const [value, setValue] = useState('');
   const [status, setStatus] = useState<ClaimStatus>('idle');
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<readonly string[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const abort = useRef<AbortController | null>(null);
   const onValueChangeRef = useRef(onValueChange);

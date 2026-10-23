@@ -126,12 +126,8 @@ export interface MeResponse extends Partial<ProfileFields> {
   username: string | null;
   createdAt: string | null;
 }
-/** Resolve plus the fields added with profiles and address verification. */
-export type ResolveResponse = SdkResolveResponse &
-  Partial<ProfileFields> & {
-    /** Chains whose mapped address was proven with a signature. */
-    verified?: Partial<Record<ChainId, boolean>>;
-  };
+/** The SDK's type covers profiles and verification. Results from the SDK are frozen. */
+export type ResolveResponse = SdkResolveResponse;
 export type AvailabilityResponse = SdkAvailabilityResponse;
 
 /**

@@ -1,7 +1,6 @@
 import {
   Paytag,
   PaytagError,
-  FetchLike,
   ResolveResponse,
   AvailabilityResponse,
   DEFAULT_BASE_URL,
@@ -13,22 +12,13 @@ import {
   available,
   __resetDefaultClient,
 } from '../src';
+import { BTC, ETH, SOL, mockResponse } from './fixtures';
 
 const baseUrl = 'https://api.paytag.test';
 
-const mockResponse = (
-  ok: boolean,
-  status: number,
-  body: unknown,
-): Awaited<ReturnType<FetchLike>> => ({
-  ok,
-  status,
-  json: async () => body,
-});
-
 const okPayload = (overrides?: Partial<ResolveResponse>): ResolveResponse => ({
   username: 'derrick',
-  addresses: { ethereum: '0xabc', solana: '4Nd1', bitcoin: 'bc1q' },
+  addresses: { ethereum: ETH, solana: SOL, bitcoin: BTC },
   ...overrides,
 });
 
@@ -86,7 +76,7 @@ describe('Paytag.resolve — happy path', () => {
     const result = await client.resolve('derrick');
 
     expect(result.username).toBe('derrick');
-    expect(result.addresses.ethereum).toBe('0xabc');
+    expect(result.addresses.ethereum).toBe(ETH);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith(
       `${baseUrl}/resolve/derrick`,
@@ -172,7 +162,9 @@ describe('Paytag.resolve — caching', () => {
   });
 
   it('invalidate() with no argument clears all', async () => {
-    const fetchMock = jest.fn(async () => mockResponse(true, 200, okPayload()));
+    const fetchMock = jest.fn(async (url: string) =>
+      mockResponse(true, 200, okPayload({ username: url.split('/').pop() })),
+    );
     const client = new Paytag({ baseUrl, fetch: fetchMock });
 
     await client.resolve('derrick');
@@ -276,12 +268,12 @@ describe('Paytag.resolveAddress', () => {
     const fetchMock = jest.fn(async () => mockResponse(true, 200, okPayload()));
     const client = new Paytag({ baseUrl, fetch: fetchMock });
 
-    await expect(client.resolveAddress('derrick', 'ethereum')).resolves.toBe('0xabc');
+    await expect(client.resolveAddress('derrick', 'ethereum')).resolves.toBe(ETH);
   });
 
   it('returns null when the chain is missing', async () => {
     const fetchMock = jest.fn(async () =>
-      mockResponse(true, 200, okPayload({ addresses: { ethereum: '0xabc' } })),
+      mockResponse(true, 200, okPayload({ addresses: { ethereum: ETH } })),
     );
     const client = new Paytag({ baseUrl, fetch: fetchMock });
 
@@ -422,25 +414,34 @@ describe('Paytag.resolveViaIndexer', () => {
     );
   });
 
-  it('caches separately from resolve() so the two sources never mix', async () => {
+  it('is not cached by default, so a transfer shows up on the next call', async () => {
+    const fetchMock = jest.fn(async () => mockResponse(true, 200, okOnchain()));
+    const client = new Paytag({ indexerUrl, fetch: fetchMock });
+    await client.resolveViaIndexer('derrick');
+    await client.resolveViaIndexer('derrick');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('with indexerCache, caches separately from resolve() so the two sources never mix', async () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce(mockResponse(true, 200, okPayload()))
       .mockResolvedValueOnce(mockResponse(true, 200, okOnchain()));
-    const client = new Paytag({ baseUrl, indexerUrl, fetch: fetchMock });
+    const client = new Paytag({ baseUrl, indexerUrl, indexerCache: true, fetch: fetchMock });
 
     const offchain = await client.resolve('derrick');
     const onchain = await client.resolveViaIndexer('derrick');
     expect(offchain).toEqual(okPayload());
     expect(onchain.source).toBe('onchain');
 
+    await client.resolve('derrick'); // cached
     await client.resolveViaIndexer('derrick'); // cached
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('invalidate(name) drops the on-chain entry too', async () => {
     const fetchMock = jest.fn(async () => mockResponse(true, 200, okOnchain()));
-    const client = new Paytag({ indexerUrl, fetch: fetchMock });
+    const client = new Paytag({ indexerUrl, indexerCache: true, fetch: fetchMock });
     await client.resolveViaIndexer('derrick');
     client.invalidate('derrick');
     await client.resolveViaIndexer('derrick');
@@ -535,7 +536,7 @@ describe('top-level helpers', () => {
     const original = g.fetch;
     g.fetch = fetchMock;
     try {
-      await expect(resolveAddress('derrick', 'ethereum')).resolves.toBe('0xabc');
+      await expect(resolveAddress('derrick', 'ethereum')).resolves.toBe(ETH);
       await expect(available('derrick')).resolves.toMatchObject({ available: true });
       expect(fetchMock).toHaveBeenNthCalledWith(
         1,

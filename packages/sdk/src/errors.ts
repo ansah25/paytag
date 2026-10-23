@@ -4,6 +4,7 @@ export type PaytagErrorCode =
   | 'NETWORK_ERROR'
   | 'INVALID_RESPONSE'
   | 'HTTP_ERROR'
+  | 'TIMEOUT'
   | 'CONFIG_ERROR';
 
 export class PaytagError extends Error {
