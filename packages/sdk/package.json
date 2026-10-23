@@ -1,8 +1,17 @@
 {
   "name": "@paytagdev/sdk",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Resolve @paytag usernames to multi-chain wallet addresses (Ethereum, Solana, Bitcoin).",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ansah25/paytag.git",
+    "directory": "packages/sdk"
+  },
+  "homepage": "https://github.com/ansah25/paytag/tree/main/packages/sdk#readme",
+  "bugs": {
+    "url": "https://github.com/ansah25/paytag/issues"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

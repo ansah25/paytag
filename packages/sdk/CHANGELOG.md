@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.0
+
+Hardening: the SDK no longer passes a server's answer through as-is. **Breaking** (pre-1.0) where noted.
+
+- **Addresses are checked for their chain** (Ethereum `0x`+40 hex, Solana 32-byte base58, Bitcoin mainnet bech32/bech32m with checksum or legacy P2PKH/P2SH). One bad address fails the whole response with `INVALID_RESPONSE`.
+- **The answer must be for the requested username**, or it's `INVALID_RESPONSE`.
+- **`resolveViaIndexer` checks each address against the bytes of its record**, and the shape of `owner`, `node`, `epoch` and every record.
+- **Results are fresh, deep-frozen objects** with known fields only: unknown chains and fields are dropped. **Breaking:** code that mutates a result throws in strict mode; copy first. The response types are now `readonly`.
+- `ResolveResponse` now types `verified`, `displayName`, `bio` and `avatarUrl`, which the API already returned.
+- **Breaking:** `resolveViaIndexer` is **no longer cached by default**, so a transfer shows up on the next call. Opt in with the new `indexerCache` option. `OnchainResolveResponse` no longer extends all of `ResolveResponse`, only its `username` and `addresses`.
+- New `timeoutMs` option (default 10 s, `0` disables) and `TIMEOUT` error code. Works with a custom `fetch` that ignores `AbortSignal`, and on Node 18.
+- **Breaking:** `baseUrl` and `indexerUrl` must be https (http only on localhost), or the constructor throws `CONFIG_ERROR`.
+- **Breaking:** only a 404 whose body has `code: 'USER_NOT_FOUND'` maps to `USER_NOT_FOUND`; a bare 404 (wrong URL, proxy page) is `HTTP_ERROR` with `status: 404`.
+- `available()` refuses `.` and `..`, which would change the request path. Unknown `reason` values and suggestions that aren't valid usernames are dropped.
+- `resolveAddress()` returns `null` for a chain that isn't supported, instead of reading inherited properties like `toString`.
+- Server error messages are clipped to 200 characters.
+- `avatarUrl` is dropped unless it is an `https:` URL.
+- New export `isValidAddress(chain, address)`: the same per-chain format check (no EIP-55 or legacy-Bitcoin checksum).
+- **Breaking:** requests are sent with `redirect: 'error'`; a server that redirects now gives `NETWORK_ERROR`.
+
 ## 0.5.0
 
 - `ResolveResponse` gains optional `onchain: { status }` (`linked` · `not_linked` · `none` · `syncing` · `unavailable`): whether the on-chain name of the same spelling belongs to the Paytag account. Absent from `resolveViaIndexer` results.

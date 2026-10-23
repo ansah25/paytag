@@ -54,11 +54,11 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   return body as T;
 }
 
-// cache:false disables the SDK's in-memory cache; the fetch wrapper also bypasses the browser's
-// HTTP cache (the indexer sends max-age=5), so a refetch right after a write sees fresh data.
+// The SDK doesn't cache resolveViaIndexer by default; the fetch wrapper also bypasses the
+// browser's HTTP cache (the indexer sends max-age=5), so a refetch right after a write sees
+// fresh data.
 const sdk = new Paytag({
   indexerUrl: INDEXER_URL,
-  cache: false,
   fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
 });
 

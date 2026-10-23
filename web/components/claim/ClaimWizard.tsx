@@ -77,7 +77,7 @@ export function ClaimWizard({ username: routeName }: Props) {
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState<{
     reason: UnavailableReason;
-    suggestions: string[];
+    suggestions: readonly string[];
     /** Lowercased wallet the check was made with ('' for none). */
     checkedWith: string;
   } | null>(null);

@@ -14,6 +14,7 @@ export type {
   FetchLike,
 } from './client';
 export { PaytagError } from './errors';
+export { isValidAddress } from './addresses';
 export type { PaytagErrorCode } from './errors';
 export { SUPPORTED_CHAINS, DEFAULT_BASE_URL, DEFAULT_INDEXER_URL } from './types';
 export type {

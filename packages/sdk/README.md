@@ -61,8 +61,23 @@ await client.resolve('derrick');
 |---|---|---|---|
 | `baseUrl` | `string` | `https://api.paytag.dev` | API origin |
 | `indexerUrl` | `string` | `https://indexer.paytag.dev` | On-chain indexer origin, used by `resolveViaIndexer` |
-| `cache` | `boolean \| number \| Cache` | `true` (30 s TTL) | `false` disables, a `number` sets the TTL in ms, or pass a custom `Cache` |
+| `cache` | `boolean \| number \| Cache` | `true` (30 s TTL) | Cache for `resolve`: `false` disables, a `number` sets the TTL in ms, or pass a custom `Cache` |
+| `indexerCache` | `boolean \| number \| Cache` | `false` | Cache for `resolveViaIndexer`, same values as `cache`. Off so each call sees current on-chain state |
+| `timeoutMs` | `number` | `10000` | A request that hasn't fully answered by then fails with `TIMEOUT`; `0` disables |
 | `fetch` | `FetchLike` | `globalThis.fetch` | Inject a custom fetch (e.g. for testing or a Node ≤17 polyfill) |
+
+`baseUrl` and `indexerUrl` must be `https`; plain `http` is accepted only for `localhost`, `127.0.0.1` and `[::1]`. Anything else throws `CONFIG_ERROR`.
+
+## What the SDK checks
+
+People pay whatever `resolve` returns, so the SDK doesn't pass a server's answer through as-is:
+
+- **The answer is for the name you asked for.** A response for a different username is refused.
+- **Every address is well-formed for its chain.** Ethereum: `0x` + 40 hex. Solana: base58 decoding to a 32-byte key. Bitcoin: a mainnet `bc1…` address with a valid bech32/bech32m checksum, or a legacy `1…`/`3…` address of the right length and version (its SHA-256 checksum is left to the API, as browsers can't compute it synchronously). One bad address fails the whole response with `INVALID_RESPONSE`, since nothing else from that server can be trusted either.
+- **On-chain answers match their records.** For `resolveViaIndexer`, each address must be what its record's bytes encode.
+- **Only known fields come back**, in a fresh object: unknown chains and fields are dropped, as is a malformed optional field (a bad `verified` map hides badges, never adds one). `avatarUrl` is kept only if it is an `https:` URL.
+- **No redirects.** Requests use `redirect: 'error'`, so an https origin can't send one to plain http.
+- **Results are deep-frozen**, including those from the built-in cache, so one caller can't change what another sees. (A custom `Cache` returns whatever it stored; one that serializes, like Redis, hands back plain unfrozen copies.) Copy before editing: `{ ...res, addresses: { ...res.addresses } }`.
 
 ## API
 
@@ -76,6 +91,10 @@ Look up a username and return its registered addresses.
 type ResolveResponse = {
   username: string;
   addresses: Partial<Record<'ethereum' | 'solana' | 'bitcoin', string>>;
+  verified?: Partial<Record<'ethereum' | 'solana' | 'bitcoin', boolean>>; // proven with a signature
+  displayName?: string | null;
+  bio?: string | null;
+  avatarUrl?: string | null;
   // Whether the on-chain name of the same spelling belongs to this account.
   onchain?: { status: 'linked' | 'not_linked' | 'none' | 'syncing' | 'unavailable' };
 };
@@ -97,10 +116,10 @@ if (eth) { /* … */ }
 
 ### `resolveViaIndexer(username, opts?)` → `Promise<OnchainResolveResponse>`
 
-Resolve a name from **on-chain state**, the Paytag registry on Base, via the Paytag indexer. The result extends `ResolveResponse`, so code that reads `addresses` works unchanged:
+Resolve a name from **on-chain state**, the Paytag registry on Base, via the Paytag indexer. The result has the same `username` and `addresses` as `ResolveResponse`, so code that reads `addresses` works unchanged:
 
 ```ts
-type OnchainResolveResponse = ResolveResponse & {
+type OnchainResolveResponse = Pick<ResolveResponse, 'username' | 'addresses'> & {
   node: string;          // keccak256 of the normalized name
   owner: string;         // current on-chain owner (checksummed)
   registeredAt: number;  // unix seconds
@@ -115,10 +134,10 @@ type OnchainResolveResponse = ResolveResponse & {
 };
 ```
 
-- **Transfers clear records:** a transfer to a different owner starts a new epoch on-chain, and every earlier record stops resolving. So every record here was set by the current owner, and payment code can't pay a former owner. After a transfer, `recordsReset` is `true` until the new owner sets a record, so you can tell "unconfigured after a transfer" from "never configured".
+- **Transfers clear records:** a transfer to a different owner starts a new epoch on-chain, and every earlier record stops resolving. So every record here was set by the owner at the time the indexer answered, and payment code can't pay a former owner. After a transfer, `recordsReset` is `true` until the new owner sets a record, so you can tell "unconfigured after a transfer" from "never configured".
 - **No fallback:** if the indexer is unreachable this throws `NETWORK_ERROR` rather than silently asking the API, so you always know which source answered.
 - **Syncing:** while a freshly deployed indexer backfills, it answers 503 and this throws `HTTP_ERROR` with `status: 503`, never a false `USER_NOT_FOUND`.
-- **Caching:** results share the client's cache but use a separate key namespace from `resolve`, and `invalidate(name)` clears both.
+- **Not cached by default:** a cached result could show a previous owner and their records for up to the TTL after a transfer. Opt in with `indexerCache`; `invalidate(name)` clears both caches.
 
 ### `available(username, opts?)` → `Promise<AvailabilityResponse>`
 
@@ -139,9 +158,13 @@ type AvailableOptions = {
 const { available, reason, suggestions } = await available('derrick');
 ```
 
+### `isValidAddress(chain, address)` → `boolean`
+
+The per-chain format check the SDK applies to every address it returns (see [What the SDK checks](#what-the-sdk-checks)). It is a format check, not full validation: it doesn't verify EIP-55 checksums or the SHA-256 checksum of legacy `1…`/`3…` Bitcoin addresses, so don't rely on it alone to catch typos in an address a person entered.
+
 ### `client.invalidate(username?)`
 
-Drop a single cached entry, or — with no argument — clear the entire cache. Only available on `Paytag` instances; the top-level helpers' singleton manages its own cache.
+Drop a single username from both caches, or — with no argument — clear them. Only available on `Paytag` instances; the top-level helpers' singleton manages its own cache.
 
 ## Errors
 
@@ -149,12 +172,15 @@ All thrown errors are instances of `PaytagError` with a typed `code`:
 
 | `code` | Meaning |
 |---|---|
-| `USER_NOT_FOUND` | The username is not registered |
+| `USER_NOT_FOUND` | The username is not registered (a 404 whose body says so; a bare 404 is `HTTP_ERROR`) |
 | `INVALID_USERNAME` | Argument failed format validation (3–20 chars, `[a-z0-9_]` for `resolve` and `resolveViaIndexer`; non-empty for `available`) |
 | `NETWORK_ERROR` | The fetch itself failed (DNS, TLS, connection refused, …) |
-| `HTTP_ERROR` | The API responded with a non-2xx status other than 404 |
-| `INVALID_RESPONSE` | The API responded 2xx but the body was not in the expected shape |
-| `CONFIG_ERROR` | Bad SDK configuration (no fetch impl available, …) |
+| `HTTP_ERROR` | Any other non-2xx response; `status` holds the HTTP status |
+| `TIMEOUT` | No full answer within `timeoutMs` |
+| `INVALID_RESPONSE` | A 2xx response failed the checks above (shape, username, an address) |
+| `CONFIG_ERROR` | Bad SDK configuration (non-https URL, bad `timeoutMs`, no fetch impl, …) |
+
+Error messages from the server are clipped to 200 characters.
 
 ```ts
 import { resolve, PaytagError } from '@paytagdev/sdk';
