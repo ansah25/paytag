@@ -8,7 +8,7 @@ const nextConfig = {
     return [{ source: '/:path*', headers: securityHeaders(process.env) }];
   },
   // The app doesn't use next/image. Turning the optimizer off removes the
-  // /_next/image endpoint that several Next 14 advisories target.
+  // /_next/image endpoint, a recurring source of Next.js advisories.
   images: { unoptimized: true },
   webpack: (config) => {
     // Silence optional native/dev deps pulled in transitively by wagmi connectors

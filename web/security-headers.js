@@ -1,5 +1,5 @@
 // @ts-check
-// Security headers for every route (wired in next.config.js). Plain CommonJS because Next 14 loads
+// Security headers for every route (wired in next.config.js). Plain CommonJS because Next loads
 // next.config.js without TypeScript; the origins come from lib/endpoints.json, the same file the
 // app's fetches use (lib/endpoints.ts), so the two can't drift.
 const endpoints = require('./lib/endpoints.json');
