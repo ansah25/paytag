@@ -18,7 +18,7 @@ Replace `0x4f3edf83…d8a3c2` with `@derrick`. Paytag maps one human-readable na
 - **API:** [api.paytag.dev](https://api.paytag.dev/health). Try [`/resolve/derrick`](https://api.paytag.dev/resolve/derrick)
 - **dApp:** <https://www.paytag.dev>. On-chain names at [`/on-chain`](https://www.paytag.dev/on-chain); live health at [`/status`](https://www.paytag.dev/status)
 - **SDK:** [`@paytagdev/sdk`](https://www.npmjs.com/package/@paytagdev/sdk) on npm
-- **On-chain reads:** under [api.paytag.dev/onchain](https://api.paytag.dev/onchain/resolve/derrick). Try [`/onchain/resolve/derrick`](https://api.paytag.dev/onchain/resolve/derrick). (The Ponder indexer at `indexer.paytag.dev` is retired; see [On-chain reads](#on-chain-reads).)
+- **On-chain reads:** under [api.paytag.dev/onchain](https://api.paytag.dev/onchain/resolve/derrick). Try [`/onchain/resolve/derrick`](https://api.paytag.dev/onchain/resolve/derrick). (The Ponder indexer that served `indexer.paytag.dev` was decommissioned on 2026-10-24, host included; see [On-chain reads](#on-chain-reads).)
 - **Contracts (Base Sepolia):** [`PaytagRegistry`](https://sepolia.basescan.org/address/0x351fed5e079c421493a485c1b90cc115394c5cb7#code) · [`PaytagResolver`](https://sepolia.basescan.org/address/0x0b8bc41a7ce8cd5acd21e62a5be40ac281627f66#code)
 
 ## SDK
@@ -230,7 +230,7 @@ What I didn't change, and why: writes are dominated by the 22.1k cold `SSTORE`, 
 
 ### On-chain reads
 
-Served by the API under **[api.paytag.dev/onchain](https://api.paytag.dev/onchain/resolve/derrick)**, same response shapes as the Ponder indexer that used to serve them (so the SDK's `resolveViaIndexer` reads them unchanged). The indexer polled the chain every second, roughly 86,000 RPC calls a day, to watch two contracts that emit almost nothing; it's retired, and RPC cost now scales with reads instead of with time.
+Served by the API under **[api.paytag.dev/onchain](https://api.paytag.dev/onchain/resolve/derrick)**, same response shapes as the Ponder indexer that used to serve them (so the SDK's `resolveViaIndexer` reads them unchanged). The indexer polled the chain every second, roughly 86,000 RPC calls a day, to watch two contracts that emit almost nothing. It was decommissioned on 2026-10-24 (service, database and the `indexer.paytag.dev` DNS record), and RPC cost now scales with reads instead of with time. SDK versions before 0.7.0 default `resolveViaIndexer` to that host; point their `indexerUrl` at `https://api.paytag.dev/onchain`, or upgrade.
 
 | Endpoint | Returns |
 |---|---|
@@ -384,7 +384,7 @@ The repo is an npm workspace; `npm install` at the root installs everything.
 - [x] Hardening: indexer rate limits, `/status`, per-deploy indexer schemas
 - [x] Contracts v0.2: transfer epochs (a transfer clears records and the old owner's primary name, in the contract) and commit-reveal registration; SDK 0.4.0
 - [x] Link on-chain names and Paytag accounts by ownership; SDK 0.5.0
-- [x] Retire the Ponder indexer: on-chain reads straight from the contracts, lists from a lazily synced events table; SDK 0.7.0
+- [x] Retire the Ponder indexer: on-chain reads straight from the contracts, lists from a lazily synced events table; SDK 0.7.0. Indexer decommissioned 2026-10-24
 - [ ] Deferred: gas-sponsored registration (see [Known trade-offs](#known-trade-offs))
 - [ ] Future: ERC-20 / SPL-token sends, payment links with amounts, a mainnet deployment with registration pricing or expiry
 
