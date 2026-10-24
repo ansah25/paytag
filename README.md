@@ -101,7 +101,7 @@ sequenceDiagram
 | Contracts | Solidity 0.8.26, Foundry (unit, fuzz, invariant, gas snapshots) |
 | On-chain reads | viem + Multicall3 against public Base Sepolia RPC (keyed fallback); lists from a Supabase events table synced via Blockscout |
 | SDK | TypeScript, tsup (ESM + CJS), zero runtime dependencies |
-| Web app | Next.js 14, wagmi v2 + viem, Vercel |
+| Web app | Next.js 15, React 19, wagmi v2 + viem, Vercel |
 | Off-chain API | Node.js, Express, TypeScript, Zod, Supabase (Postgres + RLS), Fly.io |
 | Tests | Foundry, Jest, Vitest; all in GitHub Actions |
 

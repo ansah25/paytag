@@ -15,7 +15,7 @@ import { RECORD_SLOTS, addressUrl } from '@/lib/onchain/records';
 export const dynamic = 'force-dynamic';
 
 interface Props {
-  params: { name: string };
+  params: Promise<{ name: string }>;
 }
 
 type Load =
@@ -49,13 +49,13 @@ async function load(name: string): Promise<Load> {
   }
 }
 
-export function generateMetadata({ params }: Props): Metadata {
-  const parsed = normalizeName(decodeURIComponent(params.name));
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const parsed = normalizeName(decodeURIComponent((await params).name));
   return { title: parsed.ok ? `@${parsed.name} on Base · Paytag` : 'Paytag' };
 }
 
 export default async function OnchainNamePage({ params }: Props) {
-  const parsed = normalizeName(decodeURIComponent(params.name));
+  const parsed = normalizeName(decodeURIComponent((await params).name));
   if (!parsed.ok) notFound();
   const name = parsed.name;
   const result = await load(name);
