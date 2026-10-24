@@ -90,12 +90,12 @@ export const validateUsername = (username: string): void => {
 };
 
 export const isUsernameAvailable = async (username: string): Promise<boolean> => {
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('users')
     .select('id')
     .eq('username', username)
     .maybeSingle();
-  if (error) throw dbError('check availability', error);
+  if (error) throw dbError('check availability', error, status);
   return !data;
 };
 
@@ -159,13 +159,13 @@ export const findByWallet = async (
   ownerWallet: string,
 ): Promise<UserRecord | null> => {
   const wallet = ownerWallet.toLowerCase();
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('users')
     .select(USER_COLUMNS)
     .eq('owner_wallet', wallet)
     .maybeSingle();
   if (error) {
-    throw dbError('look up wallet', error);
+    throw dbError('look up wallet', error, status);
   }
   return (data as UserRecord | null) ?? null;
 };
@@ -200,7 +200,7 @@ export const registerUsername = async (
     );
   }
 
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('users')
     .insert({ username: normalized, owner_wallet: wallet })
     .select()
@@ -221,7 +221,7 @@ export const registerUsername = async (
       }
       throw new ConflictError('That username is already taken', 'USERNAME_TAKEN');
     }
-    throw dbError('register username', error);
+    throw dbError('register username', error, status);
   }
 
   // Smart default: register the connected wallet as the user's ethereum address.

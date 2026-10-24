@@ -82,14 +82,14 @@ export interface OwnedUser {
 
 /** The user registered to this wallet, or 404. */
 export const findOwnedUser = async (ownerWallet: string): Promise<OwnedUser> => {
-  const { data: user, error } = await supabase
+  const { data: user, error, status } = await supabase
     .from('users')
     .select('id, username')
     .eq('owner_wallet', ownerWallet.toLowerCase())
     .maybeSingle();
 
   if (error) {
-    throw dbError('look up user', error);
+    throw dbError('look up user', error, status);
   }
   if (!user) {
     throw new NotFoundError('No registered username for this wallet', 'USER_NOT_FOUND');
@@ -107,7 +107,7 @@ export const addAddress = async (
   const wallet = ownerWallet.toLowerCase();
   const user = await findOwnedUser(wallet);
 
-  const { data: existing, error: existingErr } = await supabase
+  const { data: existing, error: existingErr, status: existingStatus } = await supabase
     .from('wallet_mappings')
     .select('address')
     .eq('user_id', user.id)
@@ -115,7 +115,7 @@ export const addAddress = async (
     .maybeSingle();
 
   if (existingErr) {
-    throw dbError('load address', existingErr);
+    throw dbError('load address', existingErr, existingStatus);
   }
   // Re-saving the same address must not throw away its verification.
   if ((existing as { address?: string } | null)?.address === address) {
@@ -126,7 +126,7 @@ export const addAddress = async (
   // proved control by signing in.
   const verifiedAt = chain === 'ethereum' && address === wallet ? new Date().toISOString() : null;
 
-  const { error: upsertErr } = await supabase
+  const { error: upsertErr, status: upsertStatus } = await supabase
     .from('wallet_mappings')
     .upsert(
       { user_id: user.id, chain, address, verified_at: verifiedAt },
@@ -134,7 +134,7 @@ export const addAddress = async (
     );
 
   if (upsertErr) {
-    throw dbError('save address', upsertErr);
+    throw dbError('save address', upsertErr, upsertStatus);
   }
 
   invalidateResolveCache(user.username);
@@ -148,7 +148,7 @@ export const removeAddress = async (
   const chain = assertSupportedChain(rawChain);
   const user = await findOwnedUser(ownerWallet);
 
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('wallet_mappings')
     .delete()
     .eq('user_id', user.id)
@@ -156,7 +156,7 @@ export const removeAddress = async (
     .select('chain');
 
   if (error) {
-    throw dbError('remove address', error);
+    throw dbError('remove address', error, status);
   }
   if (!data || data.length === 0) {
     throw new NotFoundError('No address mapped for this chain', 'ADDRESS_NOT_FOUND');
@@ -195,14 +195,14 @@ export const resolveByUsername = async (
     return cached;
   }
 
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('users')
     .select('username, display_name, bio, avatar_url, wallet_mappings(chain, address, verified_at)')
     .eq('username', username)
     .maybeSingle();
 
   if (error) {
-    throw dbError('resolve username', error);
+    throw dbError('resolve username', error, status);
   }
   if (!data) {
     throw new NotFoundError('Username not found', 'USER_NOT_FOUND');

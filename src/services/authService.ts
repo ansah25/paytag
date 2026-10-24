@@ -220,7 +220,7 @@ export const verifySignatureAndIssueToken = async (
   }
 
   // Single use, atomically: the primary key (wallet_address, nonce) lets exactly one insert in.
-  const { error } = await supabase
+  const { error, status } = await supabase
     .from('auth_nonces_used')
     .insert({ wallet_address: wallet, nonce, used_at: new Date().toISOString() });
   if (error) {
@@ -228,7 +228,7 @@ export const verifySignatureAndIssueToken = async (
       logger.warn('auth.nonce_reused', { wallet });
       throw new UnauthorizedError('Nonce already used', 'NONCE_USED');
     }
-    throw dbError('record nonce', error);
+    throw dbError('record nonce', error, status);
   }
   // In the background: the nonce is already spent, so a prune failure must not fail the sign-in.
   void pruneUsedNonces().catch((err: unknown) =>
@@ -244,12 +244,12 @@ export const verifySignatureAndIssueToken = async (
 
 /** users.session_version for the account owned by `wallet`, or null if it has no account. */
 export const getSessionVersion = async (wallet: string): Promise<number | null> => {
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('users')
     .select('session_version')
     .eq('owner_wallet', wallet.toLowerCase())
     .maybeSingle();
-  if (error) throw dbError('load session version', error);
+  if (error) throw dbError('load session version', error, status);
   return data ? Number((data as { session_version: number }).session_version) : null;
 };
 
@@ -271,13 +271,13 @@ export const signSessionToken = (wallet: string, sessionVersion: number): string
 export const revokeAllSessions = async (wallet: string): Promise<void> => {
   const current = await getSessionVersion(wallet);
   if (current === null) throw new NotFoundError('No account for this wallet', 'USER_NOT_FOUND');
-  const { error } = await supabase
+  const { error, status } = await supabase
     .from('users')
     .update({ session_version: current + 1 })
     .eq('owner_wallet', wallet.toLowerCase())
     .eq('session_version', current);
   // No row matched: a concurrent revoke already bumped it, which revokes these tokens too.
-  if (error) throw dbError('revoke sessions', error);
+  if (error) throw dbError('revoke sessions', error, status);
   logger.info('auth.sessions_revoked', { wallet: wallet.toLowerCase() });
 };
 

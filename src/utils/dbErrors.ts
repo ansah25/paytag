@@ -20,29 +20,42 @@ export interface DbErrorLike {
 // PostgREST couldn't reach or use the database: connection failed, pool timeout, schema cache
 // not loaded yet. (https://postgrest.org/en/stable/references/errors.html)
 const POSTGREST_UNAVAILABLE = new Set(['PGRST000', 'PGRST001', 'PGRST002', 'PGRST003']);
-// Postgres SQLSTATEs for the same: class 08 (connection exception), 53 (insufficient resources,
-// e.g. too many connections), and 57P01-57P03 (shutting down / can't connect now).
-const PG_UNAVAILABLE = /^(08|53|57P0[1-3])/;
+// Postgres SQLSTATEs for the same: class 08 (connection exception), 53300 (too many connections),
+// 57P01-57P03 (shutting down / can't connect now) and 57P05 (idle session timeout). Not the rest of
+// class 53 (a query hitting a resource limit is the query's fault) nor 57014 (statement timeout).
+const PG_UNAVAILABLE = /^(08|53300|57P0[1235])/;
 
 /**
  * Whether an error means the database couldn't be reached. Postgres errors always carry a
- * SQLSTATE and PostgREST errors a PGRST code, so an error with no code never got that far: a
- * failed fetch (DNS, TLS, refused, timed out) or a gateway in front of a paused project.
+ * SQLSTATE and PostgREST errors a PGRST code, so an error with no code never got that far. With
+ * no HTTP response (`status` 0: DNS, TLS, refused, timed out, an unparseable body) or a 5xx from
+ * the gateway (a paused project, Cloudflare), that's an outage. A codeless 4xx is the gateway
+ * refusing the request (Kong: invalid API key, no route): a deployment error, not retryable.
  */
-export function isDatabaseUnavailable(error: DbErrorLike): boolean {
+export function isDatabaseUnavailable(error: DbErrorLike, status?: number): boolean {
   const code = error.code ?? '';
-  return code === '' || POSTGREST_UNAVAILABLE.has(code) || PG_UNAVAILABLE.test(code);
+  if (POSTGREST_UNAVAILABLE.has(code) || PG_UNAVAILABLE.test(code)) return true;
+  if (code !== '') return false;
+  return status === undefined || status === 0 || status >= 500;
 }
 
+/** Log-safe text: no URLs or hostnames (a gateway's HTML error page names the project). */
+const redact = (text: string): string =>
+  text
+    .replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, '<url>')
+    .replace(/\b[a-z0-9-]+(\.[a-z0-9-]+)*\.(supabase\.co|supabase\.in|supabase\.net)\b/gi, '<host>')
+    .slice(0, 200);
+
 /**
- * The error to throw for a Supabase error that has no more specific handling: a 503
+ * The error to throw for a Supabase error that has no more specific handling (pass the
+ * result's `status` as well, so a gateway 4xx isn't mistaken for an outage): a 503
  * DatabaseUnavailableError when the database couldn't be reached (logged, since the error
  * handler doesn't log client-facing errors), otherwise a plain Error (a 500).
  */
-export function dbError(what: string, error: DbErrorLike): Error {
-  if (isDatabaseUnavailable(error)) {
-    logger.warn('db.unavailable', { what, code: error.code ?? '', reason: String(error.message ?? '').slice(0, 200) });
+export function dbError(what: string, error: DbErrorLike, status?: number): Error {
+  if (isDatabaseUnavailable(error, status)) {
+    logger.warn('db.unavailable', { what, code: error.code ?? '', status, reason: redact(String(error.message ?? '')) });
     return new DatabaseUnavailableError();
   }
-  return new Error(`Failed to ${what}: ${error.message}`);
+  return new Error(`Failed to ${what}: ${redact(String(error.message ?? ''))}`);
 }

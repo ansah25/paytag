@@ -84,7 +84,7 @@ export const createVerificationChallenge = async (
   }
 
   const user = await findOwnedUser(ownerWallet);
-  const { data: mapping, error: mappingErr } = await supabase
+  const { data: mapping, error: mappingErr, status: mappingStatus } = await supabase
     .from('wallet_mappings')
     .select('address')
     .eq('user_id', user.id)
@@ -92,7 +92,7 @@ export const createVerificationChallenge = async (
     .maybeSingle();
 
   if (mappingErr) {
-    throw dbError('load address', mappingErr);
+    throw dbError('load address', mappingErr, mappingStatus);
   }
   if (!mapping) {
     throw new NotFoundError('No address mapped for this chain', 'ADDRESS_NOT_FOUND');
@@ -100,7 +100,7 @@ export const createVerificationChallenge = async (
 
   const address = (mapping as { address: string }).address;
   const nonce = randomBytes(NONCE_BYTES).toString('hex');
-  const { error } = await supabase
+  const { error, status } = await supabase
     .from('address_verification_nonces')
     .upsert(
       { user_id: user.id, chain, address, nonce, created_at: new Date().toISOString() },
@@ -108,7 +108,7 @@ export const createVerificationChallenge = async (
     );
 
   if (error) {
-    throw dbError('store verification nonce', error);
+    throw dbError('store verification nonce', error, status);
   }
 
   return {
@@ -126,7 +126,7 @@ export const verifyAddress = async (
   const chain = assertSupportedChain(rawChain);
   const user = await findOwnedUser(ownerWallet);
 
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('address_verification_nonces')
     .select('address, nonce, created_at')
     .eq('user_id', user.id)
@@ -134,7 +134,7 @@ export const verifyAddress = async (
     .maybeSingle();
 
   if (error) {
-    throw dbError('load verification nonce', error);
+    throw dbError('load verification nonce', error, status);
   }
   if (!data) {
     throw new BadRequestError('No verification in progress for this chain', 'CHALLENGE_NOT_FOUND');
@@ -144,7 +144,7 @@ export const verifyAddress = async (
   // Single-use: consume the challenge whatever the outcome (replay protection). Atomic: only the
   // request whose delete removed this exact challenge goes on, so two concurrent submissions of
   // one signature can't both succeed, and a newer challenge isn't consumed by mistake.
-  const { data: consumed, error: consumeErr } = await supabase
+  const { data: consumed, error: consumeErr, status: consumeStatus } = await supabase
     .from('address_verification_nonces')
     .delete()
     .eq('user_id', user.id)
@@ -152,7 +152,7 @@ export const verifyAddress = async (
     .eq('nonce', challenge.nonce)
     .select('nonce');
   if (consumeErr) {
-    throw dbError('consume verification nonce', consumeErr);
+    throw dbError('consume verification nonce', consumeErr, consumeStatus);
   }
   if (!consumed || consumed.length === 0) {
     throw new BadRequestError('No verification in progress for this chain', 'CHALLENGE_NOT_FOUND');
@@ -176,7 +176,7 @@ export const verifyAddress = async (
   }
 
   const verifiedAt = new Date().toISOString();
-  const { data: updated, error: updateErr } = await supabase
+  const { data: updated, error: updateErr, status: updateStatus } = await supabase
     .from('wallet_mappings')
     .update({ verified_at: verifiedAt })
     .eq('user_id', user.id)
@@ -185,7 +185,7 @@ export const verifyAddress = async (
     .select('chain');
 
   if (updateErr) {
-    throw dbError('mark address verified', updateErr);
+    throw dbError('mark address verified', updateErr, updateStatus);
   }
   if (!updated || updated.length === 0) {
     throw new ConflictError('The address changed while verifying. Start again.', 'ADDRESS_CHANGED');

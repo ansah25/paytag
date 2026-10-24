@@ -9,7 +9,7 @@ import { PaytagResolverAbi } from '../onchain/generated/PaytagResolverAbi';
 import { normalizeName } from '../onchain/names';
 import { ChainUnavailableError, readHead } from '../onchain/state';
 import { AppError } from '../utils/errors';
-import { DatabaseUnavailableError, type DbErrorLike, dbError } from '../utils/dbErrors';
+import { type DbErrorLike, dbError } from '../utils/dbErrors';
 import { logger } from '../utils/logger';
 
 // The events behind the list endpoints, kept in onchain_events and caught up lazily: when a list
@@ -97,8 +97,8 @@ async function onChain<T>(what: string, run: () => Promise<T>): Promise<T> {
 }
 
 /** Throws for a Supabase result's error: 503 if the database couldn't be reached, else a 500. */
-function dbCheck(what: string, error: DbErrorLike | null): void {
-  if (error) throw dbError(what, error);
+function dbCheck(what: string, error: DbErrorLike | null, status?: number): void {
+  if (error) throw dbError(what, error, status);
 }
 
 /** Decodes a log into a row, or null if it isn't one of the three events from its contract. */
@@ -258,25 +258,26 @@ async function toRows(logs: RawLog[]): Promise<EventRow[]> {
 
 async function insertRows(rows: EventRow[]): Promise<void> {
   for (let i = 0; i < rows.length; i += INSERT_BATCH) {
-    const { error } = await supabase
+    const { error, status } = await supabase
       .from('onchain_events')
       .upsert(rows.slice(i, i + INSERT_BATCH), { onConflict: 'block_number,log_index', ignoreDuplicates: true });
-    dbCheck('onchain_events insert', error);
+    dbCheck('onchain_events insert', error, status);
   }
 }
 
 /** Every block up to and including this one is in the table. */
 export async function syncedBlock(): Promise<bigint> {
-  const { data, error } = await supabase.from('onchain_sync_state').select('last_synced_block').single();
-  dbCheck('onchain_sync_state', error);
+  const { data, error, status } = await supabase.from('onchain_sync_state').select('last_synced_block').single();
   // The row is seeded by migration 0008; without it this is a deployment error, not an outage.
-  if (!data) throw new Error('onchain_sync_state: missing row (run migration 0008)');
+  // (.single() reports a missing row as PGRST116.)
+  if (error?.code === 'PGRST116' || (!error && !data)) throw new Error('onchain_sync_state: missing row (run migration 0008)');
+  dbCheck('onchain_sync_state', error, status);
   return BigInt((data as { last_synced_block: number | string }).last_synced_block);
 }
 
 async function rpcCall<T>(fn: string, args: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.rpc(fn, args);
-  dbCheck(fn, error);
+  const { data, error, status } = await supabase.rpc(fn, args);
+  dbCheck(fn, error, status);
   return data as T;
 }
 
@@ -366,7 +367,7 @@ async function tailFor(cursor: bigint, head: bigint, minBlock: bigint | undefine
     }
     return rows;
   } catch (err) {
-    if (err instanceof DatabaseUnavailableError || minBlock !== undefined) throw err;
+    if (minBlock !== undefined) throw err;
     logger.warn('onchain.tail_failed', { reason: safeReason(err) });
     return [];
   }
@@ -435,25 +436,25 @@ const QUERY_LIMIT = 1_000;
 const IN_BATCH = 100;
 
 export async function storedTransfersTo(address: string): Promise<EventRow[]> {
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('onchain_events')
     .select('node')
     .eq('event', 'Transfer')
     .eq('to_address', lower(address))
     .limit(QUERY_LIMIT);
-  dbCheck('onchain_events', error);
+  dbCheck('onchain_events', error, status);
   return (data ?? []) as EventRow[];
 }
 
 export async function storedEthRecordsFor(address: string): Promise<EventRow[]> {
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('onchain_events')
     .select('node')
     .eq('event', 'RecordSet')
     .eq('coin_type', 60)
     .eq('value', lower(address))
     .limit(QUERY_LIMIT);
-  dbCheck('onchain_events', error);
+  dbCheck('onchain_events', error, status);
   return (data ?? []) as EventRow[];
 }
 
@@ -478,13 +479,13 @@ export const forgetRegistrations = (): void => registrations.clear();
 async function storedRegistrations(nodes: readonly string[]): Promise<Registration[]> {
   const out: Registration[] = [];
   for (let i = 0; i < nodes.length; i += IN_BATCH) {
-    const { data, error } = await supabase
+    const { data, error, status } = await supabase
       .from('onchain_events')
       .select('node, name, block_timestamp')
       .eq('event', 'NameRegistered')
       .in('node', nodes.slice(i, i + IN_BATCH).map(lower))
       .limit(QUERY_LIMIT);
-    dbCheck('onchain_events', error);
+    dbCheck('onchain_events', error, status);
     for (const r of (data ?? []) as { node: string; name: string; block_timestamp: number | string }[]) {
       out.push({ node: r.node as Hex, name: r.name, registeredAt: Number(r.block_timestamp) });
     }

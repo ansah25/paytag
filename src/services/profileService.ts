@@ -33,7 +33,7 @@ export const updateProfile = async (
     throw new BadRequestError(`Bio must be ${PROFILE_LIMITS.bio} characters or fewer`, 'BIO_TOO_LONG');
   }
 
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('users')
     .update(update)
     .eq('owner_wallet', ownerWallet.toLowerCase())
@@ -41,7 +41,7 @@ export const updateProfile = async (
     .maybeSingle();
 
   if (error) {
-    throw dbError('update profile', error);
+    throw dbError('update profile', error, status);
   }
   if (!data) {
     throw new NotFoundError('No registered username for this wallet', 'USER_NOT_FOUND');
