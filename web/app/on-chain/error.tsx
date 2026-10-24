@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect } from 'react';
 import { MessageScreen } from '@/components/MessageScreen';
 import { API_URL } from '@/lib/endpoints';
@@ -21,9 +22,9 @@ export default function OnchainError({ error, reset }: { error: Error & { digest
         <>
           {error.digest && `ref ${error.digest} · `}
           {host} ·{' '}
-          <a className="underline hover:text-ink" href="/status">
+          <Link className="underline hover:text-ink" href="/status">
             status
-          </a>
+          </Link>
         </>
       }
     />
