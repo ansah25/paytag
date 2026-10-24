@@ -1,0 +1,17 @@
+# Keeps pinned versions current. Each update is a PR and goes through the usual merge ceremony.
+version: 2
+updates:
+  # The API's base image is pinned by digest (Dockerfile); this bumps the digest and the 24.x
+  # patch version. Majors are ignored: moving to the next Node LTS is a deliberate change.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
