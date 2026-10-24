@@ -443,7 +443,9 @@ describe('tokens and sessions', () => {
   it('fails closed when the session version cannot be read', async () => {
     failures.usersRead = true;
     const res = await call(signSessionToken('0x' + '4'.repeat(40), 0));
-    expect(res.status).toBe(500);
+    // The read failed without reaching the database (no error code): 503, still unauthenticated.
+    expect(res.status).toBe(503);
+    expect(res.body.code).toBe('DATABASE_UNAVAILABLE');
     expect(res.body.sub).toBeUndefined();
   });
 

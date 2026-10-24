@@ -9,6 +9,7 @@ import { PaytagResolverAbi } from '../onchain/generated/PaytagResolverAbi';
 import { normalizeName } from '../onchain/names';
 import { ChainUnavailableError, readHead } from '../onchain/state';
 import { AppError } from '../utils/errors';
+import { DatabaseUnavailableError, type DbErrorLike, dbError } from '../utils/dbErrors';
 import { logger } from '../utils/logger';
 
 // The events behind the list endpoints, kept in onchain_events and caught up lazily: when a list
@@ -75,14 +76,6 @@ const INSERT_BATCH = 500;
 
 const lower = (v: string) => v.toLowerCase();
 
-/** Postgres couldn't be reached (Supabase paused or down). */
-export class DatabaseUnavailableError extends AppError {
-  constructor() {
-    super(503, 'DATABASE_UNAVAILABLE', 'The database is unavailable right now; retry shortly');
-    this.name = 'DatabaseUnavailableError';
-  }
-}
-
 /**
  * An error's message, safe to log: viem puts the request URL in its messages, and the fallback
  * RPC's URL carries an API key. Every URL is replaced, and the text is clipped.
@@ -103,11 +96,9 @@ async function onChain<T>(what: string, run: () => Promise<T>): Promise<T> {
   }
 }
 
-/** A Supabase result's error becomes DatabaseUnavailableError (logged). */
-function dbCheck(what: string, error: { message: string } | null): void {
-  if (!error) return;
-  logger.warn('onchain.database_failed', { what, reason: safeReason(error) });
-  throw new DatabaseUnavailableError();
+/** Throws for a Supabase result's error: 503 if the database couldn't be reached, else a 500. */
+function dbCheck(what: string, error: DbErrorLike | null): void {
+  if (error) throw dbError(what, error);
 }
 
 /** Decodes a log into a row, or null if it isn't one of the three events from its contract. */
@@ -277,7 +268,9 @@ async function insertRows(rows: EventRow[]): Promise<void> {
 /** Every block up to and including this one is in the table. */
 export async function syncedBlock(): Promise<bigint> {
   const { data, error } = await supabase.from('onchain_sync_state').select('last_synced_block').single();
-  dbCheck('onchain_sync_state', error ?? (data ? null : { message: 'missing row' }));
+  dbCheck('onchain_sync_state', error);
+  // The row is seeded by migration 0008; without it this is a deployment error, not an outage.
+  if (!data) throw new Error('onchain_sync_state: missing row (run migration 0008)');
   return BigInt((data as { last_synced_block: number | string }).last_synced_block);
 }
 

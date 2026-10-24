@@ -5,6 +5,7 @@ import { supabase } from '../config/supabase';
 import { env, jwtExpiresInSeconds, siweDomains } from '../config/env';
 import { BadRequestError, NotFoundError, UnauthorizedError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import { dbError } from '../utils/dbErrors';
 
 export interface JwtPayload {
   sub: string; // wallet address (lowercased)
@@ -227,7 +228,7 @@ export const verifySignatureAndIssueToken = async (
       logger.warn('auth.nonce_reused', { wallet });
       throw new UnauthorizedError('Nonce already used', 'NONCE_USED');
     }
-    throw new Error(`Failed to record nonce: ${error.message}`);
+    throw dbError('record nonce', error);
   }
   // In the background: the nonce is already spent, so a prune failure must not fail the sign-in.
   void pruneUsedNonces().catch((err: unknown) =>
@@ -248,7 +249,7 @@ export const getSessionVersion = async (wallet: string): Promise<number | null> 
     .select('session_version')
     .eq('owner_wallet', wallet.toLowerCase())
     .maybeSingle();
-  if (error) throw new Error(`Failed to load session version: ${error.message}`);
+  if (error) throw dbError('load session version', error);
   return data ? Number((data as { session_version: number }).session_version) : null;
 };
 
@@ -276,7 +277,7 @@ export const revokeAllSessions = async (wallet: string): Promise<void> => {
     .eq('owner_wallet', wallet.toLowerCase())
     .eq('session_version', current);
   // No row matched: a concurrent revoke already bumped it, which revokes these tokens too.
-  if (error) throw new Error(`Failed to revoke sessions: ${error.message}`);
+  if (error) throw dbError('revoke sessions', error);
   logger.info('auth.sessions_revoked', { wallet: wallet.toLowerCase() });
 };
 

@@ -6,6 +6,7 @@ import { BadRequestError, ConflictError, NotFoundError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { base58ToBytes } from '../utils/base58';
 import { assertSupportedChain, Chain, findOwnedUser, invalidateResolveCache } from './walletService';
+import { dbError } from '../utils/dbErrors';
 
 const NONCE_BYTES = 16;
 
@@ -91,7 +92,7 @@ export const createVerificationChallenge = async (
     .maybeSingle();
 
   if (mappingErr) {
-    throw new Error(`Failed to load address: ${mappingErr.message}`);
+    throw dbError('load address', mappingErr);
   }
   if (!mapping) {
     throw new NotFoundError('No address mapped for this chain', 'ADDRESS_NOT_FOUND');
@@ -107,7 +108,7 @@ export const createVerificationChallenge = async (
     );
 
   if (error) {
-    throw new Error(`Failed to store verification nonce: ${error.message}`);
+    throw dbError('store verification nonce', error);
   }
 
   return {
@@ -133,7 +134,7 @@ export const verifyAddress = async (
     .maybeSingle();
 
   if (error) {
-    throw new Error(`Failed to load verification nonce: ${error.message}`);
+    throw dbError('load verification nonce', error);
   }
   if (!data) {
     throw new BadRequestError('No verification in progress for this chain', 'CHALLENGE_NOT_FOUND');
@@ -151,7 +152,7 @@ export const verifyAddress = async (
     .eq('nonce', challenge.nonce)
     .select('nonce');
   if (consumeErr) {
-    throw new Error(`Failed to consume verification nonce: ${consumeErr.message}`);
+    throw dbError('consume verification nonce', consumeErr);
   }
   if (!consumed || consumed.length === 0) {
     throw new BadRequestError('No verification in progress for this chain', 'CHALLENGE_NOT_FOUND');
@@ -184,7 +185,7 @@ export const verifyAddress = async (
     .select('chain');
 
   if (updateErr) {
-    throw new Error(`Failed to mark address verified: ${updateErr.message}`);
+    throw dbError('mark address verified', updateErr);
   }
   if (!updated || updated.length === 0) {
     throw new ConflictError('The address changed while verifying. Start again.', 'ADDRESS_CHANGED');

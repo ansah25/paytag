@@ -5,6 +5,7 @@ import { TtlCache } from '../utils/cache';
 import { canonicalAddress, isBitcoinAddress, isEthereumAddress, isSolanaAddress } from '../utils/addresses';
 import { logger } from '../utils/logger';
 import { RESOLVE_TIMEOUT_MS, getOnchainOwner, linkStatus, type OnchainStatus } from './onchainService';
+import { dbError } from '../utils/dbErrors';
 
 export const SUPPORTED_CHAINS = ['ethereum', 'solana', 'bitcoin'] as const;
 export type Chain = (typeof SUPPORTED_CHAINS)[number];
@@ -88,7 +89,7 @@ export const findOwnedUser = async (ownerWallet: string): Promise<OwnedUser> => 
     .maybeSingle();
 
   if (error) {
-    throw new Error(`Failed to look up user: ${error.message}`);
+    throw dbError('look up user', error);
   }
   if (!user) {
     throw new NotFoundError('No registered username for this wallet', 'USER_NOT_FOUND');
@@ -114,7 +115,7 @@ export const addAddress = async (
     .maybeSingle();
 
   if (existingErr) {
-    throw new Error(`Failed to load address: ${existingErr.message}`);
+    throw dbError('load address', existingErr);
   }
   // Re-saving the same address must not throw away its verification.
   if ((existing as { address?: string } | null)?.address === address) {
@@ -133,7 +134,7 @@ export const addAddress = async (
     );
 
   if (upsertErr) {
-    throw new Error(`Failed to save address: ${upsertErr.message}`);
+    throw dbError('save address', upsertErr);
   }
 
   invalidateResolveCache(user.username);
@@ -155,7 +156,7 @@ export const removeAddress = async (
     .select('chain');
 
   if (error) {
-    throw new Error(`Failed to remove address: ${error.message}`);
+    throw dbError('remove address', error);
   }
   if (!data || data.length === 0) {
     throw new NotFoundError('No address mapped for this chain', 'ADDRESS_NOT_FOUND');
@@ -201,7 +202,7 @@ export const resolveByUsername = async (
     .maybeSingle();
 
   if (error) {
-    throw new Error(`Failed to resolve username: ${error.message}`);
+    throw dbError('resolve username', error);
   }
   if (!data) {
     throw new NotFoundError('Username not found', 'USER_NOT_FOUND');

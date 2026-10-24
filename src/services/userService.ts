@@ -2,6 +2,7 @@ import { supabase } from '../config/supabase';
 import { ConflictError, BadRequestError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { REGISTER_TIMEOUT_MS, RESOLVE_TIMEOUT_MS, getOnchainOwner } from './onchainService';
+import { dbError } from '../utils/dbErrors';
 
 export const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
 
@@ -94,7 +95,7 @@ export const isUsernameAvailable = async (username: string): Promise<boolean> =>
     .select('id')
     .eq('username', username)
     .maybeSingle();
-  if (error) throw new Error(`Failed to check availability: ${error.message}`);
+  if (error) throw dbError('check availability', error);
   return !data;
 };
 
@@ -164,7 +165,7 @@ export const findByWallet = async (
     .eq('owner_wallet', wallet)
     .maybeSingle();
   if (error) {
-    throw new Error(`Failed to look up wallet: ${error.message}`);
+    throw dbError('look up wallet', error);
   }
   return (data as UserRecord | null) ?? null;
 };
@@ -220,7 +221,7 @@ export const registerUsername = async (
       }
       throw new ConflictError('That username is already taken', 'USERNAME_TAKEN');
     }
-    throw new Error(`Failed to register username: ${error.message}`);
+    throw dbError('register username', error);
   }
 
   // Smart default: register the connected wallet as the user's ethereum address.
