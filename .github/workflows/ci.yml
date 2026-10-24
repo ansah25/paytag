@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR cancels its older run; runs on main (every merge) always finish.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Actions are pinned by commit SHA (the comment is the release it was at); .github/dependabot.yml
 # bumps both together. A tag can be moved to other code; a SHA can't.
 
@@ -17,6 +22,8 @@ jobs:
   backend-sdk:
     name: Backend + SDK
     runs-on: ubuntu-latest
+    # A hung step (a stuck install, a runaway fuzz run) would otherwise hold a runner for 6h.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,6 +64,8 @@ jobs:
   contracts:
     name: Contracts
     runs-on: ubuntu-latest
+    # A hung step (a stuck install, a runaway fuzz run) would otherwise hold a runner for 6h.
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: contracts
@@ -93,6 +102,8 @@ jobs:
   web:
     name: Web
     runs-on: ubuntu-latest
+    # A hung step (a stuck install, a runaway fuzz run) would otherwise hold a runner for 6h.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
