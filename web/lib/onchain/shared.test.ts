@@ -7,8 +7,8 @@ import { normalizeName } from './generated/names';
 import { RESERVED_NODES } from './generated/reservedNodes';
 import { buildWrite } from './useOnchainTx';
 
-// The generated copies must behave exactly like the indexer's originals: same vectors, same
-// verdicts. (indexer/scripts/export-abis.mjs --check guards that the files are identical.)
+// The generated copies must behave exactly like the API's originals (src/onchain): same vectors,
+// same verdicts. (`npm run abis:check` guards that the files are identical.)
 describe('shared codec vectors', () => {
   it.each(vectors.valid)('$label round-trips', ({ coinType, address, value }) => {
     expect(encodeAddress(BigInt(coinType), address)).toBe(value);

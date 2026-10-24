@@ -33,8 +33,8 @@ export interface PaytagOptions {
    */
   baseUrl?: string;
   /**
-   * Base URL of the on-chain indexer used by `resolveViaIndexer`. Defaults to
-   * `https://indexer.paytag.dev`. Must be https, except on localhost.
+   * Base URL of the on-chain endpoints used by `resolveViaIndexer`. Defaults to
+   * `https://api.paytag.dev/onchain`. Must be https, except on localhost.
    */
   indexerUrl?: string;
   /**
@@ -61,6 +61,11 @@ export interface ResolveOptions {
   signal?: AbortSignal;
   /** Skip the cache for this call (still writes the fresh result back). */
   fresh?: boolean;
+  /**
+   * `resolveViaIndexer` only: the answer must reflect at least this block, e.g. the block of a
+   * write you just made. Skips the cache; the server answers 503 if its RPC is still behind.
+   */
+  minBlock?: bigint | number;
 }
 
 export interface AvailableOptions {
@@ -146,13 +151,15 @@ export class Paytag {
   }
 
   /**
-   * Resolve a username from on-chain state (the Base registry), via the Paytag indexer.
+   * Resolve a username from on-chain state (the Base registry), via the Paytag API's on-chain
+   * endpoints, which read the contracts directly.
    * Returns the same `addresses` map as `resolve`, plus the on-chain owner and every raw
    * record; each address is checked against the record bytes it came from. Every record was
-   * set by the owner at the time the indexer answered: a transfer clears them on-chain (see
+   * set by the owner at the time of the read: a transfer clears them on-chain (see
    * `epoch` and `recordsReset`). Not cached unless `indexerCache` is set.
    *
-   * Never falls back to the API: if the indexer is unreachable this throws `NETWORK_ERROR`,
+   * Never falls back to the off-chain `resolve`: if the on-chain endpoints are unreachable this
+   * throws `NETWORK_ERROR`,
    * so callers always know which source answered.
    *
    * @throws {PaytagError} with `code = 'USER_NOT_FOUND'` if the name isn't registered on-chain.
@@ -163,13 +170,15 @@ export class Paytag {
   ): Promise<OnchainResolveResponse> {
     const normalized = normalizeUsername(username);
     const cacheKey = onchainCacheKey(normalized);
+    const minBlock = blockNumberOption(opts.minBlock);
 
-    if (this.indexerCache && !opts.fresh) {
+    if (this.indexerCache && !opts.fresh && minBlock === undefined) {
       const cached = this.indexerCache.get(cacheKey);
       if (cached) return cached;
     }
 
-    const url = `${this.indexerUrl}/resolve/${encodeURIComponent(normalized)}`;
+    const query = minBlock === undefined ? '' : `?minBlock=${minBlock}`;
+    const url = `${this.indexerUrl}/resolve/${encodeURIComponent(normalized)}${query}`;
     const result = await this.requestJson(url, opts.signal);
     const parsed = parseOnchainResolveResponse(result, normalized);
 
@@ -370,6 +379,15 @@ function normalizeForAvailability(raw: unknown): string {
   return cleaned;
 }
 
+/** A block number option as a decimal string, or undefined when absent. */
+function blockNumberOption(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if ((typeof value === 'bigint' && value >= 0n) || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)) {
+    return value.toString();
+  }
+  throw new PaytagError('minBlock must be a non-negative integer', 'CONFIG_ERROR');
+}
+
 // Prefixed so API and on-chain results for the same name never collide in a shared cache.
 // "onchain:" can't be a username ([a-z0-9_] only), so the namespaces are disjoint.
 function onchainCacheKey(normalized: string): string {
@@ -385,7 +403,7 @@ function extractApiError(
     typeof b.error === 'string' ? b.error : `Request failed with status ${status}`,
   );
   // Only a 404 that says so is "not found": a bare 404 (a wrong baseUrl, a proxy page) isn't
-  // evidence the name is free. Both the API and the indexer send this code.
+  // evidence the name is free. The API's off-chain and on-chain endpoints both send this code.
   if (status === 404 && b.code === 'USER_NOT_FOUND') {
     return { code: 'USER_NOT_FOUND', message };
   }

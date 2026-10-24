@@ -62,7 +62,7 @@ export function dashboardLinkCopy(
       return {
         tone: 'muted',
         title: 'On-chain name',
-        body: 'The on-chain indexer is catching up. Check back in a moment.',
+        body: 'Couldn’t check the on-chain name just now. Check back in a moment.', // no longer sent by the API
         action: null,
       };
     case 'unavailable':

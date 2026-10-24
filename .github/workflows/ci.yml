@@ -12,14 +12,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
+      # Pinned with the Contracts job: the ABI check builds the contracts.
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.5
+
       - name: Install workspaces
         run: npm ci
+
+      # The ABI is frozen at v0.2.0-contracts; fail if src/onchain/generated or
+      # web/lib/onchain/generated no longer match the contracts and src/onchain.
+      - name: Check generated on-chain files
+        run: (cd contracts && forge build) && npm run abis:check
 
       - name: Type-check backend
         run: npx tsc --noEmit
@@ -67,41 +79,6 @@ jobs:
       - name: Check gas snapshots
         run: forge snapshot --check --no-match-test "testFuzz|invariant"
 
-  indexer:
-    name: Indexer
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: indexer
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      # Standalone package (not an npm workspace): Ponder 0.18 needs Node >= 22.12.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: indexer/package-lock.json
-
-      - uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: v1.8.5
-
-      - name: Install
-        run: npm ci
-
-      # The ABI is frozen at v0.1.0-contracts; fail if abis/ no longer matches the contracts.
-      - name: Check ABIs match contracts
-        run: (cd ../contracts && forge build) && npm run abis:check
-
-      - name: Type-check
-        run: npm run type-check
-
-      - name: Test
-        run: npm test
-
   web:
     name: Web
     runs-on: ubuntu-latest
@@ -123,7 +100,7 @@ jobs:
         run: npm run -w paytag-web type-check
 
       # lib/onchain: tx state machine, revert decoding, and the shared codec vectors
-      # (reads indexer/test/vectors.json, which this checkout includes).
+      # (reads tests/onchain/vectors.json, which this checkout includes).
       - name: Test web
         run: npm run -w paytag-web test
 

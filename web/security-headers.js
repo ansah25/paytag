@@ -54,7 +54,6 @@ function buildCsp(env) {
   const connect = [
     "'self'",
     envOrigin(env, 'NEXT_PUBLIC_API_BASE_URL', endpoints.apiDefault),
-    envOrigin(env, 'NEXT_PUBLIC_INDEXER_URL', endpoints.indexerDefault),
     originOf(endpoints.evmRpc.mainnet),
     originOf(endpoints.evmRpc.sepolia),
     envOrigin(env, 'NEXT_PUBLIC_BASE_SEPOLIA_RPC', endpoints.evmRpc.baseSepolia),

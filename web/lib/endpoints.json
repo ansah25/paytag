@@ -1,6 +1,5 @@
 {
   "apiDefault": "http://localhost:3000",
-  "indexerDefault": "https://indexer.paytag.dev",
   "evmRpc": {
     "mainnet": "https://ethereum.reth.rs/rpc",
     "sepolia": "https://11155111.rpc.thirdweb.com",

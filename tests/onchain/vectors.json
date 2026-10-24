@@ -1,5 +1,5 @@
 {
-  "_comment": "ENSIP-9 record encodings. Shared contract between the indexer (decode) and the web app (encode). Sources: BIP-173 and BIP-350 test vectors, the Bitcoin genesis coinbase address, Solana's well-known program IDs.",
+  "_comment": "ENSIP-9 record encodings. Shared contract between the API (decode) and the web app (encode). Sources: BIP-173 and BIP-350 test vectors, the Bitcoin genesis coinbase address, Solana's well-known program IDs.",
   "valid": [
     {
       "label": "BTC P2PKH (genesis coinbase)",

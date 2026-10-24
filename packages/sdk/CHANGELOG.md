@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0
+
+The Ponder indexer is retired: on-chain reads are served by the Paytag API, which reads the Base contracts directly.
+
+- **Breaking:** `DEFAULT_INDEXER_URL` (the `indexerUrl` default) is now `https://api.paytag.dev/onchain`. `https://indexer.paytag.dev` is shut down, so earlier versions' `resolveViaIndexer` fails with `NETWORK_ERROR` unless `indexerUrl` points at the new endpoints. Response shapes are unchanged.
+- `resolveViaIndexer` takes `minBlock` (`bigint | number`): the answer must reflect at least that block, e.g. one you just wrote in. It skips the cache; the server answers 503 if its RPC is still behind.
+- `onchain.status` is never `syncing` any more (there is no sync lag in a direct read). The value stays in `OnchainLinkStatus` for now and will be removed in the next minor.
+- `records` from `resolveViaIndexer` now hold the coin types the Paytag app writes (ETH, BTC, SOL, Base): the contracts can't list a name's records, so a record set for another coin type isn't returned.
+
 ## 0.6.0
 
 Hardening: the SDK no longer passes a server's answer through as-is. **Breaking** (pre-1.0) where noted.

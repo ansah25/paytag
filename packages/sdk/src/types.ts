@@ -7,7 +7,9 @@ export type ChainId = (typeof SUPPORTED_CHAINS)[number];
  * - `linked`: its on-chain owner is the account's verified Ethereum address.
  * - `not_linked`: someone holds it on-chain, but not that address.
  * - `none`: not registered on-chain.
- * - `syncing` / `unavailable`: the API couldn't tell right now (indexer syncing / unreachable).
+ * - `unavailable`: the API couldn't read the chain right now.
+ * - `syncing`: no longer sent (the API reads the contracts directly, so there's no sync lag).
+ *   Kept in the type for compatibility; it will be removed in the next minor release.
  */
 export type OnchainLinkStatus = 'linked' | 'not_linked' | 'none' | 'syncing' | 'unavailable';
 
@@ -35,8 +37,8 @@ export interface AvailabilityResponse {
 
 export const DEFAULT_BASE_URL = 'https://api.paytag.dev';
 
-/** Paytag's on-chain indexer (Ponder over the Base registry + resolver). */
-export const DEFAULT_INDEXER_URL = 'https://indexer.paytag.dev';
+/** The Paytag API's on-chain endpoints (reads of the Base registry + resolver). */
+export const DEFAULT_INDEXER_URL = 'https://api.paytag.dev/onchain';
 
 /** One resolver record as stored on-chain (ENSIP-9 coin type → bytes). */
 export interface OnchainRecord {

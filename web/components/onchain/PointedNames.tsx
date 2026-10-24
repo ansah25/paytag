@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { shortAddress } from '@/lib/format';
-import { visiblePointing, type PointingName } from '@/lib/onchain/indexer';
+import { visiblePointing, type PointingName } from '@/lib/onchain/reads';
 import { addressUrl } from '@/lib/onchain/records';
 import { useOnchainTx } from '@/lib/onchain/useOnchainTx';
 import { TxStatus } from './TxStatus';

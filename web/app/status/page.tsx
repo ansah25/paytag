@@ -5,16 +5,15 @@ import { AutoRefresh } from '@/components/status/AutoRefresh';
 import { Card } from '@/components/ui/Card';
 import { cx } from '@/lib/cx';
 import { CHAIN_ID, REGISTRY_ADDRESS, RESOLVER_ADDRESS, START_BLOCK } from '@/lib/onchain/generated/deployment';
-import { INDEXER_URL } from '@/lib/onchain/indexer';
 import { EXPLORER, addressUrl } from '@/lib/onchain/records';
-import { BASE_BLOCK_SECONDS, getStatus, type Health } from '@/lib/status';
+import { getStatus, type Health } from '@/lib/status';
 
 // Live checks on every request (and every 15s via AutoRefresh).
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Status · Paytag',
-  description: 'Live health of the Paytag API, the on-chain indexer and the Base contracts.',
+  description: 'Live health of the Paytag API, its on-chain reads and the Base contracts.',
 };
 
 const LABEL: Record<Health, string> = { ok: 'Operational', degraded: 'Degraded', down: 'Down' };
@@ -80,8 +79,7 @@ function Contract({ name, address }: { name: string; address: string }) {
 
 export default async function StatusPage() {
   const s = await getStatus();
-  const { indexer } = s;
-  const lagSeconds = indexer.lagBlocks === null ? null : indexer.lagBlocks * BASE_BLOCK_SECONDS;
+  const { onchain } = s;
 
   return (
     <section className="mx-auto grid w-full max-w-content gap-6 px-6 pb-24 pt-12">
@@ -100,7 +98,7 @@ export default async function StatusPage() {
           title="Paytag API"
           detail={
             <>
-              Off-chain names and profiles ·{' '}
+              Off-chain names and profiles · {s.api.reason} ·{' '}
               <a className={link} href="https://api.paytag.dev/health" {...ext}>
                 api.paytag.dev
               </a>
@@ -111,26 +109,24 @@ export default async function StatusPage() {
           <Pill health={s.api.health} />
         </Row>
         <Row
-          title="On-chain indexer"
+          title="On-chain reads"
           detail={
             <>
-              {indexer.reason}
-              {lagSeconds !== null && lagSeconds > 0 && ` (~${lagSeconds}s)`} ·{' '}
-              <a className={link} href={`${INDEXER_URL}/status`} {...ext}>
-                {INDEXER_URL.replace(/^https?:\/\//, '')}
-              </a>
+              {onchain.reason}: lookups read the Base contracts directly
+              {onchain.latencyMs !== null && ` · ${onchain.latencyMs} ms`}
             </>
           }
         >
-          <Pill health={indexer.health} />
+          <Pill health={onchain.health} />
         </Row>
         <Row
           title="Blocks"
           detail={
             <>
-              Indexed{' '}
-              <span className="font-mono text-ink">{indexer.syncedBlock?.toLocaleString('en-US') ?? '—'}</span> · Chain head{' '}
-              <span className="font-mono text-ink">{indexer.headBlock?.toLocaleString('en-US') ?? 'unavailable'}</span>
+              Chain head{' '}
+              <span className="font-mono text-ink">{onchain.headBlock?.toLocaleString('en-US') ?? 'unavailable'}</span> · Name lists
+              synced to <span className="font-mono text-ink">{onchain.syncedBlock?.toLocaleString('en-US') ?? '—'}</span> (they
+              catch up whenever a list is read)
             </>
           }
         />
@@ -163,15 +159,13 @@ export default async function StatusPage() {
           }
         />
         <Row
-          title="Indexer API"
+          title="On-chain API"
           detail={
             <>
+              Under <span className="font-mono text-ink">api.paytag.dev/onchain</span>:{' '}
               <span className="font-mono text-ink">/resolve/:name</span>, <span className="font-mono text-ink">/reverse/:address</span>,{' '}
               <span className="font-mono text-ink">/available/:name</span>, <span className="font-mono text-ink">/names?owner=</span>,{' '}
-              <a className={link} href={`${INDEXER_URL}/graphql`} {...ext}>
-                GraphQL
-              </a>
-              . Rate-limited per IP; a 429 carries Retry-After.
+              <span className="font-mono text-ink">/pointing?account=</span>. Rate-limited per IP; a 429 carries Retry-After.
             </>
           }
         />

@@ -479,6 +479,28 @@ describe('Paytag.resolveViaIndexer', () => {
     });
   });
 
+  it('defaults to the on-chain endpoints of the API', () => {
+    expect(DEFAULT_INDEXER_URL).toBe('https://api.paytag.dev/onchain');
+  });
+
+  it('passes minBlock and skips the cache for it', async () => {
+    const fetchMock = jest.fn(async () => mockResponse(true, 200, okOnchain()));
+    const client = new Paytag({ indexerUrl, indexerCache: true, fetch: fetchMock });
+    await client.resolveViaIndexer('derrick');
+    await client.resolveViaIndexer('derrick', { minBlock: 49_000_000n });
+    await client.resolveViaIndexer('derrick', { minBlock: 49_000_001 });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenNthCalledWith(2, `${indexerUrl}/resolve/derrick?minBlock=49000000`, expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, `${indexerUrl}/resolve/derrick?minBlock=49000001`, expect.any(Object));
+  });
+
+  it.each([-1, 1.5, Number.NaN, '5', -1n])('refuses minBlock %p', async (minBlock) => {
+    const fetchMock = jest.fn();
+    const client = new Paytag({ indexerUrl, fetch: fetchMock });
+    await expect(client.resolveViaIndexer('derrick', { minBlock: minBlock as number })).rejects.toMatchObject({ code: 'CONFIG_ERROR' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('validates the username locally', async () => {
     const fetchMock = jest.fn();
     const client = new Paytag({ indexerUrl, fetch: fetchMock });

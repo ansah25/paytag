@@ -4,13 +4,13 @@
 
 > Username-to-wallet identity layer for multi-chain crypto payments.
 
-Replace `0x4f3edf83…d8a3c2` with `@derrick`. Paytag maps one human-readable name to your addresses on Ethereum, Base, Solana and Bitcoin. Names live in an immutable, admin-free registry on Base; an indexer serves them over HTTP; an npm SDK resolves them in one call; a web app registers and manages them from your wallet.
+Replace `0x4f3edf83…d8a3c2` with `@derrick`. Paytag maps one human-readable name to your addresses on Ethereum, Base, Solana and Bitcoin. Names live in an immutable, admin-free registry on Base; the API reads them straight from the contracts; an npm SDK resolves them in one call; a web app registers and manages them from your wallet.
 
 ### Try it (no wallet needed)
 
-- **Resolve a name:** [paytag.dev/on-chain/derrick](https://www.paytag.dev/on-chain/derrick), or the raw API: [indexer.paytag.dev/resolve/derrick](https://indexer.paytag.dev/resolve/derrick)
+- **Resolve a name:** [paytag.dev/on-chain/derrick](https://www.paytag.dev/on-chain/derrick), or the raw API: [api.paytag.dev/onchain/resolve/derrick](https://api.paytag.dev/onchain/resolve/derrick)
 - **Read the contracts:** [`PaytagRegistry`](https://sepolia.basescan.org/address/0x351fed5e079c421493a485c1b90cc115394c5cb7#code) and [`PaytagResolver`](https://sepolia.basescan.org/address/0x0b8bc41a7ce8cd5acd21e62a5be40ac281627f66#code), verified on Basescan
-- **Check it's all up:** [paytag.dev/status](https://www.paytag.dev/status) (API, indexer lag vs. chain head, contracts, SDK version)
+- **Check it's all up:** [paytag.dev/status](https://www.paytag.dev/status) (API and database, on-chain reads, contracts, SDK version)
 - **Run it locally** in three commands: [Quick start](#quick-start)
 
 ## Live
@@ -18,7 +18,7 @@ Replace `0x4f3edf83…d8a3c2` with `@derrick`. Paytag maps one human-readable na
 - **API:** [api.paytag.dev](https://api.paytag.dev/health). Try [`/resolve/derrick`](https://api.paytag.dev/resolve/derrick)
 - **dApp:** <https://www.paytag.dev>. On-chain names at [`/on-chain`](https://www.paytag.dev/on-chain); live health at [`/status`](https://www.paytag.dev/status)
 - **SDK:** [`@paytagdev/sdk`](https://www.npmjs.com/package/@paytagdev/sdk) on npm
-- **On-chain indexer:** [indexer.paytag.dev](https://indexer.paytag.dev/status). Try [`/resolve/derrick`](https://indexer.paytag.dev/resolve/derrick) or [`/status`](https://indexer.paytag.dev/status)
+- **On-chain reads:** under [api.paytag.dev/onchain](https://api.paytag.dev/onchain/resolve/derrick). Try [`/onchain/resolve/derrick`](https://api.paytag.dev/onchain/resolve/derrick). (The Ponder indexer at `indexer.paytag.dev` is retired; see [On-chain reads](#on-chain-reads).)
 - **Contracts (Base Sepolia):** [`PaytagRegistry`](https://sepolia.basescan.org/address/0x351fed5e079c421493a485c1b90cc115394c5cb7#code) · [`PaytagResolver`](https://sepolia.basescan.org/address/0x0b8bc41a7ce8cd5acd21e62a5be40ac281627f66#code)
 
 ## SDK
@@ -42,23 +42,23 @@ Zero config — the SDK ships with `https://api.paytag.dev` as the default base 
 flowchart TD
   U["User + browser wallet"] --> W["Web app<br/>paytag.dev"]
   W -->|"signed tx"| C["PaytagRegistry + PaytagResolver<br/>Base Sepolia, immutable"]
-  C -->|"events"| I["Ponder indexer<br/>+ Postgres"]
-  I -->|"REST"| S["@paytagdev/sdk"]
-  I -->|"REST + GraphQL"| W
+  O["API<br/>Express + Supabase"] -->|"eth_call (Multicall3)"| C
+  O -->|"events, lazily<br/>(lists only)"| C
+  O -->|"/onchain/*"| S["@paytagdev/sdk"]
+  O -->|"/onchain/*"| W
   S --> W
   S --> X["Any app"]
-  W --> O["Off-chain API<br/>Express + Supabase"]
-  S -.->|"default source"| O
+  S -.->|"default source: off-chain /resolve"| O
 ```
 
 - **Base is canonical.** Ownership lives only in the registry; Solana, Bitcoin and other EVM chains are *records* on the name (ENSIP-9 coin types), never parallel deployments.
-- **The contracts are immutable and admin-free.** The indexer is a read model that can be rebuilt from chain events at any time; it refuses to answer (503) until its backfill completes rather than serve partial data, and its API is rate-limited per IP.
-- **One SDK, two sources.** `resolve()` reads the off-chain API (the original MVP), `resolveViaIndexer()` the on-chain registry, with the same response shape.
-- **[`/status`](https://www.paytag.dev/status)** probes the API, the indexer (lag vs. chain head) and the contracts live.
+- **The contracts are immutable and admin-free.** Lookups read current contract state directly, so there's no sync lag and nothing to go stale. The two lists that need history (names by owner, names pointing at an address) come from an events table that catches up only when a list is read, and every entry is re-checked against live state. RPC cost scales with use, not with time.
+- **One SDK, two sources.** `resolve()` reads the off-chain API (the original MVP), `resolveViaIndexer()` the on-chain registry (through the API's `/onchain` endpoints), with the same response shape.
+- **[`/status`](https://www.paytag.dev/status)** probes the API (and its database), an on-chain lookup and the contracts live.
 
 The design decisions behind the records, normalization, reverse resolution and the v0.2 contract fixes are written up in [Why Paytag stores a Solana address as 32 raw bytes on Base](https://paragraph.com/@jhaylow/why-paytag-stores-a-solana-address-as-32-raw-bytes-on-base) (published on Paragraph; source in [`writing/`](writing/cross-chain-records.md)).
 
-Every on-chain write in the app follows the same lifecycle (one hook, `useOnchainTx`, driven by a unit-tested state machine). Registration is shown: two transactions, a commit that hides the name and a reveal that claims it. Each write is simulated first, so failures surface before the wallet opens. Record edits work the same way, and on a timeout they keep the new value and re-check every 10 s until the indexer agrees:
+Every on-chain write in the app follows the same lifecycle (one hook, `useOnchainTx`, driven by a unit-tested state machine). Registration is shown: two transactions, a commit that hides the name and a reveal that claims it. Each write is simulated first, so failures surface before the wallet opens. Record edits work the same way. After the receipt, every on-chain read asks the API for at least that block (`minBlock`), so the page reflects the write without waiting for anything:
 
 ```mermaid
 sequenceDiagram
@@ -67,7 +67,7 @@ sequenceDiagram
   participant A as Web app
   participant W as Wallet
   participant B as Base Sepolia
-  participant I as Indexer
+  participant P as API
   U->>A: Register @alice
   Note over A: Step 1: reserve (commit). The name stays hidden
   A->>B: Simulate commit(hash(alice, wallet, secret))
@@ -88,15 +88,10 @@ sequenceDiagram
     else Signed
       W->>B: Broadcast register
       A->>B: Wait for receipt (a cancel or replacement counts as failure)
-      B-->>I: NameRegistered + Transfer events
-      loop Until indexed block ≥ receipt block (max 60 s)
-        A->>I: GET /status
-      end
-      alt Indexer caught up
-        A-->>U: Done, with Basescan link
-      else Timed out
-        A-->>U: "Confirmed, display may lag" (the name stays shown as yours)
-      end
+      A-->>U: Done, with Basescan link
+      A->>P: GET /onchain/names?owner=…&minBlock=<receipt block>
+      P->>B: Multicall3: owner, epoch, records (at ≥ that block)
+      P-->>A: The new name, already yours
     end
   end
 ```
@@ -104,7 +99,7 @@ sequenceDiagram
 | Layer | Choice |
 |---|---|
 | Contracts | Solidity 0.8.26, Foundry (unit, fuzz, invariant, gas snapshots) |
-| Indexer | Ponder 0.18, Postgres, Hono API; self-hosted on Coolify |
+| On-chain reads | viem + Multicall3 against public Base Sepolia RPC (keyed fallback); lists from a Supabase events table synced via Blockscout |
 | SDK | TypeScript, tsup (ESM + CJS), zero runtime dependencies |
 | Web app | Next.js 14, wagmi v2 + viem, Vercel |
 | Off-chain API | Node.js, Express, TypeScript, Zod, Supabase (Postgres + RLS), Fly.io |
@@ -112,7 +107,7 @@ sequenceDiagram
 
 ## Quick start
 
-Runs the web app on your machine against the live API and indexer (Node ≥ 20):
+Runs the web app on your machine against the live API (Node ≥ 20):
 
 ```bash
 git clone --recurse-submodules https://github.com/ansah25/paytag && cd paytag
@@ -125,7 +120,7 @@ On Windows PowerShell, set the variable first: `$env:NEXT_PUBLIC_API_BASE_URL="h
 Everything on-chain works from there (look up, register, manage, with a Base Sepolia wallet), as does resolving and sending to off-chain names. Signing in to claim an off-chain name needs your own API, because the hosted one only accepts sign-ins from paytag.dev. If a page can't reach the hosted services, check [paytag.dev/status](https://www.paytag.dev/status); the full-local setup below runs without them.
 
 <details>
-<summary>Full-local setup: your own API, indexer and contracts</summary>
+<summary>Full-local setup: your own API and contracts</summary>
 
 **API** (needs a Supabase project; the free tier is fine):
 
@@ -134,21 +129,14 @@ cp .env.example .env
 # Fill in SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET (32+ chars)
 ```
 
-Apply the schema once in your Supabase SQL editor by running each file in [`supabase/migrations/`](supabase/migrations) in order (`0001_init.sql`, `0002_owner_wallet_unique.sql`, `0003_profiles_and_verification.sql`), then:
+Apply the schema once in your Supabase SQL editor by running each file in [`supabase/migrations/`](supabase/migrations) in order (`0001_init.sql` through `0008_onchain_events.sql`), then:
 
 ```bash
 npm run dev       # API on http://localhost:3000
 npm run web:dev   # web app on http://localhost:3002, using the local API by default
 ```
 
-**Indexer** (Node ≥ 22.12; embedded PGlite, no Postgres needed):
-
-```bash
-cd indexer && npm install
-PONDER_RPC_URL_84532=<base-sepolia-rpc> npm run dev
-```
-
-Point the web app at it with `NEXT_PUBLIC_INDEXER_URL=http://localhost:42069`.
+The local API reads Base Sepolia over the public RPC; its on-chain lists catch up on the first request (or run `npx ts-node --transpile-only scripts/onchain-backfill.ts` once).
 
 **Contracts:** `cd contracts && forge test` (see [Contract tests](#contract-tests)).
 
@@ -208,7 +196,7 @@ The contracts are covered on every metric, not just lines: **100% of lines, stat
 | `PaytagRegistry.sol` | 100% (59/59) | 100% (64/64) | 100% (13/13) | 100% (12/12) |
 | `PaytagResolver.sol` | 100% (28/28) | 100% (39/39) | 100% (10/10) | 100% (5/5) |
 
-Every package's tests run in CI on each push: contracts (unit, fuzz, invariants, and a gas-snapshot drift check), backend, SDK, indexer, and web (including a drift check that the app's copies of the ABIs, codec and name rules match the indexer's).
+Every package's tests run in CI on each push: contracts (unit, fuzz, invariants, and a gas-snapshot drift check), backend, SDK, and web (including a drift check that the app's copies of the ABIs, codec and name rules match the API's).
 
 #### Gas
 
@@ -240,50 +228,37 @@ The reserved-name check costs about 800 gas per `register` (28 hash comparisons;
 
 What I didn't change, and why: writes are dominated by the 22.1k cold `SSTORE`, which no layout trick avoids. A 32-byte Solana key costs two slots (length + data) because Solidity only inlines `bytes` of up to 31 bytes. Packing it into one `bytes32` would need a coin-type-specific layout, adding complexity for about 20k gas once per record. I wasn't willing to make that trade.
 
-### Indexer
+### On-chain reads
 
-Live at **<https://indexer.paytag.dev>**, self-hosted on Coolify with Postgres. [`indexer/`](indexer) is a [Ponder](https://ponder.sh) 0.18 app that indexes `NameRegistered`, `Transfer`, `RecordSet` and `ReverseSet` from block 48167395 (the v0.2 deployment) into Postgres, and serves a public read API. New on-chain writes show up within about 3 seconds.
+Served by the API under **[api.paytag.dev/onchain](https://api.paytag.dev/onchain/resolve/derrick)**, same response shapes as the Ponder indexer that used to serve them (so the SDK's `resolveViaIndexer` reads them unchanged). The indexer polled the chain every second, roughly 86,000 RPC calls a day, to watch two contracts that emit almost nothing; it's retired, and RPC cost now scales with reads instead of with time.
 
 | Endpoint | Returns |
 |---|---|
-| `GET /resolve/:name` | `{ username, node, owner, registeredAt, epoch, recordsReset, addresses, records, source: "onchain" }`. Same base shape as the API's `/resolve`; `records` holds every raw record with its decoded address. `epoch` counts transfers to a different owner; `recordsReset` is true when the name changed owner and the current owner hasn't set a record since |
-| `GET /reverse/:address` | `{ address, username }`. `username` is null unless the claim is still forward-verified and current |
-| `GET /available/:name` | `{ available, reason?, suggestions }`. Format, the registry's reserved list, then taken |
-| `GET /names?owner=0x…` | Names currently owned by an address |
-| `POST /graphql` | Ponder's generated GraphQL over the raw tables |
-| `GET /status`, `/ready` | Synced block per chain; 200 once backfill is complete |
+| `GET /onchain/resolve/:name` | `{ username, node, owner, registeredAt, epoch, recordsReset, addresses, records, source: "onchain" }`. Same base shape as the API's `/resolve`. `epoch` counts transfers to a different owner; `recordsReset` is true when the name changed owner and the current owner hasn't set a record since |
+| `GET /onchain/reverse/:address` | `{ address, username }`. `username` is null unless the claim is live (`PaytagResolver.reverse()`) |
+| `GET /onchain/available/:name` | `{ available, reason?, suggestions }`. Format, the registry's reserved list, then taken |
+| `GET /onchain/names?owner=0x…` | Names an address owns now |
+| `GET /onchain/pointing?account=0x…` | Names whose ETH record is the address but which it doesn't own (candidates for its primary name) |
 
-**Rate limits**: each client IP gets 120 requests a minute on the REST routes and 60 on `/graphql` (a burst up to the limit, then a steady refill). Over the limit, the answer is `429 { code: "RATE_LIMITED" }` with `Retry-After`; every limited response carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`. `/status`, `/ready` and `/health` aren't limited. The client IP is the rightmost `X-Forwarded-For` entry, the one the reverse proxy appends, so the indexer must only be reachable through that proxy. Server-to-server callers can send `x-paytag-server-key: <key>` to skip the limit: the web app's server-rendered pages (they all share Vercel's addresses) and the Paytag API each have their own key. Limits are in memory, per process.
+`resolve`, `reverse`, `names` and `pointing` take `?minBlock=<n>`: the answer reflects at least block `n` (the app passes the block of the write it just made), or is `503 { code: "ONCHAIN_BEHIND" }` if the RPC hasn't reached it. An RPC outage is `503 { code: "ONCHAIN_UNAVAILABLE" }`.
 
-Until backfill completes, every route above answers `503 { code: "NOT_READY" }` rather than serving partial data (which would claim registered names are free). Readiness is read from the deployment's own database, the same flag as `/ready`. Route errors return a generic `{ code: "INTERNAL_ERROR" }`, and GraphQL masks error details when `NODE_ENV=production` (the Docker image sets it).
+How it works:
 
-Read-model rules the indexer enforces:
+- **Lookups read the contracts directly.** One `eth_call` to Multicall3 per lookup: owner, epoch, the ETH / Base / SOL / BTC records and the block number, all at the same block. Current state, so there's no sync lag and nothing to go stale. Cached for 30s like the rest of the API (negative answers too); `minBlock` skips an entry read before that block. The contracts can't list a name's records, so `records` holds the coin types the app writes.
+- **Lists come from an events table that syncs lazily.** `onchain_events` (migration 0008) keeps `NameRegistered`, `Transfer` and `RecordSet`. When a list is requested, the API catches the table up to `head - 10` (a reorg margin), reads the few blocks past it fresh, and re-checks every candidate against live state. So a stale or reorged row can make a list miss a name for a moment, never show a wrong one. The catch-up uses Blockscout's logs API (one call per contract for any gap); if that fails, `eth_getLogs` in 200-block chunks (the public RPC's cap), at most `ONCHAIN_MAX_CHUNKS_PER_REQUEST` per request, with progress persisted.
+- **Shared state lives in Postgres.** The cursor is one row, shared by every Fly machine, and a lease on it (taken with a conditional `UPDATE`, expiring by itself) makes a second concurrent sync skip rather than duplicate work. Not an advisory lock: PostgREST runs each call on a pooled connection, so a session lock would stick to whichever connection took it.
+- **RPC endpoints.** The public `https://sepolia.base.org` first (from `web/lib/endpoints.json`, the same entry the CSP allows), then `BASE_SEPOLIA_RPC_FALLBACK_URL` if set (a keyed provider; server-side only).
+- **Reserved names** are answered locally from the registry's hard-coded hashes (generated into `src/onchain/generated/reservedNodes.ts` and drift-checked in CI).
+- Records use ENSIP-9 encodings: SOL is the raw 32-byte key, BTC is the `scriptPubKey`, EVM chains are 20 address bytes. Test vectors are in [`tests/onchain/vectors.json`](tests/onchain/vectors.json).
 
-- Every `RecordSet` payload equals what `addr` returns afterwards. An empty value deletes the record; the zero ETH address can't be written.
-- **Transfers clear records**: a transfer to a different owner starts a new epoch on-chain, where every earlier record is unreachable; the indexer deletes that name's rows to match. Self-transfers change nothing. After a transfer away and back (A → B → A), A starts from empty records too.
-- **Reverse validity**: not derivable from `ReverseSet` alone (a coin-60 `RecordSet` silently invalidates claims on the old address, and a transfer invalidates every claim on the name). `/reverse` serves `claim[a]` only while the name's current ETH record equals `a`, exactly as `PaytagResolver.reverse()` checks it.
-- **Reserved names** are answered locally from the registry's hard-coded hashes (generated into `indexer/abis/reservedNodes.ts` and drift-checked in CI), with no RPC call per request.
-- Records use ENSIP-9 encodings: SOL is the raw 32-byte key, BTC is the `scriptPubKey`, EVM chains are 20 address bytes. Test vectors are in [`indexer/test/vectors.json`](indexer/test/vectors.json).
-
-Run it locally (Node ≥ 22.12; uses embedded PGlite, no Postgres needed):
-
-```bash
-cd indexer && npm install
-PONDER_RPC_URL_84532=<base-sepolia-rpc> npm run dev
-```
-
-Production runs the [`Dockerfile`](indexer/Dockerfile) with `DATABASE_URL`, `DATABASE_SCHEMA` (a prefix, e.g. `paytag`) and `PONDER_RPC_URL_84532` set; it uses about 200 MB of RAM. Optional: `INDEXER_SERVER_KEYS` (comma-separated long random secrets, one per consumer: the web app and the API each get their own, so one can be rotated alone; the older single `INDEXER_SERVER_KEY` is still accepted, but remove it once consumers have their own keys), and `RATE_LIMIT_PER_MIN` / `RATE_LIMIT_GRAPHQL_PER_MIN` to change the defaults (120 / 60).
-
-**Schemas and deploys.** `ponder start` refuses a schema created by a different build of the indexer ("previously used by a different Ponder app") or one another live process still holds. A rolling update (Coolify starts the new container while the old one serves) needs both to be avoided, even when the code didn't change. So [`docker-start.sh`](indexer/docker-start.sh) runs each container on its own schema, `<DATABASE_SCHEMA>_<random id>`, printed at startup. The id is created on the container's first start, so a restart of the same container resumes its schema (crash recovery) and a new deploy syncs a fresh one from the deploy block, which takes seconds because Ponder caches RPC data in a shared schema of its own (`ponder_rpc_cache_1`). Coolify switches over once the new container's `/ready` passes. If a chain reorg ever goes deeper than Ponder's 180-second window, the indexer stops rather than serve state it can't vouch for; redeploy it (not just restart), so a new container syncs a fresh schema. Old schemas stay behind: run `npx ponder db list` inside the running container, then `DROP SCHEMA <name> CASCADE;` the old `paytag_*` ones. `npx ponder db prune` also works, but it drops every Ponder schema in the database whose process isn't heartbeating right now, including the live one if it happens to be restarting.
-
-Operational note: Ponder's own logs print the full RPC URL when an RPC request fails, and with Alchemy that includes the API key. The key never reaches HTTP clients, but treat the indexer's logs as secret, or use a key restricted to this app.
+Rollout of a fresh deployment: run migration 0008, then `npx ts-node --transpile-only scripts/onchain-backfill.ts` once, so no request ever pays for the backfill. A daily [keep-alive workflow](.github/workflows/keepalive.yml) reads Postgres (a free Supabase project pauses after a week without activity) and keeps the events table near the head.
 
 ### Known trade-offs
 
 - **Free, first-come, permanent registration.** Commit-reveal stops a pending reveal from being raced, as long as it lands within 15 seconds of being broadcast (before a competitor's fresh commitment could mature), but not first-come squatting: anyone can register any free name for the gas of a commit and a register, with no fees or expiry. That's acceptable on a testnet; a mainnet deployment would want pricing or expiry.
 - **Registration is two transactions,** at least 15 seconds apart. The app runs the countdown and keeps the commitment's secret in the browser until the reveal; losing it just means reserving again.
-- **A transfer clears everything, including a return.** After a transfer away and back (A → B → A), A starts from empty records and has to set them again. The app shows such a name as *Unconfigured*, and the indexer reports `recordsReset`, rather than letting it quietly resolve to nothing.
-- **Two namespaces, linked by ownership.** On-chain names (the Base registry, at `/on-chain/<name>`) and Paytag accounts (the off-chain API, at `paytag.dev/<name>`) keep separate records. A Paytag account is **linked** when the on-chain name of the same spelling is owned by the account's *verified* Ethereum address; the API checks the indexer when it builds a resolution (cached in memory for 30s, like the rest of it) and stores nothing in the database. New Paytag signups can't take a name held on-chain by another wallet (`409 USERNAME_TAKEN_ONCHAIN`), but the contract is permissionless, so the reverse can't be enforced: the `/on-chain` app warns and asks for confirmation instead. Only public data is compared, so the link status never reveals which wallet registered an account. While the registry is on testnet, on-chain isn't canonical: if the indexer is down, signups go ahead.
+- **A transfer clears everything, including a return.** After a transfer away and back (A → B → A), A starts from empty records and has to set them again. The app shows such a name as *Unconfigured*, and the API reports `recordsReset`, rather than letting it quietly resolve to nothing.
+- **Two namespaces, linked by ownership.** On-chain names (the Base registry, at `/on-chain/<name>`) and Paytag accounts (the off-chain API, at `paytag.dev/<name>`) keep separate records. A Paytag account is **linked** when the on-chain name of the same spelling is owned by the account's *verified* Ethereum address; the API reads the registry when it builds a resolution (cached in memory for 30s, like the rest of it) and stores nothing in the database. New Paytag signups can't take a name held on-chain by another wallet (`409 USERNAME_TAKEN_ONCHAIN`), but the contract is permissionless, so the reverse can't be enforced: the `/on-chain` app warns and asks for confirmation instead. Only public data is compared, so the link status never reveals which wallet registered an account. While the registry is on testnet, on-chain isn't canonical: if the chain can't be read, signups go ahead.
 - **On-chain reads cost a registry call.** `addr` and `reverse` read the current epoch from the registry, about 5.4k gas inside a transaction. Free off-chain.
 - **ASCII-only names.** This removes Unicode homoglyphs entirely. ASCII lookalikes (`0`/`o`, `1`/`l`) remain, so names are displayed in a monospace font.
 - **Fixed reserved list.** The contract has no admin, so the blocklist can't change after deployment. Adding a reserved name means a redeploy, and the drift test enforces that.
@@ -316,9 +291,9 @@ cd contracts && forge test
 
 Sign-in nonces are stateless: each carries its issue time and a MAC binding it to the wallet, and nothing is stored when one is issued, so requesting a nonce can never invalidate someone else's. They expire after `NONCE_TTL_SECONDS` and are single-use (spent nonces are recorded on successful sign-in and remembered well past their lifetime). `/auth/nonce`, `/auth/verify` and `/register` share a limit of 20 requests a minute per client IP. Every string input has a length cap, and published addresses are checksum-validated per chain (EIP-55, base58check, bech32/bech32m, 32-byte Solana keys).
 
-Public read endpoints (`/resolve`, `/available`, `/health`) are CORS-open. `/resolve` responses carry `Cache-Control: public, max-age=30, stale-while-revalidate=60`. `/resolve` and `/available` share a limit of 120 requests a minute per client IP (per API machine); over it, `429 { code: "RATE_LIMITED" }` with `Retry-After`. In production the API sits behind Cloudflare: a Transform Rule adds a secret `x-paytag-edge` header, the API refuses requests without it (except `/health`, for Fly's checks), and the limit keys on Cloudflare's `CF-Connecting-IP`. IPv6 clients are limited per /64. Roll out in this order: add the Transform Rule first (harmless on its own), then set `EDGE_SECRET` on Fly; the other way round refuses every real request. `/ping` is `/health` behind the guard, and www.paytag.dev/status probes it, so a mismatch shows there as the API being down. Only one secret is accepted, so rotating it means a short window of 403s between changing the rule and the Fly secret.
+Public read endpoints (`/resolve`, `/available`, `/onchain/*`, `/health`) are CORS-open. `/resolve` responses carry `Cache-Control: public, max-age=30, stale-while-revalidate=60`. `/resolve`, `/available` and `/onchain/*` share a limit of 120 requests a minute per client IP (per API machine; the web app's server-rendered pages present `API_SERVER_KEY` instead); over it, `429 { code: "RATE_LIMITED" }` with `Retry-After`. In production the API sits behind Cloudflare: a Transform Rule adds a secret `x-paytag-edge` header, the API refuses requests without it (except `/health`, for Fly's checks), and the limit keys on Cloudflare's `CF-Connecting-IP`. IPv6 clients are limited per /64. Roll out in this order: add the Transform Rule first (harmless on its own), then set `EDGE_SECRET` on Fly; the other way round refuses every real request. `/ping` is `/health` behind the guard (it also reads Postgres), and www.paytag.dev/status probes it, so a mismatch shows there as the API being down. Only one secret is accepted, so rotating it means a short window of 403s between changing the rule and the Fly secret.
 
-`onchain.status` is `linked` (the on-chain name's owner is the verified `ethereum` address), `not_linked` (held on-chain, by another address), `none` (not registered on-chain), or `syncing` / `unavailable` when the indexer couldn't answer. The API reads the indexer with `INDEXER_URL` and its own `INDEXER_SERVER_KEY`; with those unset, the status is always `unavailable` and nothing is gated. Lookups reuse kept-alive connections (about 120ms warm, about 500ms cold); `/resolve` and `/available` wait up to 800ms and `/register` up to 1s, then carry on without the answer.
+`onchain.status` is `linked` (the on-chain name's owner is the verified `ethereum` address), `not_linked` (held on-chain, by another address), `none` (not registered on-chain), or `unavailable` when the chain couldn't be read. (`syncing` is no longer sent: the API reads the registry directly.) `/resolve` and `/available` wait up to 800ms for the read and `/register` up to 1s, then carry on without the answer.
 
 **Resolution response**
 
@@ -366,14 +341,15 @@ Lowercase, 3–20 characters, `[a-z0-9_]`. One username per wallet.
 ├── src/                  # Backend (Express + TS)
 │   ├── config/           # env, supabase client
 │   ├── controllers/      # route handlers (thin)
-│   ├── services/         # auth, user, wallet (business logic)
+│   ├── onchain/          # contract reads, ENSIP-9 codec, generated ABIs
+│   ├── services/         # auth, user, wallet, on-chain (business logic)
 │   ├── middleware/       # auth, validate, errorHandler
 │   ├── routes/           # router wiring
 │   ├── utils/
 │   ├── app.ts
 │   └── index.ts
 ├── contracts/            # Solidity registry + resolver (Foundry)
-├── indexer/              # Ponder indexer + read API for the on-chain registry
+├── scripts/              # ABI/codec codegen (export-abis.mjs), on-chain backfill
 ├── packages/sdk/         # @paytagdev/sdk (npm package)
 ├── web/                  # Next.js dApp (deployed at paytag.dev)
 ├── supabase/migrations/  # SQL schema
@@ -394,6 +370,7 @@ The repo is an npm workspace; `npm install` at the root installs everything.
 | `npm run sdk:test` | Run SDK tests |
 | `npm run web:dev` | Build the SDK, then run the web app on :3002 |
 | `npm run web:build` | Production build of the web app |
+| `npm run abis` / `abis:check` | Regenerate / drift-check the generated on-chain files (run `forge build` in `contracts/` first) |
 
 ## Roadmap
 
@@ -406,6 +383,7 @@ The repo is an npm workspace; `npm install` at the root installs everything.
 - [x] Hardening: indexer rate limits, `/status`, per-deploy indexer schemas
 - [x] Contracts v0.2: transfer epochs (a transfer clears records and the old owner's primary name, in the contract) and commit-reveal registration; SDK 0.4.0
 - [x] Link on-chain names and Paytag accounts by ownership; SDK 0.5.0
+- [x] Retire the Ponder indexer: on-chain reads straight from the contracts, lists from a lazily synced events table; SDK 0.7.0
 - [ ] Deferred: gas-sponsored registration (see [Known trade-offs](#known-trade-offs))
 - [ ] Future: ERC-20 / SPL-token sends, payment links with amounts, a mainnet deployment with registration pricing or expiry
 

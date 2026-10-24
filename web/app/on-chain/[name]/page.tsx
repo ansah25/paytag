@@ -8,10 +8,10 @@ import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { ChainDot } from '@/components/ui/ChainDot';
 import { normalizeName } from '@/lib/onchain/generated/names';
-import { indexerServerFetch } from '@/lib/onchain/serverIndexer';
+import { onchainServerFetch } from '@/lib/onchain/serverApi';
 import { RECORD_SLOTS, addressUrl } from '@/lib/onchain/records';
 
-// Rendered on the server from the indexer on every request: works with no wallet and no JS.
+// Rendered on the server from the API's on-chain reads on every request: works with no wallet and no JS.
 export const dynamic = 'force-dynamic';
 
 interface Props {
@@ -21,22 +21,25 @@ interface Props {
 type Load =
   | { kind: 'ok'; data: OnchainResolveResponse; primary: boolean }
   | { kind: 'missing' }
-  | { kind: 'syncing' }
+  | { kind: 'unavailable' }
   | { kind: 'error' };
 
 async function load(name: string): Promise<Load> {
   try {
-    const res = await indexerServerFetch(`/resolve/${encodeURIComponent(name)}`);
-    if (res.status === 404) return { kind: 'missing' };
-    if (res.status === 503) return { kind: 'syncing' };
-    if (!res.ok) return { kind: 'error' };
+    const res = await onchainServerFetch(`/resolve/${encodeURIComponent(name)}`);
+    if (!res.ok) {
+      // Only the API's own "not registered" is trusted: a bare 404 (a wrong route) isn't evidence.
+      const body = (await res.json().catch(() => null)) as { code?: unknown } | null;
+      if (res.status === 404 && body?.code === 'USER_NOT_FOUND') return { kind: 'missing' };
+      return { kind: res.status === 503 ? 'unavailable' : 'error' };
+    }
     const data = (await res.json()) as OnchainResolveResponse;
 
     // "Primary name" = the ETH address's reverse record points back here.
     let primary = false;
     const eth = data.addresses.ethereum;
     if (eth) {
-      const rev = await indexerServerFetch(`/reverse/${eth}`).catch(() => null);
+      const rev = await onchainServerFetch(`/reverse/${eth}`).catch(() => null);
       const body = rev?.ok ? ((await rev.json()) as { username: string | null }) : null;
       primary = body?.username === data.username;
     }
@@ -68,12 +71,12 @@ export default async function OnchainNamePage({ params }: Props) {
       />
     );
   }
-  if (result.kind === 'syncing' || result.kind === 'error') {
+  if (result.kind === 'unavailable' || result.kind === 'error') {
     return (
       <MessageScreen
-        kicker={result.kind === 'syncing' ? 'Catching up' : 'Something broke'}
+        kicker={result.kind === 'unavailable' ? 'Base is unreachable' : 'Something broke'}
         tone="muted"
-        title={result.kind === 'syncing' ? 'The indexer is catching up.' : 'We couldn’t reach the indexer.'}
+        title={result.kind === 'unavailable' ? 'We couldn’t read the Base registry.' : 'We couldn’t load this name.'}
         copy="On-chain data is safe; this page just can’t read it right now. Try again in a moment."
         primary={{ label: 'Try again', href: `/on-chain/${name}` }}
       />
@@ -139,8 +142,8 @@ export default async function OnchainNamePage({ params }: Props) {
         ))}
       </Card>
       <p className="text-[13px] text-ink2">
-        Read from the Paytag indexer. A transfer clears every record on-chain, so these were all set by the current
-        owner.
+        Read straight from the Base contracts. A transfer clears every record on-chain, so these were all set by the
+        current owner.
       </p>
     </section>
   );

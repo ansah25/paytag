@@ -1,44 +1,47 @@
 // Health checks for the /status page. Runs on the server only: every probe has a short timeout
 // so one slow dependency can't hold the page, and the verdicts are pure functions (tested).
 
-import { API_URL, EVM_RPC, INDEXER_URL } from './endpoints';
+import { API_URL, EVM_RPC } from './endpoints';
 
 export type Health = 'ok' | 'degraded' | 'down';
 
-/** Base produces a block every 2s; more than this many behind the head reads as degraded. */
-export const MAX_LAG_BLOCKS = 30;
 export const BASE_BLOCK_SECONDS = 2;
 
 const TIMEOUT_MS = 5_000;
 const RPC_URL = EVM_RPC.baseSepolia;
+/** A name that always exists on-chain, so the probe exercises a real lookup. */
+const PROBE_NAME = 'derrick';
 
-export interface IndexerProbe {
-  /** /status answered at all (an indexer that's starting up answers with no block yet). */
-  responded: boolean;
-  /** The block the indexer has processed, and its timestamp (unix s). */
-  synced: { block: number; timestamp: number } | null;
-  /** /ready: true once historical sync is done. null when unreachable. */
-  ready: boolean | null;
+export interface PingProbe {
+  /** HTTP status of /ping, or null when it didn't answer. */
+  status: number | null;
+  /** /ping reads Postgres; false when it said the database was unavailable. */
+  database: boolean | null;
+  /** How far the lazily synced events table has caught up (null when unknown). */
+  syncedBlock: number | null;
 }
 
 export interface StatusReport {
   checkedAt: number;
   overall: Health;
-  api: { health: Health; latencyMs: number | null };
-  indexer: { health: Health; reason: string; syncedBlock: number | null; headBlock: number | null; lagBlocks: number | null };
+  api: { health: Health; reason: string; latencyMs: number | null };
+  onchain: { health: Health; reason: string; latencyMs: number | null; syncedBlock: number | null; headBlock: number | null };
   sdkVersion: string | null;
 }
 
-export function indexerHealth(probe: IndexerProbe, headBlock: number | null): Pick<StatusReport['indexer'], 'health' | 'reason' | 'lagBlocks'> {
-  if (!probe.responded) return { health: 'down', reason: 'Not responding', lagBlocks: null };
-  if (!probe.synced) return { health: 'degraded', reason: 'Starting up', lagBlocks: null };
-  const lagBlocks = headBlock === null ? null : Math.max(0, headBlock - probe.synced.block);
-  if (probe.ready === false) return { health: 'degraded', reason: 'Catching up on history', lagBlocks };
-  if (probe.ready === null) return { health: 'degraded', reason: 'Readiness check failed', lagBlocks };
-  if (lagBlocks !== null && lagBlocks > MAX_LAG_BLOCKS) {
-    return { health: 'degraded', reason: `${lagBlocks} blocks behind`, lagBlocks };
-  }
-  return { health: 'ok', reason: lagBlocks === null ? 'Synced' : lagBlocks === 0 ? 'At the chain head' : `${lagBlocks} blocks behind`, lagBlocks };
+export function apiHealth(ping: PingProbe): Pick<StatusReport['api'], 'health' | 'reason'> {
+  if (ping.status === null) return { health: 'down', reason: 'Not responding' };
+  if (ping.status === 200 && ping.database) return { health: 'ok', reason: 'Serving' };
+  if (ping.database === false) return { health: 'degraded', reason: 'Database unavailable' };
+  return { health: 'down', reason: `Answering ${ping.status}` };
+}
+
+/** `lookupStatus`: HTTP status of an on-chain lookup through the API, or null without an answer. */
+export function onchainHealth(lookupStatus: number | null): Pick<StatusReport['onchain'], 'health' | 'reason'> {
+  if (lookupStatus === 200) return { health: 'ok', reason: 'Reading the contracts' };
+  if (lookupStatus === null) return { health: 'down', reason: 'Not responding' };
+  if (lookupStatus === 503) return { health: 'degraded', reason: 'Base RPC unavailable' };
+  return { health: 'degraded', reason: `Lookup answered ${lookupStatus}` };
 }
 
 const RANK: Record<Health, number> = { ok: 0, degraded: 1, down: 2 };
@@ -53,30 +56,34 @@ async function timed<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<{ valu
   }
 }
 
-async function probeApi(): Promise<StatusReport['api']> {
+// Server-rendered from Vercel's shared addresses: present the server key so the probes don't share
+// those addresses' rate-limit bucket. Never bundled for the browser (no NEXT_PUBLIC_ prefix).
+const serverHeaders = (): Record<string, string> | undefined => {
+  const key = process.env.API_SERVER_KEY;
+  return key ? { 'x-paytag-server-key': key } : undefined;
+};
+
+async function probePing(): Promise<{ ping: PingProbe; ms: number }> {
   const { value, ms } = await timed(async (signal) => {
     // /ping, not /health: it's behind the API's Cloudflare edge check, so a misconfigured edge
-    // (every real request refused) shows here as down.
+    // (every real request refused) shows here as down. It also reads Postgres.
     const res = await fetch(`${API_URL}/ping`, { signal, cache: 'no-store' });
-    const body = (await res.json()) as { status?: string };
-    return res.ok && body.status === 'ok';
+    const body = (await res.json().catch(() => null)) as { database?: unknown; onchainSyncedBlock?: unknown } | null;
+    return {
+      status: res.status,
+      database: body?.database === 'ok' ? true : body?.database === 'unavailable' ? false : null,
+      syncedBlock: typeof body?.onchainSyncedBlock === 'number' ? body.onchainSyncedBlock : null,
+    };
   });
-  return { health: value ? 'ok' : 'down', latencyMs: value ? ms : null };
+  return { ping: value ?? { status: null, database: null, syncedBlock: null }, ms };
 }
 
-async function probeIndexer(): Promise<IndexerProbe> {
-  // Ponder's own /status and /ready: never rate-limited, so no server key needed.
-  const [status, ready] = await Promise.all([
-    timed(async (signal) => {
-      const res = await fetch(`${INDEXER_URL}/status`, { signal, cache: 'no-store' });
-      if (!res.ok) return null;
-      const body = (await res.json()) as Record<string, { block?: { number?: number; timestamp?: number } }>;
-      const block = Object.values(body ?? {})[0]?.block;
-      return { synced: typeof block?.number === 'number' ? { block: block.number, timestamp: block.timestamp ?? 0 } : null };
-    }),
-    timed(async (signal) => (await fetch(`${INDEXER_URL}/ready`, { signal, cache: 'no-store' })).status === 200),
-  ]);
-  return { responded: status.value !== null, synced: status.value?.synced ?? null, ready: ready.value };
+async function probeOnchain(): Promise<{ status: number | null; ms: number }> {
+  const { value, ms } = await timed(async (signal) => {
+    const res = await fetch(`${API_URL}/onchain/resolve/${PROBE_NAME}`, { signal, cache: 'no-store', headers: serverHeaders() });
+    return res.status;
+  });
+  return { status: value, ms };
 }
 
 async function probeHead(): Promise<number | null> {
@@ -106,13 +113,24 @@ async function probeSdkVersion(): Promise<string | null> {
 }
 
 export async function getStatus(): Promise<StatusReport> {
-  const [api, probe, headBlock, sdkVersion] = await Promise.all([probeApi(), probeIndexer(), probeHead(), probeSdkVersion()]);
-  const verdict = indexerHealth(probe, headBlock);
+  const [{ ping, ms: pingMs }, lookup, headBlock, sdkVersion] = await Promise.all([
+    probePing(),
+    probeOnchain(),
+    probeHead(),
+    probeSdkVersion(),
+  ]);
+  const api = apiHealth(ping);
+  const onchain = onchainHealth(lookup.status);
   return {
     checkedAt: Date.now(),
-    overall: worst(api.health, verdict.health),
-    api,
-    indexer: { ...verdict, syncedBlock: probe.synced?.block ?? null, headBlock },
+    overall: worst(api.health, onchain.health),
+    api: { ...api, latencyMs: ping.status === null ? null : pingMs },
+    onchain: {
+      ...onchain,
+      latencyMs: lookup.status === null ? null : lookup.ms,
+      syncedBlock: ping.syncedBlock,
+      headBlock,
+    },
     sdkVersion,
   };
 }

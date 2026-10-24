@@ -8,7 +8,7 @@ import { PaytagRegistryAbi } from './generated/PaytagRegistryAbi';
 import { PaytagResolverAbi } from './generated/PaytagResolverAbi';
 import { REGISTRY_ADDRESS, RESOLVER_ADDRESS } from './generated/deployment';
 import { decodeTxError, type ErrorContext, type TxError } from './errors';
-import { waitForIndexer } from './indexer';
+import { noteWrite } from './reads';
 import { IDLE, isBusy, txReducer, type TxState } from './txMachine';
 import { useHydratedAccount } from './useHydratedAccount';
 
@@ -49,20 +49,18 @@ export function buildWrite(write: OnchainWrite) {
 
 export interface RunCallbacks {
   context?: ErrorContext;
-  /** Don't wait for the indexer after the receipt (for writes it doesn't index, like a commit). */
-  skipIndexer?: boolean;
   /** Signed and broadcast: apply the optimistic UI change here. */
   onSubmitted?: (hash: Hash) => void;
   /** Receipt succeeded. */
   onConfirmed?: (hash: Hash, blockNumber: bigint) => void;
-  /** Indexer caught up (or timed out: `caughtUp` false). Refetch reads here. */
+  /** Reads now reflect the write (they ask the API for at least its block). Refetch here. */
   onIndexed?: (caughtUp: boolean) => void;
   /** Any failure: roll back the optimistic change here. */
   onFailed?: (error: TxError) => void;
 }
 
 /**
- * Runs one on-chain write through simulate → sign → receipt → indexer, exposing each step as
+ * Runs one on-chain write through simulate → sign → receipt, exposing each step as
  * explicit state. Simulation runs first so most reverts surface as a readable reason before the
  * wallet opens.
  */
@@ -152,10 +150,11 @@ export function useOnchainTx() {
         dispatch({ type: 'mined', blockNumber });
         cb.onConfirmed?.(hash, blockNumber);
 
-        // Still "in flight" (busy) until this resolves; always ends in a terminal state.
-        const caughtUp = cb.skipIndexer ? true : await waitForIndexer(blockNumber);
-        dispatch({ type: 'indexed', caughtUp });
-        cb.onIndexed?.(caughtUp);
+        // On-chain reads go to the contracts directly, so there's nothing to wait for: every read
+        // from here on asks for at least this block, which is what makes it reflect the write.
+        noteWrite(blockNumber);
+        dispatch({ type: 'indexed', caughtUp: true });
+        cb.onIndexed?.(true);
       } finally {
         inFlight.current = false;
       }

@@ -1,0 +1,28 @@
+name: Keep-alive
+
+# Once a day, two public reads against production:
+#   - /resolve/derrick reads Postgres, so the free Supabase project never pauses for inactivity
+#     (it pauses after about a week without database activity, which would take the demo down).
+#   - /onchain/names catches the on-chain events table up (it syncs lazily, when a list is read),
+#     so a list after a long quiet spell never has a big gap to cover.
+# A failure here (the API down, or the database paused anyway) fails the run, which emails the
+# repository owner.
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    name: Ping production
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Resolve a name (touches Postgres)
+        run: curl -fsS --max-time 30 https://api.paytag.dev/resolve/derrick -o /dev/null
+
+      - name: Read an on-chain list (catches the events table up)
+        run: curl -fsS --max-time 60 "https://api.paytag.dev/onchain/names?owner=0x6aD631F215393f9635231de985081B1ccDDC7C11" -o /dev/null
