@@ -45,8 +45,9 @@ export function isDatabaseUnavailable(error: DbErrorLike, status?: number): bool
  * is capped first: the patterns are quadratic on long unbroken runs, and an error body can be long.
  */
 export const redact = (text: string): string =>
-  text
-    .slice(0, 1000)
+  // When capped, drop the token the cap cut through: a host split at the cut would lose the
+  // suffix the pattern recognises it by.
+  (text.length > 1000 ? text.slice(0, 1000).replace(/\S*$/, '') : text)
     .replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, '<url>')
     .replace(/\b[a-z0-9-]+(\.[a-z0-9-]+)*\.(supabase\.co|supabase\.in|supabase\.net)\b/gi, '<host>')
     .slice(0, 200);

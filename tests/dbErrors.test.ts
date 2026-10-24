@@ -16,7 +16,7 @@ jest.mock('../src/config/supabase', () => {
 });
 
 import { createApp } from '../src/app';
-import { DatabaseUnavailableError, dbError, isDatabaseUnavailable } from '../src/utils/dbErrors';
+import { DatabaseUnavailableError, dbError, isDatabaseUnavailable, redact } from '../src/utils/dbErrors';
 
 describe('isDatabaseUnavailable', () => {
   it.each([
@@ -61,6 +61,11 @@ describe('isDatabaseUnavailable', () => {
     dbError('read', { code: '42P01', message: blob });
     dbError('read', { message: blob }, 503);
     expect(Date.now() - started).toBeLessThan(200);
+  });
+
+  it('a host cut by the length cap is dropped, not left half-visible', () => {
+    const text = 'https://' + 'x'.repeat(982) + ' db.abcdefghijklmn.supabase.co tail';
+    expect(redact(text)).not.toMatch(/abcde|supabase/);
   });
 
   it('a gateway rate limit (429) is retryable', () => {
