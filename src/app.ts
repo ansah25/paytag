@@ -24,7 +24,7 @@ const buildCorsOptions = (): CorsOptions => {
 
 // Public read endpoints — callable from any origin so the @paytagdev/sdk works
 // in browsers regardless of where it's embedded.
-const PUBLIC_READ_PATHS = /^\/(health|resolve\/|available\/)/;
+const PUBLIC_READ_PATHS = /^\/(health|resolve\/|available\/|onchain\/)/;
 const PUBLIC_CORS: CorsOptions = {
   origin: '*',
   methods: ['GET'],

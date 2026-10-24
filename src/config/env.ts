@@ -22,12 +22,24 @@ const envSchema = z.object({
   // Leave unset in dev to allow any origin.
   CORS_ORIGIN: z.string().optional(),
 
-  // On-chain registry indexer (e.g. https://indexer.paytag.dev). Unset: every on-chain
-  // lookup reports `unavailable` and nothing is gated on it.
-  INDEXER_URL: z.string().url().optional(),
-  // This API's own key from the indexer's INDEXER_SERVER_KEYS, so its lookups aren't limited
-  // per address. Server-side only.
-  INDEXER_SERVER_KEY: z.string().min(1).optional(),
+  // On-chain reads (Base Sepolia). The primary RPC is the public endpoint in
+  // src/onchain/generated/endpoints.ts; this is the fallback, typically a keyed provider URL
+  // (Alchemy). It holds a secret: server-side only, never in the CSP or the web bundle.
+  BASE_SEPOLIA_RPC_FALLBACK_URL: z.string().url().startsWith('https://').optional(),
+  // Etherscan-compatible logs API used to catch the events table up in one call per contract.
+  // When it fails, the sync falls back to eth_getLogs in ONCHAIN_LOG_CHUNK_BLOCKS chunks.
+  BLOCKSCOUT_API_URL: z.string().url().startsWith('https://').default('https://base-sepolia.blockscout.com'),
+  // eth_getLogs range per call on the fallback path (sepolia.base.org allows 200).
+  ONCHAIN_LOG_CHUNK_BLOCKS: z.coerce.number().int().min(1).max(10_000).default(200),
+  // At most this many eth_getLogs calls per request on the fallback path; the rest waits for the
+  // next request (progress is persisted).
+  ONCHAIN_MAX_CHUNKS_PER_REQUEST: z.coerce.number().int().min(1).max(1_000).default(10),
+  // The events table stops this many blocks short of the head (reorg margin).
+  ONCHAIN_CONFIRMATIONS: z.coerce.number().int().min(0).max(1_000).default(10),
+
+  // Sent by the web app's server-rendered pages as `x-paytag-server-key`: they all come from
+  // Vercel's shared addresses, so they skip the per-address limit on the public reads.
+  API_SERVER_KEY: z.string().min(32, 'API_SERVER_KEY must be at least 32 characters').optional(),
 
   // Set to the value Cloudflare's Transform Rule sends as `x-paytag-edge`. When set, requests
   // without it (anything reaching the Fly origin directly) are refused, except /health, and the

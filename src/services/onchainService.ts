@@ -1,16 +1,26 @@
-import { Agent, fetch } from 'undici';
-import { env } from '../config/env';
+import { type Hex, getAddress } from 'viem';
+import { decodeAddress } from '../onchain/codec';
+import { normalizeName } from '../onchain/names';
+import { RESERVED_NODES } from '../onchain/generated/reservedNodes';
+import { type RecordRow, type ResolveBody, buildResolveBody } from '../onchain/resolve';
+import { ChainUnavailableError, readEthRecords, readNames, readReverse } from '../onchain/state';
+import { TtlCache } from '../utils/cache';
+import { BadRequestError, NotFoundError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import {
+  type EventRow,
+  currentEvents,
+  registrationsOf,
+  storedEthRecordsFor,
+  storedTransfersTo,
+} from './onchainEventsService';
 
-// Lookups of on-chain names (the Base registry) through the indexer, used to say whether a
-// Paytag account and the on-chain name of the same spelling belong together.
+// On-chain names (the Base registry), read from the contracts. Lookups are direct reads of current
+// state, so there's no sync lag and nothing to go stale; the two lists come from the lazily synced
+// events table, with every entry re-checked against live state (onchainEventsService).
 //
-// No cache here, deliberately. /resolve keeps the result inside its own 30s resolve cache (the
-// single staleness window for the status, failures included), and /register must read the
-// indexer fresh because the answer gates the signup.
-
-// Measured 2026-10-18: a lookup on a reused connection takes ~120ms, a new connection ~520ms
-// (TCP + TLS). The agent below keeps connections warm; the budgets cover a cold one.
+// Response shapes are the ones the Ponder indexer served, so the SDK (resolveViaIndexer) and the
+// web app read them unchanged.
 
 /** /resolve is the payment path; the badge isn't worth holding the addresses back for long. */
 export const RESOLVE_TIMEOUT_MS = 800;
@@ -18,159 +28,234 @@ export const RESOLVE_TIMEOUT_MS = 800;
 export const REGISTER_TIMEOUT_MS = 1_000;
 
 /**
- * Idle indexer connections are kept this long. It must stay below the idle timeout of the proxy
- * in front of the indexer (Coolify's Traefik): reusing a socket the proxy is closing at that
- * moment fails with a reset. Measured 2026-10-18: the proxy kept an idle connection open for
- * 125s and still reused it (Traefik's default idle timeout is 180s), so 30s is well clear.
+ * Lookups are cached for 30s like the API's /resolve. A caller that just wrote passes `minBlock`
+ * and skips any entry read before that block.
  */
-export const KEEPALIVE_MS = 30_000;
+const LOOKUP_TTL_MS = 30_000;
+const MAX_CACHED = 10_000;
 
-const agent = new Agent({ keepAliveTimeout: KEEPALIVE_MS, keepAliveMaxTimeout: KEEPALIVE_MS });
+interface Cached<T> {
+  value: T;
+  block: bigint;
+}
 
-/** Errors from writing onto a connection the other end just closed. */
-const RESET_CODES = new Set(['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET']);
-const isReset = (err: unknown): boolean => {
-  const code = (err as { cause?: { code?: unknown } })?.cause?.code;
-  return typeof code === 'string' && RESET_CODES.has(code);
-};
+class LookupCache<T> {
+  private readonly cache = new TtlCache<Cached<T>>(LOOKUP_TTL_MS);
+  private size = 0;
 
-export type OnchainLookup =
-  | { kind: 'owner'; owner: string }
-  | { kind: 'none' }
-  | { kind: 'syncing' }
-  | { kind: 'unavailable' };
-
-export type OnchainStatus = 'linked' | 'not_linked' | 'none' | 'syncing' | 'unavailable';
-
-/**
- * Stops calling an indexer that keeps failing: after `threshold` consecutive failures it
- * reports `unavailable` for `openMs` without a request, then lets one probe through, which
- * closes it on success or reopens it on failure. The API calls the indexer with a server key
- * that skips the indexer's own rate limit, so this is what protects a struggling indexer.
- */
-export class CircuitBreaker {
-  private failures = 0;
-  private openUntil = 0;
-  private probing = false;
-
-  constructor(
-    private readonly threshold = 5,
-    private readonly openMs = 30_000,
-    private readonly now: () => number = Date.now,
-  ) {}
-
-  /** Whether a request may go out now. A `true` while open claims the single probe. */
-  allow(): boolean {
-    if (this.failures < this.threshold) return true;
-    if (this.probing || this.now() < this.openUntil) return false;
-    this.probing = true;
-    return true;
+  get(key: string, minBlock: bigint | undefined): T | undefined {
+    const hit = this.cache.get(key);
+    if (!hit || (minBlock !== undefined && hit.block < minBlock)) return undefined;
+    return hit.value;
   }
 
-  success(): void {
-    this.failures = 0;
-    this.probing = false;
+  set(key: string, value: T, block: bigint): void {
+    // A crude bound: a flood of distinct names can't grow memory without limit.
+    if (++this.size > MAX_CACHED) {
+      this.cache.clear();
+      this.size = 0;
+    }
+    this.cache.set(key, { value, block });
   }
 
-  /** `weight` 2 for a timeout: stronger evidence of trouble than a single error. */
-  failure(weight = 1): void {
-    this.failures += weight;
-    this.probing = false;
-    if (this.failures >= this.threshold) this.openUntil = this.now() + this.openMs;
-  }
-
-  /** The outcome said nothing about the indexer's health; free a claimed probe slot. */
-  release(): void {
-    this.probing = false;
+  clear(): void {
+    this.cache.clear();
+    this.size = 0;
   }
 }
 
-const breaker = new CircuitBreaker();
+type ResolveOutcome = { kind: 'found'; body: ResolveBody } | { kind: 'missing'; name: string };
+const resolveCache = new LookupCache<ResolveOutcome>();
+const reverseCache = new LookupCache<{ address: string; username: string | null }>();
 
 /** Tests only. */
-export const resetOnchainBreaker = (): void => breaker.success();
+export const clearOnchainCaches = (): void => {
+  resolveCache.clear();
+  reverseCache.clear();
+};
 
-/** Outcome reporting for one lookup: the shared breaker, or nothing (see `useBreaker`). */
-const NO_BREAKER = { success: () => {}, failure: (_weight?: number) => {}, release: () => {} };
+export interface ReadOpts {
+  minBlock?: bigint;
+}
+
+const parseName = (raw: string) => {
+  const parsed = normalizeName(raw);
+  if (!parsed.ok) throw new BadRequestError(`Invalid username: ${parsed.reason}`, 'INVALID_USERNAME');
+  return parsed;
+};
+
+/** GET /onchain/resolve/:name */
+export async function resolveOnchain(raw: string, opts: ReadOpts = {}): Promise<ResolveBody> {
+  const { name, node } = parseName(raw);
+  let outcome = resolveCache.get(node, opts.minBlock);
+  if (!outcome) {
+    const { value, block } = await readNames([node], opts);
+    const state = value[0]!;
+    if (!state.owner) {
+      outcome = { kind: 'missing', name };
+    } else {
+      // The registration time isn't in contract state: it's the NameRegistered event's.
+      const registration = (await registrationsOf([node])).get(node);
+      if (!registration) throw new ChainUnavailableError(`@${name}'s registration isn't indexed yet; retry shortly`);
+      const rows: RecordRow[] = state.records.map((r) => ({
+        node,
+        coinType: r.coinType,
+        value: r.value,
+        address: decodeAddress(r.coinType, r.value),
+        updatedOrdinal: 0n,
+      }));
+      outcome = {
+        kind: 'found',
+        body: buildResolveBody(
+          { node, name, owner: state.owner, registeredAt: BigInt(registration.registeredAt), epoch: state.epoch },
+          rows,
+        ),
+      };
+    }
+    resolveCache.set(node, outcome, block);
+  }
+  if (outcome.kind === 'missing') throw new NotFoundError(`@${outcome.name} is not registered on-chain`, 'USER_NOT_FOUND');
+  return outcome.body;
+}
+
+export type OnchainAvailability =
+  | { available: true; suggestions: string[] }
+  | { available: false; reason: 'INVALID_FORMAT' | 'RESERVED' | 'TAKEN'; suggestions: string[] };
+
+/** GET /onchain/available/:name. Not cached: a name can be taken at any moment. */
+export async function availableOnchain(raw: string): Promise<OnchainAvailability> {
+  const parsed = normalizeName(raw);
+  if (!parsed.ok) return { available: false, reason: 'INVALID_FORMAT', suggestions: [] };
+
+  // Suggestions contain a digit or underscore, which no reserved name does, so they never need the
+  // reserved check. Read with the name in the same round trip.
+  const candidates = [`${parsed.name}_`, `${parsed.name}1`, `${parsed.name}_pay`, `${parsed.name}2`]
+    .map((n) => normalizeName(n))
+    .filter((r): r is Extract<typeof r, { ok: true }> => r.ok);
+  const reserved = RESERVED_NODES.has(parsed.node);
+  const { value } = await readNames([parsed.node, ...candidates.map((c) => c.node)], { ownersOnly: true });
+  const taken = value[0]!.owner !== null;
+  if (!reserved && !taken) return { available: true, suggestions: [] };
+  const suggestions = candidates.filter((_, i) => value[i + 1]!.owner === null).map((c) => c.name).slice(0, 3);
+  return { available: false, reason: reserved ? 'RESERVED' : 'TAKEN', suggestions };
+}
+
+/** GET /onchain/reverse/:address: the name `address` has claimed, if the claim is still live. */
+export async function reverseOnchain(address: string, opts: ReadOpts = {}): Promise<{ address: string; username: string | null }> {
+  const account = address.toLowerCase() as Hex;
+  const cached = reverseCache.get(account, opts.minBlock);
+  if (cached) return cached;
+  const { value: node, block } = await readReverse(account, opts);
+  let username: string | null = null;
+  if (node) {
+    const registration = (await registrationsOf([node])).get(node.toLowerCase());
+    if (!registration) throw new ChainUnavailableError('The claimed name isn’t indexed yet; retry shortly');
+    username = registration.name;
+  }
+  const result = { address: getAddress(account), username };
+  reverseCache.set(account, result, block);
+  return result;
+}
+
+const uniqueNodes = (rows: EventRow[]): Hex[] => [...new Set(rows.map((r) => r.node.toLowerCase()))] as Hex[];
+
+/** GET /onchain/names?owner=: names `owner` holds now, by name. */
+export async function namesByOwner(
+  owner: string,
+  opts: ReadOpts = {},
+): Promise<{ owner: string; names: { name: string; node: Hex; registeredAt: number }[] }> {
+  const me = owner.toLowerCase();
+  // Candidates: every name ever transferred to `owner` (registration mints with a Transfer too).
+  const rows = await currentEvents(
+    () => storedTransfersTo(me),
+    (r) => r.event === 'Transfer' && r.to_address === me,
+  );
+  const candidates = uniqueNodes(rows);
+  const held = candidates.length
+    ? (await readNames(candidates, { ...opts, ownersOnly: true })).value.filter((s) => s.owner === me).map((s) => s.node)
+    : [];
+  const names = await registrationsOf(held);
+  return {
+    owner: getAddress(me),
+    names: held
+      .flatMap((node) => {
+        const r = names.get(node);
+        if (!r) logger.warn('onchain.registration_missing', { node });
+        return r ? [{ name: r.name, node, registeredAt: r.registeredAt }] : [];
+      })
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
+
+/** Candidates beyond this many aren't checked (one multicall's worth). */
+const POINTING_MAX_CANDIDATES = 1_000;
 
 /**
- * The on-chain owner of `name` (already normalized and validated). Never throws: any failure
- * is reported as `unavailable` so callers can carry on without the on-chain answer.
- *
- * `useBreaker: false` (for /register) neither consults the breaker nor counts toward it. The
- * reads run on a shorter budget, so an indexer answering in 800ms–1s would open the breaker
- * from public reads alone, and /register would then skip a check it had time for. Signups are
- * rare and per-wallet, so they can always afford the call.
+ * GET /onchain/pointing?account=: names whose current ETH record is `account` but which `account`
+ * doesn't own, so it can make one of them its primary name.
  */
-export const getOnchainOwner = async (
-  name: string,
-  opts: { timeoutMs: number; useBreaker?: boolean },
-): Promise<OnchainLookup> => {
-  if (!env.INDEXER_URL) return { kind: 'unavailable' };
-  const useBreaker = opts.useBreaker ?? true;
-  if (useBreaker && !breaker.allow()) return { kind: 'unavailable' };
-  const outcome = useBreaker ? breaker : NO_BREAKER;
+export async function namesPointingAt(
+  account: string,
+  opts: ReadOpts = {},
+): Promise<{ account: string; names: { name: string; node: Hex; owner: string }[] }> {
+  const me = account.toLowerCase();
+  const rows = await currentEvents(
+    () => storedEthRecordsFor(me),
+    (r) => r.event === 'RecordSet' && r.coin_type === '60' && r.value === me,
+  );
+  const candidates = uniqueNodes(rows).slice(0, POINTING_MAX_CANDIDATES);
+  const live = candidates.length
+    ? (await readEthRecords(candidates, opts)).value.filter((s) => s.eth === me && s.owner !== null && s.owner !== me)
+    : [];
+  const names = await registrationsOf(live.map((s) => s.node));
+  return {
+    account: getAddress(me),
+    names: live
+      .flatMap((s) => {
+        const r = names.get(s.node);
+        return r ? [{ name: r.name, node: s.node, owner: getAddress(s.owner!) }] : [];
+      })
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  };
+}
 
-  const url = `${env.INDEXER_URL.replace(/\/+$/, '')}/resolve/${encodeURIComponent(name)}`;
-  // One budget for the whole lookup, retry included.
-  const signal = AbortSignal.timeout(opts.timeoutMs);
-  const get = () =>
-    fetch(url, {
-      dispatcher: agent,
-      headers: env.INDEXER_SERVER_KEY ? { 'x-paytag-server-key': env.INDEXER_SERVER_KEY } : undefined,
-      signal,
-    });
+// --- Account linking (the API's own /resolve and /register) -----------------------------------
 
-  let res: Awaited<ReturnType<typeof fetch>>;
+export type OnchainLookup = { kind: 'owner'; owner: string } | { kind: 'none' } | { kind: 'unavailable' };
+
+/**
+ * Whether the on-chain name of the same spelling belongs to the account. `syncing` is gone (there
+ * is no sync lag in a direct read) but stays in the published SDK's type until its next minor.
+ */
+export type OnchainStatus = 'linked' | 'not_linked' | 'none' | 'unavailable';
+
+/**
+ * The on-chain owner of `name` (already normalized and validated). Never throws: any failure is
+ * reported as `unavailable` so callers can carry on without the on-chain answer. Not cached here:
+ * /resolve keeps the result inside its own 30s cache, and /register must read fresh because the
+ * answer gates the signup.
+ */
+export const getOnchainOwner = async (name: string, opts: { timeoutMs: number }): Promise<OnchainLookup> => {
+  const parsed = normalizeName(name);
+  if (!parsed.ok) return { kind: 'none' };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const budget = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => resolve('timeout'), opts.timeoutMs);
+  });
   try {
-    try {
-      res = await get();
-    } catch (err) {
-      // A GET is safe to repeat. One retry covers a kept-alive socket the proxy closed just as we
-      // wrote to it; only the final outcome is reported to the breaker.
-      if (!isReset(err) || signal.aborted) throw err;
-      res = await get();
+    const result = await Promise.race([readNames([parsed.node], { ownersOnly: true }), budget]);
+    if (result === 'timeout') {
+      logger.warn('onchain.lookup_failed', { name, reason: 'TimeoutError' });
+      return { kind: 'unavailable' };
     }
+    const owner = result.value[0]!.owner;
+    return owner ? { kind: 'owner', owner } : { kind: 'none' };
   } catch (err) {
-    const timedOut = signal.aborted || (err as Error).name === 'TimeoutError';
-    outcome.failure(timedOut ? 2 : 1);
-    logger.warn('onchain.lookup_failed', {
-      name,
-      reason: timedOut ? 'TimeoutError' : ((err as { cause?: { code?: string } }).cause?.code ?? (err as Error).name),
-    });
+    logger.warn('onchain.lookup_failed', { name, reason: (err as Error).name });
     return { kind: 'unavailable' };
+  } finally {
+    clearTimeout(timer);
   }
-
-  // 404 and 503 are only trusted with the indexer's own error code: a reverse proxy answers 404
-  // when no route matches and 503 while a container is swapped, and a wrong INDEXER_URL path
-  // 404s too. Read as "not registered", those would let a held name through.
-  const body = (await res.json().catch(() => null)) as { owner?: unknown; code?: unknown } | null;
-  // The budget covers the body too: headers followed by a stall is a timeout, not a bad answer.
-  if (body === null && signal.aborted) {
-    outcome.failure(2);
-    logger.warn('onchain.lookup_failed', { name, reason: 'TimeoutError', status: res.status });
-    return { kind: 'unavailable' };
-  }
-  if (res.status === 404 && body?.code === 'USER_NOT_FOUND') {
-    outcome.success();
-    return { kind: 'none' };
-  }
-  // The indexer's 503 NOT_READY is a quick answer that it's still syncing, not a sign of trouble,
-  // so it doesn't count toward the breaker. Known choice: an indexer stuck syncing for a long time
-  // keeps taking one call per lookup. Fine at the current volume.
-  if (res.status === 503 && body?.code === 'NOT_READY') {
-    outcome.release();
-    return { kind: 'syncing' };
-  }
-  if (res.ok && typeof body?.owner === 'string') {
-    outcome.success();
-    return { kind: 'owner', owner: body.owner.toLowerCase() };
-  }
-  // Other 5xx, 429 (our key missing or wrong), foreign 404/503s and malformed bodies all count
-  // as failures.
-  outcome.failure();
-  logger.warn('onchain.lookup_failed', { name, status: res.status });
-  return { kind: 'unavailable' };
 };
 
 /**

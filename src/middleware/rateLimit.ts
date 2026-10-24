@@ -1,9 +1,9 @@
+import { timingSafeEqual } from 'node:crypto';
 import { isIPv4, isIPv6 } from 'node:net';
 import { RequestHandler } from 'express';
 import { logger } from '../utils/logger';
 
-// Per-client token buckets, in memory (the same scheme as the indexer's limiter). The counter is
-// per machine: the real ceiling is the configured rate × however many Fly machines are running.
+// Per-client token buckets, in memory. The counter is per machine: the real ceiling is the configured rate × however many Fly machines are running.
 // Fly runs two, one auto-stopped, so up to 2× while both are up; and a machine that auto-starts
 // begins with empty buckets, so a burst that wakes it gets a fresh allowance rather than sharing
 // the first machine's count. With more machines, divide the setting or use a shared store.
@@ -106,10 +106,18 @@ function expandIPv6(addr: string): number[] {
  * Otherwise Fly's proxy sets Fly-Client-IP to the connecting client, and without it (local dev)
  * the socket address is used. A refusal is a 429 in the API's `{ error, code }` shape with
  * Retry-After.
+ *
+ * `serverKey`: a request presenting it as `x-paytag-server-key` isn't limited. The web app's
+ * server-rendered pages all arrive from Vercel's shared addresses and would otherwise share
+ * one bucket.
  */
 export const rateLimit =
-  (limiter: RateLimiter, opts: { viaEdge?: boolean } = {}): RequestHandler =>
+  (limiter: RateLimiter, opts: { viaEdge?: boolean; serverKey?: string } = {}): RequestHandler =>
   (req, res, next) => {
+    if (opts.serverKey && keyMatches(req.header('x-paytag-server-key'), opts.serverKey)) {
+      next();
+      return;
+    }
     const visitor = opts.viaEdge ? req.header('cf-connecting-ip') : undefined;
     // Cloudflare always sets it on proxied requests; if it's ever missing, everyone on that edge
     // server shares one bucket, so say so.
@@ -125,3 +133,11 @@ export const rateLimit =
     res.setHeader('Retry-After', String(d.retryAfter));
     res.status(429).json({ error: 'Too many requests; slow down and retry shortly', code: 'RATE_LIMITED' });
   };
+
+/** Constant-time comparison, so the key can't be guessed a byte at a time from response timing. */
+function keyMatches(presented: string | undefined, expected: string): boolean {
+  if (!presented) return false;
+  const a = Buffer.from(presented);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}

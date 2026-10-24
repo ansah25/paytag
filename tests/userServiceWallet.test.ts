@@ -224,20 +224,17 @@ describe('userService.registerUsername — on-chain names', () => {
     expect(user.username).toBe('alice');
   });
 
-  it.each(['syncing', 'unavailable'] as const)('fails open when the indexer is %s', async (kind) => {
-    getOnchainOwner.mockResolvedValue({ kind });
+  it('fails open when the chain is unavailable', async () => {
+    getOnchainOwner.mockResolvedValue({ kind: 'unavailable' });
     expect((await registerUsername('alice', MINE)).username).toBe('alice');
   });
 
-  it('reads the indexer fresh on every attempt, with the register budget and no breaker', async () => {
+  it('reads the chain fresh on every attempt, with the register budget', async () => {
     getOnchainOwner.mockResolvedValue({ kind: 'owner', owner: THEIRS });
     await expect(registerUsername('alice', MINE)).rejects.toBeInstanceOf(ConflictError);
     await expect(registerUsername('alice', MINE)).rejects.toBeInstanceOf(ConflictError);
     expect(getOnchainOwner).toHaveBeenCalledTimes(2);
-    expect(getOnchainOwner).toHaveBeenCalledWith('alice', {
-      timeoutMs: onchainService.REGISTER_TIMEOUT_MS,
-      useBreaker: false,
-    });
+    expect(getOnchainOwner).toHaveBeenCalledWith('alice', { timeoutMs: onchainService.REGISTER_TIMEOUT_MS });
   });
 });
 
@@ -252,7 +249,7 @@ describe('userService.checkAvailability', () => {
     expect(result.available).toBe(false);
     expect(result.reason).toBe('TAKEN_ONCHAIN');
     expect(result.suggestions.length).toBeGreaterThan(0);
-    // Suggestions are filtered off-chain only: one indexer call per request.
+    // Suggestions are filtered off-chain only: one chain read per request.
     expect(getOnchainOwner).toHaveBeenCalledTimes(1);
   });
 
@@ -273,12 +270,12 @@ describe('userService.checkAvailability', () => {
     expect(getOnchainOwner).not.toHaveBeenCalled();
   });
 
-  it('fails open when the indexer is unavailable', async () => {
+  it('fails open when the chain is unavailable', async () => {
     getOnchainOwner.mockResolvedValue({ kind: 'unavailable' });
     expect((await checkAvailability('alice')).available).toBe(true);
   });
 
-  it('rejects malformed and reserved names without asking the indexer', async () => {
+  it('rejects malformed and reserved names without reading the chain', async () => {
     expect((await checkAvailability('a!')).reason).toBe('INVALID_FORMAT');
     expect((await checkAvailability('status')).reason).toBe('RESERVED');
     expect(getOnchainOwner).not.toHaveBeenCalled();

@@ -4,6 +4,12 @@ import request from 'supertest';
 import { EDGE_HEADER, edgeGuard, hasEdgeSecret } from '../src/middleware/edgeGuard';
 import { RateLimiter, rateLimit } from '../src/middleware/rateLimit';
 
+// /ping reads the sync cursor from Postgres; no database here.
+jest.mock('../src/services/onchainEventsService', () => ({
+  ...jest.requireActual('../src/services/onchainEventsService'),
+  syncedBlock: jest.fn(async () => 49_000_000n),
+}));
+
 const SECRET = 'edge-secret-0123456789abcdef0123456789';
 
 const build = (secret: string | undefined) => {

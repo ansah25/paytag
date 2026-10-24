@@ -407,7 +407,7 @@ describe('walletService.resolveByUsername', () => {
 describe('walletService.resolveByUsername — on-chain status', () => {
   const OWNER = '0x6ad631f215393f9635231de985081b1ccddc7c11';
 
-  it('never asks the indexer about a name with no account', async () => {
+  it('never reads the chain for a name with no account', async () => {
     await expect(resolveByUsername('ghost')).rejects.toBeInstanceOf(NotFoundError);
     expect(getOnchainOwner).not.toHaveBeenCalled();
   });

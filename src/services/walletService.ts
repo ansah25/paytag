@@ -59,7 +59,7 @@ export interface Resolution {
 }
 
 // Staleness window: 30s in this cache for everything in a resolution, including the on-chain
-// status and a failed indexer lookup (kept so resolve stays fast while the indexer is down).
+// status and a failed chain read (kept so resolve stays fast while the RPC is down).
 // Writes through this API invalidate it; on-chain changes don't. Clients add their own window on
 // top: /resolve sends `max-age=30, stale-while-revalidate=60` (walletController), so a viewer can
 // see a status up to ~120s old in the worst case.
@@ -217,7 +217,7 @@ export const resolveByUsername = async (
     }
   }
 
-  // Only after the account is found, so made-up names never reach the indexer.
+  // Only after the account is found, so made-up names never cost an RPC call.
   const lookup = await getOnchainOwner(row.username, { timeoutMs: RESOLVE_TIMEOUT_MS });
 
   const resolution: Resolution = {
