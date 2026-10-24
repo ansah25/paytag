@@ -6,10 +6,17 @@
 //
 // Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (from .env), and migration 0008 applied.
 import 'dotenv/config';
+import { env } from '../src/config/env';
 import { catchUp, syncedBlock } from '../src/services/onchainEventsService';
 import { readHead } from '../src/onchain/state';
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Done once the cursor is within the reorg margin plus this many blocks of the head. The chain
+ * keeps moving while a round runs, so "exactly current" is never reached; requests cover the rest.
+ */
+const SLACK_BLOCKS = 100n;
 
 const main = async (): Promise<void> => {
   for (let round = 1; ; round++) {
@@ -17,8 +24,9 @@ const main = async (): Promise<void> => {
     const cursor = await syncedBlock();
     const head = await readHead();
     console.log(`round ${round}: ${result.status}${'via' in result ? ` via ${result.via}` : ''}, cursor ${cursor}, head ${head}`);
-    if (result.status === 'current') break;
-    if (result.status === 'busy') await sleep(5_000); // another sync holds the lease
+    if (result.status === 'current' || head - cursor <= BigInt(env.ONCHAIN_CONFIRMATIONS) + SLACK_BLOCKS) break;
+    // Pace the rounds: Blockscout rate-limits (429) a tight loop.
+    await sleep(result.status === 'busy' ? 5_000 : 2_000);
   }
   console.log('onchain_events is current');
 };
