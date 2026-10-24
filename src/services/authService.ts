@@ -5,6 +5,7 @@ import { supabase } from '../config/supabase';
 import { env, jwtExpiresInSeconds, siweDomains } from '../config/env';
 import { BadRequestError, NotFoundError, UnauthorizedError } from '../utils/errors';
 import { logger } from '../utils/logger';
+import { dbError, redact } from '../utils/dbErrors';
 
 export interface JwtPayload {
   sub: string; // wallet address (lowercased)
@@ -160,7 +161,7 @@ const pruneUsedNonces = async (): Promise<void> => {
   lastPrune = now;
   const cutoff = new Date(now - usedNonceRetentionSeconds() * 1000).toISOString();
   const { error } = await supabase.from('auth_nonces_used').delete().lt('used_at', cutoff);
-  if (error) logger.warn('auth.used_nonce_prune_failed', { message: error.message });
+  if (error) logger.warn('auth.used_nonce_prune_failed', { message: redact(error.message) });
 };
 
 /** Tests only. */
@@ -219,7 +220,7 @@ export const verifySignatureAndIssueToken = async (
   }
 
   // Single use, atomically: the primary key (wallet_address, nonce) lets exactly one insert in.
-  const { error } = await supabase
+  const { error, status } = await supabase
     .from('auth_nonces_used')
     .insert({ wallet_address: wallet, nonce, used_at: new Date().toISOString() });
   if (error) {
@@ -227,11 +228,11 @@ export const verifySignatureAndIssueToken = async (
       logger.warn('auth.nonce_reused', { wallet });
       throw new UnauthorizedError('Nonce already used', 'NONCE_USED');
     }
-    throw new Error(`Failed to record nonce: ${error.message}`);
+    throw dbError('record nonce', error, status);
   }
   // In the background: the nonce is already spent, so a prune failure must not fail the sign-in.
   void pruneUsedNonces().catch((err: unknown) =>
-    logger.warn('auth.used_nonce_prune_failed', { message: err instanceof Error ? err.message : String(err) }),
+    logger.warn('auth.used_nonce_prune_failed', { message: redact(err instanceof Error ? err.message : String(err)) }),
   );
 
   const token = signSessionToken(wallet, (await getSessionVersion(wallet)) ?? 0);
@@ -243,12 +244,12 @@ export const verifySignatureAndIssueToken = async (
 
 /** users.session_version for the account owned by `wallet`, or null if it has no account. */
 export const getSessionVersion = async (wallet: string): Promise<number | null> => {
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('users')
     .select('session_version')
     .eq('owner_wallet', wallet.toLowerCase())
     .maybeSingle();
-  if (error) throw new Error(`Failed to load session version: ${error.message}`);
+  if (error) throw dbError('load session version', error, status);
   return data ? Number((data as { session_version: number }).session_version) : null;
 };
 
@@ -270,13 +271,13 @@ export const signSessionToken = (wallet: string, sessionVersion: number): string
 export const revokeAllSessions = async (wallet: string): Promise<void> => {
   const current = await getSessionVersion(wallet);
   if (current === null) throw new NotFoundError('No account for this wallet', 'USER_NOT_FOUND');
-  const { error } = await supabase
+  const { error, status } = await supabase
     .from('users')
     .update({ session_version: current + 1 })
     .eq('owner_wallet', wallet.toLowerCase())
     .eq('session_version', current);
   // No row matched: a concurrent revoke already bumped it, which revokes these tokens too.
-  if (error) throw new Error(`Failed to revoke sessions: ${error.message}`);
+  if (error) throw dbError('revoke sessions', error, status);
   logger.info('auth.sessions_revoked', { wallet: wallet.toLowerCase() });
 };
 

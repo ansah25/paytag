@@ -2,6 +2,7 @@ import { supabase } from '../config/supabase';
 import { ConflictError, BadRequestError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { REGISTER_TIMEOUT_MS, RESOLVE_TIMEOUT_MS, getOnchainOwner } from './onchainService';
+import { dbError, redact } from '../utils/dbErrors';
 
 export const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
 
@@ -89,12 +90,12 @@ export const validateUsername = (username: string): void => {
 };
 
 export const isUsernameAvailable = async (username: string): Promise<boolean> => {
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('users')
     .select('id')
     .eq('username', username)
     .maybeSingle();
-  if (error) throw new Error(`Failed to check availability: ${error.message}`);
+  if (error) throw dbError('check availability', error, status);
   return !data;
 };
 
@@ -158,13 +159,13 @@ export const findByWallet = async (
   ownerWallet: string,
 ): Promise<UserRecord | null> => {
   const wallet = ownerWallet.toLowerCase();
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('users')
     .select(USER_COLUMNS)
     .eq('owner_wallet', wallet)
     .maybeSingle();
   if (error) {
-    throw new Error(`Failed to look up wallet: ${error.message}`);
+    throw dbError('look up wallet', error, status);
   }
   return (data as UserRecord | null) ?? null;
 };
@@ -199,7 +200,7 @@ export const registerUsername = async (
     );
   }
 
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('users')
     .insert({ username: normalized, owner_wallet: wallet })
     .select()
@@ -220,7 +221,7 @@ export const registerUsername = async (
       }
       throw new ConflictError('That username is already taken', 'USERNAME_TAKEN');
     }
-    throw new Error(`Failed to register username: ${error.message}`);
+    throw dbError('register username', error, status);
   }
 
   // Smart default: register the connected wallet as the user's ethereum address.
@@ -241,7 +242,7 @@ export const registerUsername = async (
   if (defaultErr) {
     logger.warn('register.default_address_failed', {
       userId: (data as UserRecord).id,
-      message: defaultErr.message,
+      message: redact(defaultErr.message),
     });
   }
 

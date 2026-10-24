@@ -2,6 +2,7 @@ import { supabase } from '../config/supabase';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import { USER_COLUMNS, UserRecord } from './userService';
 import { invalidateResolveCache } from './walletService';
+import { dbError } from '../utils/dbErrors';
 
 export const PROFILE_LIMITS = { displayName: 40, bio: 120 } as const;
 
@@ -32,7 +33,7 @@ export const updateProfile = async (
     throw new BadRequestError(`Bio must be ${PROFILE_LIMITS.bio} characters or fewer`, 'BIO_TOO_LONG');
   }
 
-  const { data, error } = await supabase
+  const { data, error, status } = await supabase
     .from('users')
     .update(update)
     .eq('owner_wallet', ownerWallet.toLowerCase())
@@ -40,7 +41,7 @@ export const updateProfile = async (
     .maybeSingle();
 
   if (error) {
-    throw new Error(`Failed to update profile: ${error.message}`);
+    throw dbError('update profile', error, status);
   }
   if (!data) {
     throw new NotFoundError('No registered username for this wallet', 'USER_NOT_FOUND');
