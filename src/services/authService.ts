@@ -5,7 +5,7 @@ import { supabase } from '../config/supabase';
 import { env, jwtExpiresInSeconds, siweDomains } from '../config/env';
 import { BadRequestError, NotFoundError, UnauthorizedError } from '../utils/errors';
 import { logger } from '../utils/logger';
-import { dbError } from '../utils/dbErrors';
+import { dbError, redact } from '../utils/dbErrors';
 
 export interface JwtPayload {
   sub: string; // wallet address (lowercased)
@@ -161,7 +161,7 @@ const pruneUsedNonces = async (): Promise<void> => {
   lastPrune = now;
   const cutoff = new Date(now - usedNonceRetentionSeconds() * 1000).toISOString();
   const { error } = await supabase.from('auth_nonces_used').delete().lt('used_at', cutoff);
-  if (error) logger.warn('auth.used_nonce_prune_failed', { message: error.message });
+  if (error) logger.warn('auth.used_nonce_prune_failed', { message: redact(error.message) });
 };
 
 /** Tests only. */
@@ -232,7 +232,7 @@ export const verifySignatureAndIssueToken = async (
   }
   // In the background: the nonce is already spent, so a prune failure must not fail the sign-in.
   void pruneUsedNonces().catch((err: unknown) =>
-    logger.warn('auth.used_nonce_prune_failed', { message: err instanceof Error ? err.message : String(err) }),
+    logger.warn('auth.used_nonce_prune_failed', { message: redact(err instanceof Error ? err.message : String(err)) }),
   );
 
   const token = signSessionToken(wallet, (await getSessionVersion(wallet)) ?? 0);

@@ -55,6 +55,18 @@ describe('isDatabaseUnavailable', () => {
     expect(isDatabaseUnavailable(error)).toBe(false);
   });
 
+  it('redacts a long unbroken body quickly (the patterns are quadratic on such runs)', () => {
+    const blob = 'a.'.repeat(50_000) + 'host.supabase.co';
+    const started = Date.now();
+    dbError('read', { code: '42P01', message: blob });
+    dbError('read', { message: blob }, 503);
+    expect(Date.now() - started).toBeLessThan(200);
+  });
+
+  it('a gateway rate limit (429) is retryable', () => {
+    expect(isDatabaseUnavailable({ message: 'API rate limit exceeded' }, 429)).toBe(true);
+  });
+
   it('never puts a URL or the project host in a message', () => {
     const html = 'host abcd1234.supabase.co is paused; see https://supabase.com/dashboard/project/abcd1234';
     expect(dbError('read', { code: '42P01', message: html }).message).not.toMatch(/supabase\.co|https:/);

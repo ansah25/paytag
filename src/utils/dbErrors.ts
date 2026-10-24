@@ -36,12 +36,17 @@ export function isDatabaseUnavailable(error: DbErrorLike, status?: number): bool
   const code = error.code ?? '';
   if (POSTGREST_UNAVAILABLE.has(code) || PG_UNAVAILABLE.test(code)) return true;
   if (code !== '') return false;
-  return status === undefined || status === 0 || status >= 500;
+  // 429: the gateway's rate limit, which retrying does clear.
+  return status === undefined || status === 0 || status === 429 || status >= 500;
 }
 
-/** Log-safe text: no URLs or hostnames (a gateway's HTML error page names the project). */
-const redact = (text: string): string =>
+/**
+ * Log-safe text: no URLs or hostnames (a gateway's HTML error page names the project). The input
+ * is capped first: the patterns are quadratic on long unbroken runs, and an error body can be long.
+ */
+export const redact = (text: string): string =>
   text
+    .slice(0, 1000)
     .replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, '<url>')
     .replace(/\b[a-z0-9-]+(\.[a-z0-9-]+)*\.(supabase\.co|supabase\.in|supabase\.net)\b/gi, '<host>')
     .slice(0, 200);

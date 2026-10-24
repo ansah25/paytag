@@ -2,7 +2,7 @@ import { supabase } from '../config/supabase';
 import { ConflictError, BadRequestError } from '../utils/errors';
 import { logger } from '../utils/logger';
 import { REGISTER_TIMEOUT_MS, RESOLVE_TIMEOUT_MS, getOnchainOwner } from './onchainService';
-import { dbError } from '../utils/dbErrors';
+import { dbError, redact } from '../utils/dbErrors';
 
 export const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
 
@@ -242,7 +242,7 @@ export const registerUsername = async (
   if (defaultErr) {
     logger.warn('register.default_address_failed', {
       userId: (data as UserRecord).id,
-      message: defaultErr.message,
+      message: redact(defaultErr.message),
     });
   }
 
