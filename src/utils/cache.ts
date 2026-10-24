@@ -29,4 +29,17 @@ export class TtlCache<T> {
   clear(): void {
     this.store.clear();
   }
+
+  /** Entries held, expired ones included until they're read or pruned. */
+  get size(): number {
+    return this.store.size;
+  }
+
+  /** Drops expired entries. */
+  prune(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.store) {
+      if (entry.expiresAt < now) this.store.delete(key);
+    }
+  }
 }

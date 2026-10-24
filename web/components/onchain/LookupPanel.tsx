@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Field } from '@/components/ui/Field';
 import { normalizeName } from '@/lib/onchain/generated/names';
-import { indexer } from '@/lib/onchain/indexer';
+import { onchainReads } from '@/lib/onchain/reads';
 
 type Result =
   | { kind: 'idle' }
@@ -31,7 +31,7 @@ export function LookupPanel() {
     if (isAddress(value, { strict: false })) {
       setResult({ kind: 'loading' });
       try {
-        const r = await indexer.reverse(value);
+        const r = await onchainReads.reverse(value);
         setResult({ kind: 'reverse', address: getAddress(value), username: r.username });
       } catch (err) {
         setResult({ kind: 'error', message: (err as Error).message });

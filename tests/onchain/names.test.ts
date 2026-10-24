@@ -1,6 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { keccak256, stringToBytes } from "viem";
-import { normalizeName } from "../src/lib/names";
+import { normalizeName } from "../../src/onchain/names";
 
 // Reference: the contract's rule, written as a regex over the lowercased-ASCII form.
 const reference = (raw: string) => {
@@ -41,7 +40,7 @@ describe("normalizeName", () => {
       const expected = reference(s);
       const actual = normalizeName(s);
       if (expected === null) {
-        expect(actual.ok, JSON.stringify(s)).toBe(false);
+        expect({ input: s, ok: actual.ok }).toEqual({ input: s, ok: false });
       } else {
         expect(actual).toEqual({ ok: true, name: expected, node: keccak256(stringToBytes(expected)) });
       }

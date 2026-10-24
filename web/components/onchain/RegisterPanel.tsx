@@ -10,7 +10,7 @@ import { REGISTRY_ADDRESS } from '@/lib/onchain/generated/deployment';
 import { normalizeName } from '@/lib/onchain/generated/names';
 import { PaytagRegistryAbi } from '@/lib/onchain/generated/PaytagRegistryAbi';
 import { RESERVED_NODES } from '@/lib/onchain/generated/reservedNodes';
-import { indexer, type Availability } from '@/lib/onchain/indexer';
+import { onchainReads, type Availability } from '@/lib/onchain/reads';
 import { accountLinksTo } from '@/lib/onchain/linking';
 import {
   MIN_COMMITMENT_AGE,
@@ -56,7 +56,7 @@ type Step =
 
 /**
  * Search and register. Format and the reserved list are checked locally (same rules as the
- * contract); "taken" comes from the indexer. If the indexer is down, registering still works:
+ * contract); "taken" comes from the API's on-chain read. If that's down, registering still works:
  * the pre-flight simulation reverts with NameTaken for a taken name.
  *
  * Registration is two transactions (PaytagRegistry v0.2 commit-reveal): Reserve commits to
@@ -101,7 +101,7 @@ export function RegisterPanel() {
     setCheck({ kind: 'checking' });
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      indexer
+      onchainReads
         .available(parsed.name, controller.signal)
         .then((result) => setCheck({ kind: 'result', result }))
         .catch((err) => {
@@ -229,7 +229,7 @@ export function RegisterPanel() {
   }, [waitingUntil, chainOffset]);
   const secondsLeft = waitingUntil === null ? 0 : Math.max(0, Math.ceil(waitingUntil - (Date.now() / 1000 + chainOffset)));
   // Once our own registration lands, the recheck says "taken"; that's the success, not an error.
-  // It may also still say "available" if the indexer lagged, so Register stays off either way.
+  // It may also still say "available" if the read lagged, so Register stays off either way.
   const justRegistered = registered !== null && registered === name && tx.state.status === 'indexed';
   const canRegister =
     !!name &&
@@ -257,7 +257,6 @@ export function RegisterPanel() {
       { kind: 'commit', commitment: reservation.commitment },
       {
         context: { name },
-        skipIndexer: true, // the indexer doesn't track commitments
         onSubmitted: () => {
           submitted = true;
         },

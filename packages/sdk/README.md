@@ -60,7 +60,7 @@ await client.resolve('derrick');
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `baseUrl` | `string` | `https://api.paytag.dev` | API origin |
-| `indexerUrl` | `string` | `https://indexer.paytag.dev` | On-chain indexer origin, used by `resolveViaIndexer` |
+| `indexerUrl` | `string` | `https://api.paytag.dev/onchain` | Base of the on-chain endpoints, used by `resolveViaIndexer` |
 | `cache` | `boolean \| number \| Cache` | `true` (30 s TTL) | Cache for `resolve`: `false` disables, a `number` sets the TTL in ms, or pass a custom `Cache` |
 | `indexerCache` | `boolean \| number \| Cache` | `false` | Cache for `resolveViaIndexer`, same values as `cache`. Off so each call sees current on-chain state |
 | `timeoutMs` | `number` | `10000` | A request that hasn't fully answered by then fails with `TIMEOUT`; `0` disables |
@@ -85,7 +85,7 @@ People pay whatever `resolve` returns, so the SDK doesn't pass a server's answer
 
 Look up a username and return its registered addresses.
 
-`onchain.status` is `linked` when the on-chain name of the same spelling is owned by the account's verified Ethereum address. The two keep separate records: `addresses` are always the Paytag account's; use `resolveViaIndexer` for the on-chain ones. `syncing` and `unavailable` mean the API couldn't check just then.
+`onchain.status` is `linked` when the on-chain name of the same spelling is owned by the account's verified Ethereum address. The two keep separate records: `addresses` are always the Paytag account's; use `resolveViaIndexer` for the on-chain ones. `unavailable` means the API couldn't read the chain just then. (`syncing` is no longer sent; it stays in the type until the next minor.)
 
 ```ts
 type ResolveResponse = {
@@ -116,7 +116,7 @@ if (eth) { /* … */ }
 
 ### `resolveViaIndexer(username, opts?)` → `Promise<OnchainResolveResponse>`
 
-Resolve a name from **on-chain state**, the Paytag registry on Base, via the Paytag indexer. The result has the same `username` and `addresses` as `ResolveResponse`, so code that reads `addresses` works unchanged:
+Resolve a name from **on-chain state**, the Paytag registry on Base, via the Paytag API's on-chain endpoints (which read the contracts directly; the name dates from when an indexer served them). The result has the same `username` and `addresses` as `ResolveResponse`, so code that reads `addresses` works unchanged:
 
 ```ts
 type OnchainResolveResponse = Pick<ResolveResponse, 'username' | 'addresses'> & {
@@ -134,9 +134,11 @@ type OnchainResolveResponse = Pick<ResolveResponse, 'username' | 'addresses'> & 
 };
 ```
 
-- **Transfers clear records:** a transfer to a different owner starts a new epoch on-chain, and every earlier record stops resolving. So every record here was set by the owner at the time the indexer answered, and payment code can't pay a former owner. After a transfer, `recordsReset` is `true` until the new owner sets a record, so you can tell "unconfigured after a transfer" from "never configured".
-- **No fallback:** if the indexer is unreachable this throws `NETWORK_ERROR` rather than silently asking the API, so you always know which source answered.
-- **Syncing:** while a freshly deployed indexer backfills, it answers 503 and this throws `HTTP_ERROR` with `status: 503`, never a false `USER_NOT_FOUND`.
+- **Transfers clear records:** a transfer to a different owner starts a new epoch on-chain, and every earlier record stops resolving. So every record here was set by the owner at the time of the read, and payment code can't pay a former owner. After a transfer, `recordsReset` is `true` until the new owner sets a record, so you can tell "unconfigured after a transfer" from "never configured".
+- **No fallback:** if the on-chain endpoints are unreachable this throws `NETWORK_ERROR` rather than silently using the off-chain `resolve`, so you always know which source answered.
+- **Chain unavailable:** when the API can't read Base right now it answers 503, and this throws `HTTP_ERROR` with `status: 503`, never a false `USER_NOT_FOUND`.
+- **Just wrote?** Pass `{ minBlock }` (the block of your transaction) to get an answer that reflects it.
+- **Records:** the contracts can't list a name's records, so `records` holds the coin types the Paytag app writes: ETH (`60`), BTC (`0`), SOL (`501`) and Base (`2147492101`).
 - **Not cached by default:** a cached result could show a previous owner and their records for up to the TTL after a transfer. Opt in with `indexerCache`; `invalidate(name)` clears both caches.
 
 ### `available(username, opts?)` → `Promise<AvailabilityResponse>`

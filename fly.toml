@@ -14,8 +14,6 @@ primary_region = "iad"
 [env]
   NODE_ENV = "production"
   PORT = "8080"
-  # Not a secret. The API's own indexer key is the INDEXER_SERVER_KEY secret.
-  INDEXER_URL = "https://indexer.paytag.dev"
 
 [http_service]
   internal_port = 8080

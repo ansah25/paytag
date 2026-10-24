@@ -131,9 +131,9 @@ export interface Availability {
  * Whether `rawUsername` can be registered off-chain by `wallet`. A name free off-chain but held
  * on-chain is `TAKEN_ONCHAIN` unless `wallet` is its on-chain owner (registering it would link
  * the two). Only the on-chain owner, which is public, is compared with `wallet`; the response
- * never says which wallet owns an off-chain account. An indexer failure reports the name
+ * never says which wallet owns an off-chain account. A failed chain read reports the name
  * available: /register checks again. Suggestions are filtered off-chain only, so a request makes
- * at most one indexer call. If this is ever cached, `wallet` must be part of the cache key.
+ * at most one chain read. If this is ever cached, `wallet` must be part of the cache key.
  */
 export const checkAvailability = async (rawUsername: string, wallet?: string): Promise<Availability> => {
   const username = normalizeUsername(rawUsername);
@@ -188,11 +188,10 @@ export const registerUsername = async (
 
   // Held on-chain by another wallet: refuse, so the two namespaces don't drift further apart.
   // Held by this wallet: register, and it comes out linked (this wallet becomes the verified ETH
-  // address below). Read fresh, never through the resolve cache. Fails open: if the indexer is
-  // down or syncing the signup goes ahead, since the permissionless contract can't prevent
+  // address below). Read fresh from the registry, never through the resolve cache. Fails open: if
+  // the chain can't be read the signup goes ahead, since the permissionless contract can't prevent
   // collisions anyway. A name taken on-chain between this check and the insert is accepted.
-  // Bypasses the circuit breaker, so public reads can't switch this check off.
-  const onchain = await getOnchainOwner(normalized, { timeoutMs: REGISTER_TIMEOUT_MS, useBreaker: false });
+  const onchain = await getOnchainOwner(normalized, { timeoutMs: REGISTER_TIMEOUT_MS });
   if (onchain.kind === 'owner' && onchain.owner !== wallet) {
     throw new ConflictError(
       'That username is registered on-chain by a different wallet',

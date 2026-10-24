@@ -50,6 +50,33 @@ describe('rateLimit middleware', () => {
   });
 });
 
+describe('rateLimit server key', () => {
+  const KEY = 'server-key-0123456789abcdef0123456789';
+  const build = () => {
+    const app = express();
+    app.use(rateLimit(new RateLimiter(1, clock().now), { serverKey: KEY }));
+    app.get('/x', (_req, res) => {
+      res.json({ ok: true });
+    });
+    return app;
+  };
+
+  it('lets a request with the key through without spending the bucket', async () => {
+    const app = build();
+    for (let i = 0; i < 3; i++) {
+      expect((await request(app).get('/x').set('x-paytag-server-key', KEY)).status).toBe(200);
+    }
+    expect((await request(app).get('/x')).status).toBe(200); // the address's own allowance is untouched
+  });
+
+  it('limits a wrong, truncated or missing key like any client', async () => {
+    const app = build();
+    expect((await request(app).get('/x').set('x-paytag-server-key', KEY.slice(0, -1))).status).toBe(200);
+    expect((await request(app).get('/x').set('x-paytag-server-key', `${KEY}x`)).status).toBe(429);
+    expect((await request(app).get('/x')).status).toBe(429);
+  });
+});
+
 describe('clientKey', () => {
   it('keys IPv6 on the /64, so rotating within it shares one bucket', () => {
     expect(clientKey('2001:db8:1:2:aaaa::1')).toBe('2001:db8:1:2::/64');

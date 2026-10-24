@@ -1,6 +1,6 @@
 # Database
 
-Supabase Postgres. Only the API touches it, as `service_role` (`src/config/supabase.ts`). The web app, SDK and indexer never do, and no anon key is used anywhere.
+Supabase Postgres. Only the API touches it, as `service_role` (`src/config/supabase.ts`). The web app and SDK never do, and no anon key is used anywhere.
 
 ## Rules for migrations
 

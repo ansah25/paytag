@@ -7,10 +7,11 @@ import type { TxError } from './errors';
 //                     │                      │                    │                │
 //                     └──────────────────────┴────────fail────────┴────────────────┴──▶ failed
 //
-// "confirmed" means the receipt succeeded and the app is waiting for the indexer to reach that
-// block; it still counts as in flight. "indexed" is terminal: `caughtUp` is false when the
-// indexer didn't catch up in time (the write is final on-chain; reads may lag). A new attempt
-// can start only from idle, failed or indexed. Any state can `reset` back to idle.
+// "confirmed" means the receipt succeeded; it still counts as in flight until "indexed", the
+// terminal state once reads reflect the write. (The name is from when reads came from an indexer
+// that had to catch up; they now read the contracts at the write's block or later, so `caughtUp`
+// is always true in practice. false would mean the write is final on-chain but reads may lag.)
+// A new attempt can start only from idle, failed or indexed. Any state can `reset` back to idle.
 
 export type TxStage = 'simulating' | 'signing' | 'pending' | 'confirmed';
 
@@ -68,6 +69,6 @@ export function txReducer(state: TxState, action: TxAction): TxState {
   }
 }
 
-/** True while a write is in flight (including the indexer wait): actions stay disabled. */
+/** True while a write is in flight: actions stay disabled. */
 export const isBusy = (s: TxState) =>
   s.status === 'simulating' || s.status === 'signing' || s.status === 'pending' || s.status === 'confirmed';

@@ -1,6 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { Hex } from "viem";
-import { type NameRow, type RecordRow, buildResolveBody, isLiveReverseClaim, ordinal } from "../src/lib/resolve";
+import { type NameRow, type RecordRow, buildResolveBody, isLiveReverseClaim, ordinal } from "../../src/onchain/resolve";
 
 const NODE = "0x2209a34bc4a111dcc71330ec4d9d1b6e134efb0c184da8e95f7da20375fa46ae" as Hex;
 const ALICE = "0x3dbc9c0bef8b7bfbcf0a7cc4041b3962b126f865" as Hex;

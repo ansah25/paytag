@@ -1,4 +1,4 @@
-# Allowlist: the Dockerfile only needs these. Everything else (indexer/, contracts/, web/,
+# Allowlist: the Dockerfile only needs these. Everything else (contracts/, web/, scripts/,
 # packages/, docs/, .env files...) stays out of the build context, which is uploaded on
 # every `flyctl deploy`.
 *

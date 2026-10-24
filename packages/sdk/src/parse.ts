@@ -142,7 +142,7 @@ export function parseResolveResponse(body: unknown, expectedUsername: string): R
 }
 
 function parseRecord(raw: unknown): OnchainRecord {
-  const source = 'indexer /resolve';
+  const source = 'on-chain /resolve';
   if (!isObject(raw)) throw invalid(`Unexpected record shape from ${source}`);
   const coinType = own(raw, 'coinType');
   const value = own(raw, 'value');
@@ -163,7 +163,7 @@ export function parseOnchainResolveResponse(
   body: unknown,
   expectedUsername: string,
 ): OnchainResolveResponse {
-  const source = 'indexer /resolve';
+  const source = 'on-chain /resolve';
   if (!isObject(body)) throw invalid(`Unexpected response shape from ${source}`);
   const username = parseUsername(own(body, 'username'), expectedUsername, source);
   const addresses = parseAddresses(own(body, 'addresses'), source);

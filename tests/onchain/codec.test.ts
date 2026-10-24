@@ -1,6 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { Hex } from "viem";
-import { decodeAddress, encodeAddress, isEvmCoinType } from "../src/lib/codec";
+import { decodeAddress, encodeAddress, isEvmCoinType } from "../../src/onchain/codec";
 import vectors from "./vectors.json";
 
 describe("codec: shared ENSIP-9 vectors", () => {

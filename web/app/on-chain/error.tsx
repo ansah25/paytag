@@ -2,15 +2,15 @@
 
 import { useEffect } from 'react';
 import { MessageScreen } from '@/components/MessageScreen';
-import { INDEXER_URL } from '@/lib/onchain/indexer';
+import { API_URL } from '@/lib/endpoints';
 
-/** On-chain pages read the indexer, not the Paytag API, so say that (and where to check). */
+/** On-chain pages read the Base contracts through the Paytag API, so say where to check. */
 export default function OnchainError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
     console.error(error);
   }, [error]);
 
-  const host = INDEXER_URL.replace(/^https?:\/\//, '');
+  const host = API_URL.replace(/^https?:\/\//, '');
   return (
     <MessageScreen
       kicker="Something broke"

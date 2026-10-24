@@ -7,7 +7,6 @@ import endpoints from './endpoints.json';
 const trimSlash = (url: string) => url.replace(/\/+$/, '');
 
 export const API_URL = trimSlash(process.env.NEXT_PUBLIC_API_BASE_URL || endpoints.apiDefault);
-export const INDEXER_URL = trimSlash(process.env.NEXT_PUBLIC_INDEXER_URL || endpoints.indexerDefault);
 
 /** Our own RPC choice, not viem's defaults: a viem upgrade must not silently move them off the CSP. */
 export const EVM_RPC = {

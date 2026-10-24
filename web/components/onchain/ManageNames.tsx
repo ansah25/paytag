@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { indexer, namesPointingAt, type OwnedName, type PointingName } from '@/lib/onchain/indexer';
+import { onchainReads, type OwnedName, type PointingName } from '@/lib/onchain/reads';
 import { useOnchainTx } from '@/lib/onchain/useOnchainTx';
 import { NameCard } from './NameCard';
 import { PointedNames } from './PointedNames';
@@ -15,7 +15,7 @@ type Load =
   | { kind: 'ready'; owner: string; names: OwnedName[]; pointing: PointingName[]; primary: string | null }
   | { kind: 'error' };
 
-/** The connected wallet's names, from the indexer. Reads work on any network; writes need Base Sepolia. */
+/** The connected wallet's on-chain names. Reads work on any network; writes need Base Sepolia. */
 export function ManageNames() {
   // Only for connection/network state here; each NameCard runs its own writes.
   const { connected, checking, address, wrongNetwork, switchToBase, switching } = useOnchainTx();
@@ -29,11 +29,11 @@ export function ManageNames() {
     // Keep showing the list during a same-account refresh; never show another account's names.
     setLoad((l) => (l.kind === 'ready' && l.owner === address ? l : { kind: 'loading' }));
     // Names that merely point here are a nice-to-have: if that query fails, the section is hidden.
-    const pointing = namesPointingAt(address, controller.signal).catch((err) => {
+    const pointing = onchainReads.pointingAt(address, controller.signal).catch((err) => {
       if ((err as Error)?.name === 'AbortError') throw err;
       return [] as PointingName[];
     });
-    Promise.all([indexer.names(address, controller.signal), indexer.reverse(address, controller.signal), pointing])
+    Promise.all([onchainReads.names(address, controller.signal), onchainReads.reverse(address, controller.signal), pointing])
       .then(([owned, rev, points]) => {
         // An account switch aborts this run; never let its late result land on the new account.
         if (controller.signal.aborted) return;
@@ -81,7 +81,7 @@ export function ManageNames() {
       )}
       {load.kind === 'error' && (
         <Card className="grid justify-items-start gap-3">
-          <p className="text-sm font-semibold text-danger">Couldn’t load your names from the indexer.</p>
+          <p className="text-sm font-semibold text-danger">Couldn’t load your on-chain names.</p>
           <Button variant="outline" size={40} onClick={refresh}>
             Try again
           </Button>

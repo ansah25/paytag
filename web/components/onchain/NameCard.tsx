@@ -10,12 +10,12 @@ import { ChainDot } from '@/components/ui/ChainDot';
 import { Field } from '@/components/ui/Field';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { encodeAddress, isEvmCoinType } from '@/lib/onchain/generated/codec';
-import { indexer, type OwnedName } from '@/lib/onchain/indexer';
+import { onchainReads, type OwnedName } from '@/lib/onchain/reads';
 import { RECORD_SLOTS, type RecordSlot } from '@/lib/onchain/records';
 import { useOnchainTx } from '@/lib/onchain/useOnchainTx';
 import { TxStatus } from './TxStatus';
 
-/** A record change shown before the indexer confirms it. `value` null = being cleared. */
+/** A record change shown before a fresh read confirms it. `value` null = being cleared. */
 type Overlay = { value: string | null; phase: 'pending' | 'confirmed' };
 
 const ZERO_ADDRESS_HEX = `0x${'0'.repeat(40)}`;
@@ -55,7 +55,7 @@ export function NameCard({
   useEffect(() => {
     const controller = new AbortController();
     setLoadError(false);
-    indexer
+    onchainReads
       .resolve(name, controller.signal)
       .then((d) => setData(d))
       .catch((err) => {
@@ -66,7 +66,7 @@ export function NameCard({
 
   const refetch = useCallback(() => setReload((n) => n + 1), []);
 
-  // A "confirmed" overlay (write final on-chain, indexer was slow) stays until fresh data shows
+  // A "confirmed" overlay (write final on-chain, read not reflecting it yet) stays until fresh data shows
   // the same value, so a successful write never appears to revert.
   useEffect(() => {
     if (!data) return;
@@ -84,12 +84,12 @@ export function NameCard({
   }, [data]);
 
   // While any confirmed write is still unreflected, keep re-reading every 10s until it is.
-  const awaitingIndexer = Object.values(overlay).some((o) => o.phase === 'confirmed');
+  const awaitingRead = Object.values(overlay).some((o) => o.phase === 'confirmed');
   useEffect(() => {
-    if (!awaitingIndexer) return;
+    if (!awaitingRead) return;
     const timer = setTimeout(refetch, 10_000);
     return () => clearTimeout(timer);
-  }, [awaitingIndexer, data, refetch]);
+  }, [awaitingRead, data, refetch]);
   const record = (slot: RecordSlot) => data?.records.find((r) => r.coinType === slot.coinType.toString());
 
   const ethRecord = data?.records.find((r) => r.coinType === '60');
@@ -144,7 +144,7 @@ export function NameCard({
             });
             refetch();
           }
-          // Otherwise the write is final on-chain but the indexer lagged: the overlay stays
+          // Otherwise the write is final on-chain but the read lagged: the overlay stays
           // ("Confirmed, updating") and the polling effect above re-reads until data agrees.
           if (slot.coinType === 60n) onChanged(); // primary-name eligibility may have changed
         },

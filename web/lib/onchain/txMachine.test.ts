@@ -14,14 +14,14 @@ describe('txReducer', () => {
     expect(s).toEqual({ status: 'indexed', hash: HASH, blockNumber: 7n, caughtUp: true });
   });
 
-  it('ends in indexed with caughtUp false when the indexer times out', () => {
+  it('ends in indexed with caughtUp false when reads lag', () => {
     const s = run([...toPending, { type: 'mined', blockNumber: 7n }, { type: 'indexed', caughtUp: false }]);
     expect(s).toEqual({ status: 'indexed', hash: HASH, blockNumber: 7n, caughtUp: false });
     // terminal: a new attempt can start
     expect(txReducer(s, { type: 'start' })).toEqual({ status: 'simulating' });
   });
 
-  it('cannot restart while waiting for the indexer', () => {
+  it('cannot restart while confirmed but not done', () => {
     const confirmed = run([...toPending, { type: 'mined', blockNumber: 1n }]);
     expect(txReducer(confirmed, { type: 'start' })).toBe(confirmed);
   });
@@ -66,11 +66,11 @@ describe('txReducer', () => {
     expect(txReducer({ status: 'pending', hash: HASH }, { type: 'reset' })).toEqual(IDLE);
   });
 
-  it('isBusy covers exactly the in-flight states, including the indexer wait', () => {
+  it('isBusy covers exactly the in-flight states', () => {
     expect(isBusy({ status: 'simulating' })).toBe(true);
     expect(isBusy({ status: 'signing' })).toBe(true);
     expect(isBusy({ status: 'pending', hash: HASH })).toBe(true);
-    expect(isBusy({ status: 'confirmed', hash: HASH, blockNumber: 1n })).toBe(true); // waiting for the indexer
+    expect(isBusy({ status: 'confirmed', hash: HASH, blockNumber: 1n })).toBe(true); // receipt in, not done yet
     expect(isBusy(IDLE)).toBe(false);
     expect(isBusy({ status: 'indexed', hash: HASH, blockNumber: 1n, caughtUp: false })).toBe(false);
     expect(isBusy({ status: 'failed', error: err, stage: 'signing' })).toBe(false);

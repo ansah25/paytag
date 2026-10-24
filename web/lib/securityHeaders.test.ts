@@ -52,7 +52,6 @@ describe('buildCsp', () => {
     const connect = directive(buildCsp({ ...process.env, ...prod }), 'connect-src');
     const urls = [
       endpoints.API_URL,
-      endpoints.INDEXER_URL,
       ...Object.values(endpoints.EVM_RPC),
       ...Object.values(endpoints.SOLANA_RPC),
       ...Object.values(endpoints.MEMPOOL_API),
@@ -60,20 +59,21 @@ describe('buildCsp', () => {
     ];
     for (const url of urls) expect(connect).toContain(new URL(url).origin);
     for (const url of Object.values(endpoints.SOLANA_RPC)) expect(connect).toContain(new URL(url).origin.replace('https:', 'wss:'));
+    // On-chain reads go through the API now; the decommissioned indexer isn't allowed.
+    expect(connect.join(' ')).not.toContain('indexer.paytag.dev');
   });
 
-  it('follows the API, indexer and RPC env overrides', () => {
+  it('follows the API and RPC env overrides', () => {
     const connect = directive(
       buildCsp({
         ...prod,
         NEXT_PUBLIC_API_BASE_URL: 'https://api.paytag.dev/',
-        NEXT_PUBLIC_INDEXER_URL: 'https://indexer.example.org',
         NEXT_PUBLIC_BASE_SEPOLIA_RPC: 'https://base-sepolia.g.alchemy.com/v2/secretkey',
       }),
       'connect-src',
     );
     expect(connect).toEqual(
-      expect.arrayContaining(['https://api.paytag.dev', 'https://indexer.example.org', 'https://base-sepolia.g.alchemy.com']),
+      expect.arrayContaining(['https://api.paytag.dev', 'https://base-sepolia.g.alchemy.com']),
     );
     // Origins only: a key in the RPC path must not end up in a response header.
     expect(connect.join(' ')).not.toContain('secretkey');

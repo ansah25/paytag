@@ -1,8 +1,8 @@
 import { type Hex, getAddress } from "viem";
 import { COIN_TYPE } from "./codec";
 
-// Pure read-model logic shared by the HTTP API. Kept free of Ponder imports so it can be unit
-// tested without a database.
+// Pure response-building logic for the on-chain endpoints. Kept free of I/O so it can be unit
+// tested without a chain or a database.
 
 /** Total order over events: (block, logIndex). */
 export function ordinal(blockNumber: bigint, logIndex: number): bigint {
@@ -51,8 +51,8 @@ const CHAIN_FOR_COIN: Record<string, keyof ChainAddresses> = {
 };
 
 /**
- * The records rows are exactly the name's current-epoch records: the indexer deletes a name's
- * rows when it changes owner, as the contract's epoch makes them unreachable. So every record
+ * The records rows are exactly the name's current-epoch records: they're read from the resolver,
+ * which only answers for the name's current epoch (a transfer starts a new one). So every record
  * here was set by the current owner and is safe to pay.
  */
 export function buildResolveBody(name: NameRow, rows: RecordRow[]): ResolveBody {

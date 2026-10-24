@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { Hex } from 'viem';
-import vectors from '../../../indexer/test/vectors.json';
+import vectors from '../../../tests/onchain/vectors.json';
 import { decodeAddress, encodeAddress } from './generated/codec';
 import { REGISTRY_ADDRESS, RESOLVER_ADDRESS } from './generated/deployment';
 import { normalizeName } from './generated/names';
 import { RESERVED_NODES } from './generated/reservedNodes';
 import { buildWrite } from './useOnchainTx';
 
-// The generated copies must behave exactly like the indexer's originals: same vectors, same
-// verdicts. (indexer/scripts/export-abis.mjs --check guards that the files are identical.)
+// The generated copies must behave exactly like the API's originals (src/onchain): same vectors,
+// same verdicts. (`npm run abis:check` guards that the files are identical.)
 describe('shared codec vectors', () => {
   it.each(vectors.valid)('$label round-trips', ({ coinType, address, value }) => {
     expect(encodeAddress(BigInt(coinType), address)).toBe(value);

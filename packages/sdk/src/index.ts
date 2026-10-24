@@ -56,7 +56,7 @@ export const resolveAddress = (
 ): Promise<string | null> =>
   getDefaultClient().resolveAddress(username, chain, opts);
 
-/** Resolve a username from on-chain state via the default indexer client. */
+/** Resolve a username from on-chain state via the default client (the API's on-chain endpoints). */
 export const resolveViaIndexer = (
   username: string,
   opts?: ResolveOptions,
