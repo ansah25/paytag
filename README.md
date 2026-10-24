@@ -107,7 +107,7 @@ sequenceDiagram
 
 ## Quick start
 
-Runs the web app on your machine against the live API (Node ≥ 20):
+Runs the web app on your machine against the live API (Node 24, the version CI, Fly and Vercel run):
 
 ```bash
 git clone --recurse-submodules https://github.com/ansah25/paytag && cd paytag
