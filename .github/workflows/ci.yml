@@ -11,7 +11,7 @@ jobs:
     name: Backend + SDK
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -57,7 +57,7 @@ jobs:
       # test/Gas.t.sol compare against the committed file instead of overwriting it.
       FORGE_SNAPSHOT_CHECK: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
 
@@ -83,7 +83,7 @@ jobs:
     name: Web
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
