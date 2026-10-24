@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Runs the migrations in a throwaway Postgres and checks 0006_lockdown and 0007_default_privileges.
+# Runs the migrations in a throwaway Postgres and checks 0006_lockdown, 0007_default_privileges and
+# 0008_onchain_events.
 # Usage (from the repo root): bash supabase/tests/run.sh   (needs Docker)
 # Checks capture output before matching: `cmd | grep -q` under pipefail fails when grep exits early.
 set -euo pipefail
@@ -202,5 +203,77 @@ migrate sbadmin 0007
   where d.defaclrole = 'supabase_admin'::regrole and a.grantee = 'anon'::regrole")" == 0 ]] \
   || { echo "FAIL supabase_admin defaults not revoked"; exit 1; }
 echo "ok   supabase_admin defaults revoked when permitted"
+
+# --- 0008_onchain_events -------------------------------------------------------------------------
+
+sr() { psql_run "$1" -tA -c "set role service_role" -c "$2"; } # as the API
+T1=11111111-1111-1111-1111-111111111111
+T2=22222222-2222-2222-2222-222222222222
+EV="insert into onchain_events (block_number, log_index, tx_hash, event, node, to_address)
+  values (48167400, 3, '0x$(printf 'a%.0s' {1..64})', 'Transfer', '0x$(printf 'b%.0s' {1..64})', '0x$(printf 'c%.0s' {1..40})')"
+
+# 11. Production-like path (0001..0008 under the old blanket grants): nothing new is exposed.
+fresh_db onchain
+psql_run onchain < tests/legacy_default_grants.sql
+migrate onchain 0008
+out=$(findings onchain)
+[[ -z "$out" ]] || { echo "FAIL exposure check after 0008:"; echo "$out"; exit 1; }
+[[ "$(psql_run onchain -tAc "select has_table_privilege('anon','onchain_events','select') or has_table_privilege('authenticated','onchain_sync_state','update')
+  or has_function_privilege('anon','onchain_sync_try_lease(uuid,integer)','execute')")" == f ]] \
+  || { echo "FAIL 0008 objects open to the public roles"; exit 1; }
+echo "ok   0008 exposes nothing"
+
+# 12. Seeded cursor: the block before the v0.2 deployment, not genesis.
+[[ "$(psql_run onchain -tAc "select last_synced_block from onchain_sync_state")" == 48167394 ]] \
+  || { echo "FAIL cursor not seeded to the deploy block"; exit 1; }
+echo "ok   cursor seeded to the v0.2 deploy block"
+
+# 13. Idempotent sync: the same event twice is one row (as the API inserts: on conflict do nothing).
+sr onchain "$EV on conflict do nothing" >/dev/null
+sr onchain "$EV on conflict do nothing" >/dev/null
+[[ "$(psql_run onchain -tAc "select count(*) from onchain_events")" == 1 ]] || { echo "FAIL duplicate event row"; exit 1; }
+#     Control: without the conflict clause the primary key refuses it, so the count above means something.
+if sr onchain "$EV" >/dev/null 2>"$ERR"; then echo "FAIL duplicate accepted"; exit 1; fi
+grep -q "duplicate key" "$ERR" || { echo "FAIL unexpected error:"; cat "$ERR"; exit 1; }
+echo "ok   re-syncing a range inserts nothing twice"
+
+# 14. CHECKs refuse what the API never writes (mixed-case hex, unknown event).
+for bad in "upper(node)" "'Transfer2'"; do
+  col=$([[ "$bad" == "upper(node)" ]] && echo node || echo event)
+  if sr onchain "insert into onchain_events (block_number, log_index, tx_hash, event, node)
+      select 1, 1, tx_hash, $([[ $col == event ]] && echo "$bad" || echo event), $([[ $col == node ]] && echo "$bad" || echo node) from onchain_events limit 1" \
+      >/dev/null 2>"$ERR"; then echo "FAIL CHECK accepted bad $col"; exit 1; fi
+  grep -q "violates check constraint" "$ERR" || { echo "FAIL unexpected error:"; cat "$ERR"; exit 1; }
+done
+echo "ok   CHECKs refuse bad hex and unknown events"
+
+# 15. Lease: held by one token, refused to another, renewed and released.
+[[ "$(sr onchain "select onchain_sync_try_lease('$T1', 60)")" == 48167394 ]] || { echo "FAIL first lease"; exit 1; }
+[[ -z "$(sr onchain "select onchain_sync_try_lease('$T2', 60)")" ]] || { echo "FAIL second holder got the lease"; exit 1; }
+[[ "$(sr onchain "select onchain_sync_try_lease('$T1', 60)")" == 48167394 ]] || { echo "FAIL holder can't renew"; exit 1; }
+[[ -z "$(sr onchain "select onchain_sync_advance('$T2', 48169999, 60)")" ]] || { echo "FAIL non-holder advanced"; exit 1; }
+[[ "$(sr onchain "select onchain_sync_advance('$T1', 48168000, 60)")" == t ]] || { echo "FAIL holder can't advance"; exit 1; }
+sr onchain "select onchain_sync_advance('$T1', 48167500, 60)" >/dev/null # backwards: ignored
+[[ "$(psql_run onchain -tAc "select last_synced_block from onchain_sync_state")" == 48168000 ]] \
+  || { echo "FAIL cursor moved backwards or a non-holder moved it"; exit 1; }
+sr onchain "select onchain_sync_release('$T2')" >/dev/null # not the holder: no effect
+[[ -z "$(sr onchain "select onchain_sync_try_lease('$T2', 60)")" ]] || { echo "FAIL a non-holder released the lease"; exit 1; }
+sr onchain "select onchain_sync_release('$T1')" >/dev/null
+[[ "$(sr onchain "select onchain_sync_try_lease('$T2', 1)")" == 48168000 ]] || { echo "FAIL lease not free after release"; exit 1; }
+echo "ok   lease: exclusive, renewable, forward-only, released by its holder only"
+
+# 16. An expired lease is taken over, and the old holder can no longer advance.
+psql_run onchain -c "update onchain_sync_state set lease_until = now() - interval '1 second'"
+[[ "$(sr onchain "select onchain_sync_try_lease('$T1', 60)")" == 48168000 ]] || { echo "FAIL expired lease not taken over"; exit 1; }
+[[ -z "$(sr onchain "select onchain_sync_advance('$T2', 48169000, 60)")" ]] || { echo "FAIL expired holder advanced"; exit 1; }
+echo "ok   expired lease taken over; the old holder is locked out"
+
+# 17. Fresh project (no legacy grants): service_role works from the migrations alone.
+fresh_db onchainfresh
+migrate onchainfresh 0008
+sr onchainfresh "$EV on conflict do nothing" >/dev/null
+[[ "$(sr onchainfresh "select onchain_sync_try_lease('$T1', 60)")" == 48167394 ]] || { echo "FAIL fresh-project lease"; exit 1; }
+[[ -z "$(findings onchainfresh)" ]] || { echo "FAIL exposure check on a fresh project after 0008"; exit 1; }
+echo "ok   0008 on a fresh project"
 
 echo "ALL SCENARIOS PASSED"

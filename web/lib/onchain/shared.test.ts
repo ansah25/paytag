@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Hex } from 'viem';
-import vectors from '../../../indexer/test/vectors.json';
+import vectors from '../../../tests/onchain/vectors.json';
 import { decodeAddress, encodeAddress } from './generated/codec';
 import { REGISTRY_ADDRESS, RESOLVER_ADDRESS } from './generated/deployment';
 import { normalizeName } from './generated/names';

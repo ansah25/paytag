@@ -1,6 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { keccak256, stringToBytes } from "viem";
-import { RESERVED_NODES } from "../abis/reservedNodes";
+import { RESERVED_NODES } from "../../src/onchain/generated/reservedNodes";
 
 // abis/reservedNodes.ts is generated from PaytagRegistry.isReserved and drift-checked against the
 // contract source by `npm run abis:check` in CI; this pins its content independently.
