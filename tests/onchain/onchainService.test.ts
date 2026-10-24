@@ -344,6 +344,34 @@ describe('review fixes', () => {
     await expect(svc.namesByOwner(ALICE, { minBlock: chain.head + 5n })).rejects.toMatchObject({ errorCode: 'ONCHAIN_BEHIND' });
   });
 
+  it('with minBlock, a tail that fails or stops short of the write is ONCHAIN_BEHIND, not a short list', async () => {
+    derrickWithRecords();
+    await catchUp();
+    chain.getLogsLimit = 0n; // tail reads fail
+    await expect(svc.namesByOwner(ALICE, { minBlock: chain.head })).rejects.toMatchObject({ status: 503 });
+    chain.getLogsLimit = 200n;
+    db.state.last_synced_block = Number(chain.head) - 2_000; // past the tail's 600-block reach
+    resetSyncThrottle();
+    chain.blockscoutDown = true;
+    env.ONCHAIN_MAX_CHUNKS_PER_REQUEST = 1;
+    await expect(svc.namesByOwner(ALICE, { minBlock: chain.head })).rejects.toMatchObject({ errorCode: 'ONCHAIN_BEHIND' });
+    // Without minBlock the same request still answers from what it has.
+    resetSyncThrottle();
+    await expect(svc.namesByOwner(ALICE)).resolves.toMatchObject({ owner: getAddress(ALICE) });
+  });
+
+  it('a failed sync attempt is throttled too', async () => {
+    derrickWithRecords();
+    chain.blockscoutDown = true;
+    chain.getLogsLimit = 0n;
+    db.state.last_synced_block = SEED;
+    await svc.namesByOwner(ALICE).catch(() => undefined);
+    const calls = chain.blockscoutCalls;
+    await svc.namesByOwner(ALICE).catch(() => undefined);
+    expect(chain.blockscoutCalls).toBe(calls);
+    chain.getLogsLimit = 200n;
+  });
+
   it('syncs at most once per 30s per machine on the request path', async () => {
     derrickWithRecords();
     await svc.namesByOwner(ALICE);

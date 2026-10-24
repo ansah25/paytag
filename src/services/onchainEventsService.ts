@@ -353,11 +353,30 @@ export async function catchUp(opts: { maxChunks?: number; head?: bigint } = {}):
  * margin, or past a sync that didn't finish). Covers at most TAIL_MAX_CHUNKS calls; a longer gap
  * is left to the sync, and the caller just sees fewer candidates for now.
  */
-export async function tail(cursor: bigint, head: bigint): Promise<EventRow[]> {
-  if (head <= cursor) return [];
+export async function tail(cursor: bigint, head: bigint): Promise<{ rows: EventRow[]; reached: bigint }> {
+  if (head <= cursor) return { rows: [], reached: head };
   const { logs, reached } = await rpcLogs(cursor + 1n, head, TAIL_MAX_CHUNKS);
   if (reached < head) logger.warn('onchain.tail_truncated', { cursor: cursor.toString(), head: head.toString() });
-  return toRows(logs);
+  return { rows: await toRows(logs), reached };
+}
+
+/**
+ * The tail, for a request. Without `minBlock` a failed read is just fewer candidates for now. With
+ * it, the caller is waiting for a write it just made, so a tail that failed or stopped short of
+ * that block is a 503 (the app retries) rather than a list silently missing the write.
+ */
+async function tailFor(cursor: bigint, head: bigint, minBlock: bigint | undefined): Promise<EventRow[]> {
+  try {
+    const { rows, reached } = await tail(cursor, head);
+    if (minBlock !== undefined && reached < minBlock) {
+      throw new ChainUnavailableError(`Events up to block ${minBlock} aren't readable yet; retry shortly`, 'ONCHAIN_BEHIND');
+    }
+    return rows;
+  } catch (err) {
+    if (err instanceof DatabaseUnavailableError || minBlock !== undefined) throw err;
+    logger.warn('onchain.tail_failed', { reason: safeReason(err) });
+    return [];
+  }
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -388,11 +407,11 @@ function syncIfDue(head: bigint): Promise<void> {
   if (syncing) return syncing;
   if (Date.now() - lastSyncAt < SYNC_EVERY_MS) return Promise.resolve();
   syncing = catchUp({ head })
-    .then(() => {
-      lastSyncAt = Date.now();
-    })
+    .then(() => undefined)
     .catch((err) => logger.warn('onchain.sync_failed', { reason: safeReason(err) }))
     .finally(() => {
+      // Failed attempts count too: a broken source isn't retried on every request.
+      lastSyncAt = Date.now();
       syncing = null;
     });
   return syncing;
@@ -411,14 +430,7 @@ export async function currentEvents(
   const head = await headAtLeast(minBlock);
   await syncIfDue(head);
   const cursor = await syncedBlock();
-  const [stored, fresh] = await Promise.all([
-    select(cursor),
-    tail(cursor, head).catch((err) => {
-      // A just-made write may be missing until the next request; nothing wrong is shown.
-      logger.warn('onchain.tail_failed', { reason: safeReason(err) });
-      return [] as EventRow[];
-    }),
-  ]);
+  const [stored, fresh] = await Promise.all([select(cursor), tailFor(cursor, head, minBlock)]);
   return [...stored, ...fresh.filter(matches)];
 }
 
@@ -515,18 +527,13 @@ export async function registrationsOf(nodes: readonly Hex[], minBlock?: bigint):
   take(await storedRegistrations(want()));
   if (want().length === 0) return out;
 
+  // A chain failure here (no minBlock) leaves the node out: the caller reports it as unavailable.
   const missing = new Set(want());
-  try {
-    const fresh = await tail(await syncedBlock(), head);
-    take(
-      fresh
-        .filter((r) => r.event === 'NameRegistered' && missing.has(r.node))
-        .map((r) => ({ node: r.node as Hex, name: r.name!, registeredAt: r.block_timestamp! })),
-    );
-  } catch (err) {
-    if (err instanceof DatabaseUnavailableError) throw err;
-    // The chain couldn't be read: the caller reports the missing registration as unavailable.
-    logger.warn('onchain.tail_failed', { reason: safeReason(err) });
-  }
+  const fresh = await tailFor(await syncedBlock(), head, minBlock);
+  take(
+    fresh
+      .filter((r) => r.event === 'NameRegistered' && missing.has(r.node))
+      .map((r) => ({ node: r.node as Hex, name: r.name!, registeredAt: r.block_timestamp! })),
+  );
   return out;
 }
