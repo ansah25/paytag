@@ -6,22 +6,31 @@ on:
   push:
     branches: [main]
 
+# The jobs only read the repository; nothing pushes, comments or deploys from CI.
+permissions:
+  contents: read
+
+# Actions are pinned by commit SHA (the comment is the release it was at); .github/dependabot.yml
+# bumps both together. A tag can be moved to other code; a SHA can't.
+
 jobs:
   backend-sdk:
     name: Backend + SDK
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          # The token is only needed to fetch; don't leave it on disk for npm install scripts.
+          persist-credentials: false
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
 
       # Pinned with the Contracts job: the ABI check builds the contracts.
-      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
         with:
           version: v1.8.5
 
@@ -57,12 +66,14 @@ jobs:
       # test/Gas.t.sol compare against the committed file instead of overwriting it.
       FORGE_SNAPSHOT_CHECK: true
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
+          # The token is only needed to fetch; don't leave it on disk for npm install scripts.
+          persist-credentials: false
 
       # Pinned: formatter and gas output can change between releases. Bump deliberately.
-      - uses: foundry-rs/foundry-toolchain@v1
+      - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
         with:
           version: v1.8.5
 
@@ -83,9 +94,11 @@ jobs:
     name: Web
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
