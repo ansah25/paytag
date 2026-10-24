@@ -16,7 +16,8 @@ import { setChainClientForTests } from '../../src/onchain/client';
 import { normalizeName } from '../../src/onchain/names';
 import { BASE_COIN_TYPE } from '../../src/onchain/state';
 import * as svc from '../../src/services/onchainService';
-import { catchUp, forgetRegistrations } from '../../src/services/onchainEventsService';
+import { catchUp, decodeRow, forgetRegistrations, resetSyncThrottle } from '../../src/services/onchainEventsService';
+import { logger } from '../../src/utils/logger';
 import { FakeChain, timestampOf } from '../helpers/onchainFakes';
 
 const db: FakeDb = jest.requireMock('../../src/config/supabase').fakeDb;
@@ -44,6 +45,7 @@ beforeEach(() => {
   db.reset();
   svc.clearOnchainCaches();
   forgetRegistrations();
+  resetSyncThrottle();
   env.ONCHAIN_MAX_CHUNKS_PER_REQUEST = 10;
   env.ONCHAIN_LOG_CHUNK_BLOCKS = 200;
   env.ONCHAIN_CONFIRMATIONS = 10;
@@ -274,6 +276,81 @@ describe('the lazy sync', () => {
     chain.getLogsLimit = 0n; // every eth_getLogs fails: no sync, no tail
     await expect(svc.namesByOwner(ALICE)).resolves.toMatchObject({ names: [{ name: 'derrick' }] });
     chain.getLogsLimit = 200n;
+  });
+});
+
+describe('review fixes', () => {
+  afterEach(() => {
+    setChainClientForTests([chain.url]);
+    jest.restoreAllMocks();
+  });
+
+  it('never logs the RPC URL (the fallback carries an API key)', async () => {
+    setChainClientForTests([`${chain.url}/v2/SECRETKEY123`]);
+    const warn = jest.spyOn(logger, 'warn');
+    derrickWithRecords();
+    await catchUp();
+    chain.rpcDown = true;
+    chain.blockscoutDown = true;
+    await expect(svc.namesByOwner(ALICE)).rejects.toMatchObject({ errorCode: 'ONCHAIN_UNAVAILABLE' });
+    db.events.clear();
+    forgetRegistrations();
+    await expect(svc.resolveOnchain('derrick')).rejects.toMatchObject({ status: 503 });
+    expect(warn).toHaveBeenCalled();
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('SECRETKEY123');
+  });
+
+  it('a chain failure while finding a registration is a 503, not a 500', async () => {
+    chain.register(DERRICK, 'derrick', ALICE, chain.head - 2n);
+    db.state.last_synced_block = Number(chain.head) - 10;
+    chain.blockscoutDown = true;
+    chain.getLogsLimit = 0n; // the tail can't be read
+    await expect(svc.resolveOnchain('derrick')).rejects.toMatchObject({ status: 503, errorCode: 'ONCHAIN_UNAVAILABLE' });
+    chain.getLogsLimit = 200n;
+  });
+
+  it('a database outage is a 503 DATABASE_UNAVAILABLE', async () => {
+    derrickWithRecords();
+    db.down = true;
+    await expect(svc.resolveOnchain('derrick')).rejects.toMatchObject({ status: 503, errorCode: 'DATABASE_UNAVAILABLE' });
+    await expect(svc.namesByOwner(ALICE)).rejects.toMatchObject({ status: 503, errorCode: 'DATABASE_UNAVAILABLE' });
+  });
+
+  it('a failed read is one call per endpoint: no transport retries', async () => {
+    chain.rpcDown = true;
+    await expect(svc.resolveOnchain('derrick')).rejects.toMatchObject({ errorCode: 'ONCHAIN_UNAVAILABLE' });
+    expect(chain.count('http')).toBe(1);
+  });
+
+  it('drops a registration whose name doesn’t hash to its node', async () => {
+    chain.register(DERRICK, 'mallory', ALICE, 48_200_000n); // forged: derrick's node, another name
+    await catchUp();
+    expect([...db.events.values()].filter((r) => r.event === 'NameRegistered')).toHaveLength(0);
+    const log = chain.logs.find((l) => l.blockNumber === 48_200_000n && l.logIndex === 0)!;
+    expect(decodeRow({ ...log, logIndex: 0 })).toBeNull();
+  });
+
+  it('skips Blockscout until it reports block indexing finished', async () => {
+    derrickWithRecords();
+    chain.blockscoutFinished = false;
+    chain.head = 48_200_100n;
+    await expect(catchUp({ maxChunks: 1_000 })).resolves.toMatchObject({ via: 'rpc' });
+    expect(db.state.last_synced_block).toBe(48_200_090);
+    expect(db.events.size).toBe(4);
+  });
+
+  it('lists honour minBlock: an RPC behind it is ONCHAIN_BEHIND, not a list missing the write', async () => {
+    derrickWithRecords();
+    await expect(svc.namesByOwner(ALICE, { minBlock: chain.head + 5n })).rejects.toMatchObject({ errorCode: 'ONCHAIN_BEHIND' });
+  });
+
+  it('syncs at most once per 30s per machine on the request path', async () => {
+    derrickWithRecords();
+    await svc.namesByOwner(ALICE);
+    const after = chain.blockscoutCalls;
+    chain.head += 50n;
+    await svc.namesByOwner(ALICE);
+    expect(chain.blockscoutCalls).toBe(after); // throttled; the tail covered the new blocks
   });
 });
 

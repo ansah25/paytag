@@ -30,6 +30,38 @@ describe('onchainReads', () => {
     expect(urls).toEqual([`${ONCHAIN_API}/names?owner=${ME}&minBlock=100`, `${ONCHAIN_API}/reverse/${ME}?minBlock=100`]);
   });
 
+  it('right after a write, retries a 503 until the API catches up', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi
+        .fn()
+        .mockImplementationOnce(() => json({ error: 'behind', code: 'ONCHAIN_BEHIND' }, 503))
+        .mockImplementationOnce(() => json({ address: ME, username: 'derrick' }));
+      vi.stubGlobal('fetch', fetchMock);
+      noteWrite(100n);
+      const pending = onchainReads.reverse(ME);
+      await vi.advanceTimersByTimeAsync(1_500);
+      await expect(pending).resolves.toEqual({ address: ME, username: 'derrick' });
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('drops minBlock a minute after the write', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchMock = vi.fn(() => json({ owner: ME, names: [] }));
+      vi.stubGlobal('fetch', fetchMock);
+      noteWrite(100n);
+      vi.advanceTimersByTime(61_000);
+      await onchainReads.names(ME);
+      expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe(`${ONCHAIN_API}/names?owner=${ME}`);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('turns an error response into an OnchainReadError with the API’s code', async () => {
     vi.stubGlobal('fetch', vi.fn(() => json({ error: 'behind', code: 'ONCHAIN_BEHIND' }, 503)));
     const err = await onchainReads.reverse(ME).catch((e) => e);

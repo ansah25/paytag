@@ -20,7 +20,12 @@ const endpoints = [BASE_SEPOLIA_PUBLIC_RPC, env.BASE_SEPOLIA_RPC_FALLBACK_URL].f
 const makeClient = (urls: readonly string[]) =>
   createPublicClient({
     chain: baseSepolia,
-    transport: fallback(urls.map((url) => http(url, { timeout: RPC_TIMEOUT_MS, retryCount: 0 }))),
+    // No retries anywhere: fallback() would otherwise retry the whole list 3 times (about 20s
+    // per failed read, and 4 calls on the metered fallback). One pass over the endpoints.
+    transport: fallback(
+      urls.map((url) => http(url, { timeout: RPC_TIMEOUT_MS, retryCount: 0 })),
+      { retryCount: 0 },
+    ),
   });
 
 export type ChainClient = ReturnType<typeof makeClient>;

@@ -12,7 +12,8 @@
 -- would stay on whichever connection took it. The lease is taken and released with conditional
 -- UPDATEs (database clock), and expires by itself if a machine dies mid-sync.
 --
--- CHECKs are looser than or equal to what the API writes (it lowercases every hex value).
+-- CHECKs are looser than or equal to what the API writes (it lowercases every hex value). The
+-- functions pin search_path, so an object planted earlier on the path can't shadow the table.
 -- After running this, run supabase/ops/exposure_check.sql: every row it returns is a finding.
 
 create table onchain_events (
@@ -61,6 +62,7 @@ alter table onchain_sync_state enable row level security;
 create function onchain_sync_try_lease(p_token uuid, p_seconds integer)
 returns bigint
 language sql
+set search_path = public
 as $$
   update onchain_sync_state
      set lease_token = p_token,
@@ -74,6 +76,7 @@ $$;
 create function onchain_sync_advance(p_token uuid, p_block bigint, p_seconds integer)
 returns boolean
 language sql
+set search_path = public
 as $$
   update onchain_sync_state
      set last_synced_block = greatest(last_synced_block, p_block),
@@ -86,6 +89,7 @@ $$;
 create function onchain_sync_release(p_token uuid)
 returns void
 language sql
+set search_path = public
 as $$
   update onchain_sync_state set lease_token = null, lease_until = '-infinity'
    where id and lease_token = p_token;

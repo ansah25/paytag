@@ -1,5 +1,6 @@
 import { type Hex, parseAbi, zeroAddress, zeroHash } from 'viem';
 import { AppError } from '../utils/errors';
+import { logger } from '../utils/logger';
 import { chainClient } from './client';
 import { COIN_TYPE } from './codec';
 import { REGISTRY_ADDRESS, RESOLVER_ADDRESS } from './deployment';
@@ -77,6 +78,8 @@ async function multicallAt(contracts: readonly unknown[]): Promise<{ block: bigi
     return { block: block as bigint, results };
   } catch (err) {
     if (err instanceof AppError) throw err;
+    // Only the error's name: viem's messages carry the RPC URL, and the fallback's has a key.
+    logger.warn('onchain.rpc_failed', { what: 'multicall', reason: (err as Error)?.name ?? 'unknown' });
     throw new ChainUnavailableError();
   }
 }

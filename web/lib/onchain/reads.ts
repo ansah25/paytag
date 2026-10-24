@@ -1,4 +1,4 @@
-import { Paytag, type OnchainResolveResponse } from '@paytagdev/sdk';
+import { Paytag, PaytagError, type OnchainResolveResponse } from '@paytagdev/sdk';
 import { API_URL } from '../endpoints';
 
 // Reads of on-chain names (the Base registry), through the Paytag API's /onchain endpoints: they
@@ -40,23 +40,61 @@ export interface PointingName {
 
 // The newest block this tab has written in. Every read after a write asks the API for at least
 // that block, so it reflects the write (or answers 503 ONCHAIN_BEHIND until its RPC catches up)
-// instead of a copy cached from before it. Per tab: this module runs in the browser.
-let lastWriteBlock: bigint | undefined;
+// instead of a copy cached from before it. Per tab: this module runs in the browser. After
+// WRITE_FRESH_MS every API cache entry from before the write has expired, so it's dropped (and
+// reads use the API's cache again).
+const WRITE_FRESH_MS = 60_000;
+let lastWrite: { block: bigint; at: number } | undefined;
 
 /** Call when a write's receipt arrives. */
 export function noteWrite(blockNumber: bigint): void {
-  if (lastWriteBlock === undefined || blockNumber > lastWriteBlock) lastWriteBlock = blockNumber;
+  if (!lastWrite || blockNumber > lastWrite.block) lastWrite = { block: blockNumber, at: Date.now() };
+  else lastWrite.at = Date.now();
 }
 
 /** Tests only. */
 export const resetWrites = (): void => {
-  lastWriteBlock = undefined;
+  lastWrite = undefined;
+};
+
+const minBlock = (): bigint | undefined => {
+  if (lastWrite && Date.now() - lastWrite.at > WRITE_FRESH_MS) lastWrite = undefined;
+  return lastWrite?.block;
 };
 
 const withMinBlock = (path: string): string => {
-  if (lastWriteBlock === undefined) return path;
-  return `${path}${path.includes('?') ? '&' : '?'}minBlock=${lastWriteBlock}`;
+  const min = minBlock();
+  if (min === undefined) return path;
+  return `${path}${path.includes('?') ? '&' : '?'}minBlock=${min}`;
 };
+
+// Right after a write the API's RPC can be a block or two behind the wallet's (Base makes one every
+// 2s): it answers 503 and the read is retried a few times before the error is shown.
+const BEHIND_RETRIES = 3;
+const BEHIND_RETRY_MS = 1_500;
+const pause = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(t);
+      reject(new DOMException('The operation was aborted.', 'AbortError'));
+    }, { once: true });
+  });
+
+const is503 = (err: unknown) =>
+  (err instanceof OnchainReadError || err instanceof PaytagError) && err.status === 503;
+
+/** Runs `read`; while a recent write is pending, retries a 503 (the API behind that block). */
+async function afterWrite<T>(read: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await read();
+    } catch (err) {
+      if (attempt >= BEHIND_RETRIES || minBlock() === undefined || !is503(err)) throw err;
+      await pause(BEHIND_RETRY_MS, signal);
+    }
+  }
+}
 
 /**
  * For `res.json().catch(...)`: an unreadable body becomes null (reported as an HTTP error), but
@@ -91,17 +129,28 @@ const sdk = new Paytag({
 
 export const onchainReads = {
   resolve: (name: string, signal?: AbortSignal): Promise<OnchainResolveResponse> =>
-    sdk.resolveViaIndexer(name, { signal, minBlock: lastWriteBlock }),
+    afterWrite(() => sdk.resolveViaIndexer(name, { signal, minBlock: minBlock() }), signal),
   available: (name: string, signal?: AbortSignal) =>
     getJson<Availability>(`/available/${encodeURIComponent(name)}`, signal),
   names: (owner: string, signal?: AbortSignal) =>
-    getJson<{ owner: string; names: OwnedName[] }>(withMinBlock(`/names?owner=${encodeURIComponent(owner)}`), signal),
+    afterWrite(
+      () => getJson<{ owner: string; names: OwnedName[] }>(withMinBlock(`/names?owner=${encodeURIComponent(owner)}`), signal),
+      signal,
+    ),
   reverse: (address: string, signal?: AbortSignal) =>
-    getJson<{ address: string; username: string | null }>(withMinBlock(`/reverse/${encodeURIComponent(address)}`), signal),
+    afterWrite(
+      () => getJson<{ address: string; username: string | null }>(withMinBlock(`/reverse/${encodeURIComponent(address)}`), signal),
+      signal,
+    ),
   /** Names whose Ethereum record is `account`, excluding names `account` owns, by name. */
   pointingAt: async (account: string, signal?: AbortSignal): Promise<PointingName[]> =>
-    (await getJson<{ account: string; names: PointingName[] }>(withMinBlock(`/pointing?account=${encodeURIComponent(account)}`), signal))
-      .names,
+    (
+      await afterWrite(
+        () =>
+          getJson<{ account: string; names: PointingName[] }>(withMinBlock(`/pointing?account=${encodeURIComponent(account)}`), signal),
+        signal,
+      )
+    ).names,
 };
 
 /** At most this many names are shown. */

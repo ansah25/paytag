@@ -31,7 +31,8 @@ export interface StatusReport {
 
 export function apiHealth(ping: PingProbe): Pick<StatusReport['api'], 'health' | 'reason'> {
   if (ping.status === null) return { health: 'down', reason: 'Not responding' };
-  if (ping.status === 200 && ping.database) return { health: 'ok', reason: 'Serving' };
+  // database null: an API from before /ping reported it (rollout) still counts as serving.
+  if (ping.status === 200 && ping.database !== false) return { health: 'ok', reason: 'Serving' };
   if (ping.database === false) return { health: 'degraded', reason: 'Database unavailable' };
   return { health: 'down', reason: `Answering ${ping.status}` };
 }

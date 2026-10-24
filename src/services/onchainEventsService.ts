@@ -6,7 +6,9 @@ import { chainClient } from '../onchain/client';
 import { REGISTRY_ADDRESS, RESOLVER_ADDRESS } from '../onchain/deployment';
 import { PaytagRegistryAbi } from '../onchain/generated/PaytagRegistryAbi';
 import { PaytagResolverAbi } from '../onchain/generated/PaytagResolverAbi';
-import { readHead } from '../onchain/state';
+import { normalizeName } from '../onchain/names';
+import { ChainUnavailableError, readHead } from '../onchain/state';
+import { AppError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
 // The events behind the list endpoints, kept in onchain_events and caught up lazily: when a list
@@ -57,7 +59,12 @@ const RESOLVER = RESOLVER_ADDRESS.toLowerCase();
 /** Which contract may emit which event: a log from anywhere else is ignored. */
 const EMITTER: Record<OnchainEvent, string> = { NameRegistered: REGISTRY, Transfer: REGISTRY, RecordSet: RESOLVER };
 
-const LEASE_SECONDS = 60;
+// Long enough for the slowest catch-up (Blockscout paging, or ONCHAIN_MAX_CHUNKS_PER_REQUEST
+// eth_getLogs calls), so a lease isn't lost mid-sync; a machine that dies holding it delays the
+// next sync by at most this long, and lists are still served meanwhile (table + tail).
+const LEASE_SECONDS = 300;
+/** A machine syncs on the request path at most this often; the tail covers the blocks since. */
+const SYNC_EVERY_MS = 30_000;
 const BLOCKSCOUT_TIMEOUT_MS = 8_000;
 /** Etherscan-compatible getLogs returns at most this many logs per call. */
 const BLOCKSCOUT_PAGE = 1_000;
@@ -67,6 +74,41 @@ const TAIL_MAX_CHUNKS = 3;
 const INSERT_BATCH = 500;
 
 const lower = (v: string) => v.toLowerCase();
+
+/** Postgres couldn't be reached (Supabase paused or down). */
+export class DatabaseUnavailableError extends AppError {
+  constructor() {
+    super(503, 'DATABASE_UNAVAILABLE', 'The database is unavailable right now; retry shortly');
+    this.name = 'DatabaseUnavailableError';
+  }
+}
+
+/**
+ * An error's message, safe to log: viem puts the request URL in its messages, and the fallback
+ * RPC's URL carries an API key. Every URL is replaced, and the text is clipped.
+ */
+export const safeReason = (err: unknown): string =>
+  String((err as Error)?.message ?? err)
+    .replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, '<url>')
+    .slice(0, 300);
+
+/** Runs a chain call; any failure becomes ChainUnavailableError (logged without URLs). */
+async function onChain<T>(what: string, run: () => Promise<T>): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    logger.warn('onchain.rpc_failed', { what, reason: safeReason(err) });
+    throw new ChainUnavailableError();
+  }
+}
+
+/** A Supabase result's error becomes DatabaseUnavailableError (logged). */
+function dbCheck(what: string, error: { message: string } | null): void {
+  if (!error) return;
+  logger.warn('onchain.database_failed', { what, reason: safeReason(error) });
+  throw new DatabaseUnavailableError();
+}
 
 /** Decodes a log into a row, or null if it isn't one of the three events from its contract. */
 export function decodeRow(log: RawLog): EventRow | null {
@@ -92,7 +134,11 @@ export function decodeRow(log: RawLog): EventRow | null {
     node: lower(decoded.args.node),
   };
   switch (decoded.eventName) {
-    case 'NameRegistered':
+    case 'NameRegistered': {
+      // The name text is stored for good and can't be re-checked against contract state later, so
+      // a row from any source must hash to its node (as the registry computes it), or it's dropped.
+      const parsed = normalizeName(decoded.args.name);
+      if (!parsed.ok || parsed.name !== decoded.args.name || parsed.node !== base.node) return null;
       return {
         ...base,
         event: 'NameRegistered',
@@ -100,6 +146,7 @@ export function decodeRow(log: RawLog): EventRow | null {
         to_address: lower(decoded.args.owner),
         block_timestamp: log.timestamp ?? null,
       };
+    }
     case 'Transfer':
       return {
         ...base,
@@ -128,8 +175,14 @@ async function blockscoutGet(path: string): Promise<unknown> {
   return res.json();
 }
 
-/** The newest block Blockscout has indexed: the sync never moves the cursor past it. */
+/**
+ * The newest block Blockscout has indexed: the sync never moves the cursor past it. Only trusted
+ * while Blockscout says its block indexing is finished: after a restart it indexes new blocks
+ * before backfilling older ones, and a cursor moved over such a gap would skip it for good.
+ */
 async function blockscoutHead(): Promise<bigint> {
+  const status = (await blockscoutGet('/api/v2/main-page/indexing-status')) as { finished_indexing_blocks?: unknown };
+  if (status?.finished_indexing_blocks !== true) throw new Error('Blockscout: block indexing not finished');
   const body = (await blockscoutGet('/api/v2/blocks?type=block')) as { items?: { height?: unknown }[] };
   const height = body?.items?.[0]?.height;
   if (typeof height !== 'number' || !Number.isSafeInteger(height)) throw new Error('Blockscout: no block height');
@@ -178,11 +231,9 @@ async function rpcLogs(from: bigint, to: bigint, maxChunks: number): Promise<{ l
   for (let i = 0; i < maxChunks && reached < to; i++) {
     const start = reached + 1n;
     const end = start + chunk - 1n < to ? start + chunk - 1n : to;
-    const found = await chainClient().getLogs({
-      address: [REGISTRY_ADDRESS, RESOLVER_ADDRESS],
-      fromBlock: start,
-      toBlock: end,
-    });
+    const found = await onChain('eth_getLogs', () =>
+      chainClient().getLogs({ address: [REGISTRY_ADDRESS, RESOLVER_ADDRESS], fromBlock: start, toBlock: end }),
+    );
     for (const l of found) {
       if (l.blockNumber === null || l.logIndex === null || l.transactionHash === null) continue; // pending
       logs.push({
@@ -206,7 +257,7 @@ async function toRows(logs: RawLog[]): Promise<EventRow[]> {
   const times = new Map<number, number>();
   // Registrations are rare: one block read each.
   for (const block of missing) {
-    const b = await chainClient().getBlock({ blockNumber: BigInt(block) });
+    const b = await onChain('eth_getBlockByNumber', () => chainClient().getBlock({ blockNumber: BigInt(block) }));
     times.set(block, Number(b.timestamp));
   }
   return rows.map((r) => (r.event === 'NameRegistered' && r.block_timestamp == null ? { ...r, block_timestamp: times.get(r.block_number)! } : r));
@@ -219,20 +270,20 @@ async function insertRows(rows: EventRow[]): Promise<void> {
     const { error } = await supabase
       .from('onchain_events')
       .upsert(rows.slice(i, i + INSERT_BATCH), { onConflict: 'block_number,log_index', ignoreDuplicates: true });
-    if (error) throw new Error(`onchain_events insert: ${error.message}`);
+    dbCheck('onchain_events insert', error);
   }
 }
 
 /** Every block up to and including this one is in the table. */
 export async function syncedBlock(): Promise<bigint> {
   const { data, error } = await supabase.from('onchain_sync_state').select('last_synced_block').single();
-  if (error || !data) throw new Error(`onchain_sync_state: ${error?.message ?? 'missing row'}`);
+  dbCheck('onchain_sync_state', error ?? (data ? null : { message: 'missing row' }));
   return BigInt((data as { last_synced_block: number | string }).last_synced_block);
 }
 
 async function rpcCall<T>(fn: string, args: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.rpc(fn, args);
-  if (error) throw new Error(`${fn}: ${error.message}`);
+  dbCheck(fn, error);
   return data as T;
 }
 
@@ -278,7 +329,7 @@ export async function catchUp(opts: { maxChunks?: number; head?: bigint } = {}):
       }
       // Blockscout is behind the target: the RPC path covers the rest, within its cap.
     } catch (err) {
-      logger.warn('onchain.sync_blockscout_failed', { reason: (err as Error).message });
+      logger.warn('onchain.sync_blockscout_failed', { reason: safeReason(err) });
     }
 
     const maxChunks = opts.maxChunks ?? env.ONCHAIN_MAX_CHUNKS_PER_REQUEST;
@@ -292,7 +343,7 @@ export async function catchUp(opts: { maxChunks?: number; head?: bigint } = {}):
     return { status: 'advanced', cursor, via: 'rpc' };
   } finally {
     await rpcCall('onchain_sync_release', { p_token: token }).catch((err: Error) =>
-      logger.warn('onchain.sync_release_failed', { reason: err.message }),
+      logger.warn('onchain.sync_release_failed', { reason: safeReason(err) }),
     );
   }
 }
@@ -309,25 +360,62 @@ export async function tail(cursor: bigint, head: bigint): Promise<EventRow[]> {
   return toRows(logs);
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The chain head, retried once if the RPC is behind `minBlock` (then ONCHAIN_BEHIND). */
+async function headAtLeast(minBlock: bigint | undefined): Promise<bigint> {
+  const head = await readHead();
+  if (minBlock === undefined || head >= minBlock) return head;
+  await sleep(1_000);
+  const again = await readHead();
+  if (again >= minBlock) return again;
+  throw new ChainUnavailableError(`The chain hasn't reached block ${minBlock} yet; retry shortly`, 'ONCHAIN_BEHIND');
+}
+
+// Per machine: at most one request-path sync at a time (others wait for it), and none within
+// SYNC_EVERY_MS of the last one. The cross-machine guard is the lease.
+let syncing: Promise<void> | null = null;
+let lastSyncAt = -Infinity;
+
+/** Tests only. */
+export const resetSyncThrottle = (): void => {
+  syncing = null;
+  lastSyncAt = -Infinity;
+};
+
+/** catchUp on the request path: throttled, coalesced, and never fatal (lists serve what's there). */
+function syncIfDue(head: bigint): Promise<void> {
+  if (syncing) return syncing;
+  if (Date.now() - lastSyncAt < SYNC_EVERY_MS) return Promise.resolve();
+  syncing = catchUp({ head })
+    .then(() => {
+      lastSyncAt = Date.now();
+    })
+    .catch((err) => logger.warn('onchain.sync_failed', { reason: safeReason(err) }))
+    .finally(() => {
+      syncing = null;
+    });
+  return syncing;
+}
+
 /**
  * Stored rows plus the fresh tail, for a list request. Syncs first (non-blocking: a busy lease or
- * a failed sync just serves what's stored). Throws only when the chain itself can't be read.
+ * a failed sync just serves what's stored). Throws only when the chain itself can't be read, or
+ * hasn't reached `minBlock`.
  */
 export async function currentEvents(
   select: (cursor: bigint) => Promise<EventRow[]>,
   matches: (row: EventRow) => boolean,
+  minBlock?: bigint,
 ): Promise<EventRow[]> {
-  const head = await readHead();
-  try {
-    await catchUp({ head });
-  } catch (err) {
-    logger.warn('onchain.sync_failed', { reason: (err as Error).message });
-  }
+  const head = await headAtLeast(minBlock);
+  await syncIfDue(head);
   const cursor = await syncedBlock();
   const [stored, fresh] = await Promise.all([
     select(cursor),
-    tail(cursor, head).catch((err: Error) => {
-      logger.warn('onchain.tail_failed', { reason: err.message });
+    tail(cursor, head).catch((err) => {
+      // A just-made write may be missing until the next request; nothing wrong is shown.
+      logger.warn('onchain.tail_failed', { reason: safeReason(err) });
       return [] as EventRow[];
     }),
   ]);
@@ -336,8 +424,10 @@ export async function currentEvents(
 
 // --- Queries ----------------------------------------------------------------------------------
 
-/** Most rows a list query reads; far above any real owner's count at this scale. */
-const QUERY_LIMIT = 5_000;
+/** Most rows a list query reads (Supabase's max_rows); far above any real owner's count here. */
+const QUERY_LIMIT = 1_000;
+/** Nodes per `in` filter: each adds ~67 bytes to the GET URL, which has a length limit. */
+const IN_BATCH = 100;
 
 export async function storedTransfersTo(address: string): Promise<EventRow[]> {
   const { data, error } = await supabase
@@ -346,7 +436,7 @@ export async function storedTransfersTo(address: string): Promise<EventRow[]> {
     .eq('event', 'Transfer')
     .eq('to_address', lower(address))
     .limit(QUERY_LIMIT);
-  if (error) throw new Error(`onchain_events: ${error.message}`);
+  dbCheck('onchain_events', error);
   return (data ?? []) as EventRow[];
 }
 
@@ -358,7 +448,7 @@ export async function storedEthRecordsFor(address: string): Promise<EventRow[]> 
     .eq('coin_type', 60)
     .eq('value', lower(address))
     .limit(QUERY_LIMIT);
-  if (error) throw new Error(`onchain_events: ${error.message}`);
+  dbCheck('onchain_events', error);
   return (data ?? []) as EventRow[];
 }
 
@@ -381,19 +471,20 @@ const remember = (r: Registration) => {
 export const forgetRegistrations = (): void => registrations.clear();
 
 async function storedRegistrations(nodes: readonly string[]): Promise<Registration[]> {
-  if (nodes.length === 0) return [];
-  const { data, error } = await supabase
-    .from('onchain_events')
-    .select('node, name, block_timestamp')
-    .eq('event', 'NameRegistered')
-    .in('node', nodes.map(lower))
-    .limit(QUERY_LIMIT);
-  if (error) throw new Error(`onchain_events: ${error.message}`);
-  return ((data ?? []) as { node: string; name: string; block_timestamp: number | string }[]).map((r) => ({
-    node: r.node as Hex,
-    name: r.name,
-    registeredAt: Number(r.block_timestamp),
-  }));
+  const out: Registration[] = [];
+  for (let i = 0; i < nodes.length; i += IN_BATCH) {
+    const { data, error } = await supabase
+      .from('onchain_events')
+      .select('node, name, block_timestamp')
+      .eq('event', 'NameRegistered')
+      .in('node', nodes.slice(i, i + IN_BATCH).map(lower))
+      .limit(QUERY_LIMIT);
+    dbCheck('onchain_events', error);
+    for (const r of (data ?? []) as { node: string; name: string; block_timestamp: number | string }[]) {
+      out.push({ node: r.node as Hex, name: r.name, registeredAt: Number(r.block_timestamp) });
+    }
+  }
+  return out;
 }
 
 /**
@@ -401,7 +492,7 @@ async function storedRegistrations(nodes: readonly string[]): Promise<Registrati
  * the table yet: it's looked up by syncing, then in the fresh tail. A node still missing after
  * that is left out (the caller decides what that means).
  */
-export async function registrationsOf(nodes: readonly Hex[]): Promise<Map<string, Registration>> {
+export async function registrationsOf(nodes: readonly Hex[], minBlock?: bigint): Promise<Map<string, Registration>> {
   const out = new Map<string, Registration>();
   const want = () => nodes.map(lower).filter((n) => !out.has(n));
   for (const n of nodes) {
@@ -419,20 +510,23 @@ export async function registrationsOf(nodes: readonly Hex[]): Promise<Map<string
   take(await storedRegistrations(want()));
   if (want().length === 0) return out;
 
-  const head = await readHead();
-  try {
-    await catchUp({ head });
-    take(await storedRegistrations(want()));
-    if (want().length === 0) return out;
-  } catch (err) {
-    logger.warn('onchain.sync_failed', { reason: (err as Error).message });
-  }
+  const head = await headAtLeast(minBlock);
+  await syncIfDue(head);
+  take(await storedRegistrations(want()));
+  if (want().length === 0) return out;
+
   const missing = new Set(want());
-  const fresh = await tail(await syncedBlock(), head);
-  take(
-    fresh
-      .filter((r) => r.event === 'NameRegistered' && missing.has(r.node))
-      .map((r) => ({ node: r.node as Hex, name: r.name!, registeredAt: r.block_timestamp! })),
-  );
+  try {
+    const fresh = await tail(await syncedBlock(), head);
+    take(
+      fresh
+        .filter((r) => r.event === 'NameRegistered' && missing.has(r.node))
+        .map((r) => ({ node: r.node as Hex, name: r.name!, registeredAt: r.block_timestamp! })),
+    );
+  } catch (err) {
+    if (err instanceof DatabaseUnavailableError) throw err;
+    // The chain couldn't be read: the caller reports the missing registration as unavailable.
+    logger.warn('onchain.tail_failed', { reason: safeReason(err) });
+  }
   return out;
 }

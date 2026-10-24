@@ -41,7 +41,6 @@ interface Cached<T> {
 
 class LookupCache<T> {
   private readonly cache = new TtlCache<Cached<T>>(LOOKUP_TTL_MS);
-  private size = 0;
 
   get(key: string, minBlock: bigint | undefined): T | undefined {
     const hit = this.cache.get(key);
@@ -50,17 +49,17 @@ class LookupCache<T> {
   }
 
   set(key: string, value: T, block: bigint): void {
-    // A crude bound: a flood of distinct names can't grow memory without limit.
-    if (++this.size > MAX_CACHED) {
-      this.cache.clear();
-      this.size = 0;
+    // Bounded: drop expired entries first, and only start over if 30s worth of distinct names
+    // still fills it (a flood), so memory can't grow without limit.
+    if (this.cache.size >= MAX_CACHED) {
+      this.cache.prune();
+      if (this.cache.size >= MAX_CACHED) this.cache.clear();
     }
     this.cache.set(key, { value, block });
   }
 
   clear(): void {
     this.cache.clear();
-    this.size = 0;
   }
 }
 
@@ -95,7 +94,7 @@ export async function resolveOnchain(raw: string, opts: ReadOpts = {}): Promise<
       outcome = { kind: 'missing', name };
     } else {
       // The registration time isn't in contract state: it's the NameRegistered event's.
-      const registration = (await registrationsOf([node])).get(node);
+      const registration = (await registrationsOf([node], opts.minBlock)).get(node);
       if (!registration) throw new ChainUnavailableError(`@${name}'s registration isn't indexed yet; retry shortly`);
       const rows: RecordRow[] = state.records.map((r) => ({
         node,
@@ -148,7 +147,7 @@ export async function reverseOnchain(address: string, opts: ReadOpts = {}): Prom
   const { value: node, block } = await readReverse(account, opts);
   let username: string | null = null;
   if (node) {
-    const registration = (await registrationsOf([node])).get(node.toLowerCase());
+    const registration = (await registrationsOf([node], opts.minBlock)).get(node.toLowerCase());
     if (!registration) throw new ChainUnavailableError('The claimed name isn’t indexed yet; retry shortly');
     username = registration.name;
   }
@@ -169,12 +168,13 @@ export async function namesByOwner(
   const rows = await currentEvents(
     () => storedTransfersTo(me),
     (r) => r.event === 'Transfer' && r.to_address === me,
+    opts.minBlock,
   );
   const candidates = uniqueNodes(rows);
   const held = candidates.length
     ? (await readNames(candidates, { ...opts, ownersOnly: true })).value.filter((s) => s.owner === me).map((s) => s.node)
     : [];
-  const names = await registrationsOf(held);
+  const names = await registrationsOf(held, opts.minBlock);
   return {
     owner: getAddress(me),
     names: held
@@ -202,12 +202,16 @@ export async function namesPointingAt(
   const rows = await currentEvents(
     () => storedEthRecordsFor(me),
     (r) => r.event === 'RecordSet' && r.coin_type === '60' && r.value === me,
+    opts.minBlock,
   );
   const candidates = uniqueNodes(rows).slice(0, POINTING_MAX_CANDIDATES);
   const live = candidates.length
     ? (await readEthRecords(candidates, opts)).value.filter((s) => s.eth === me && s.owner !== null && s.owner !== me)
     : [];
-  const names = await registrationsOf(live.map((s) => s.node));
+  const names = await registrationsOf(
+    live.map((s) => s.node),
+    opts.minBlock,
+  );
   return {
     account: getAddress(me),
     names: live

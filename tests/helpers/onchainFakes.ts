@@ -54,6 +54,8 @@ export class FakeChain {
   blockscoutDown = false;
   /** Blockscout's indexed head; defaults to the chain head. */
   blockscoutHead: bigint | null = null;
+  /** Blockscout's own "finished indexing blocks" flag. */
+  blockscoutFinished = true;
   /** Report this head from Multicall3.getBlockNumber (a lagging node), when set. */
   multicallBlock: bigint | null = null;
   getLogsLimit = 200n;
@@ -72,7 +74,7 @@ export class FakeChain {
           res.end(JSON.stringify(payload));
         };
         if (req.method === 'GET') return this.blockscout(req.url ?? '', send);
-        this.count('http');
+        this.calls.set('http', this.count('http') + 1);
         if (this.rpcDown) return send(503, { error: 'down' });
         const msg = JSON.parse(body) as { id: number; method: string; params: unknown[] } | unknown[];
         if (Array.isArray(msg)) return send(400, { error: 'no batches' });
@@ -108,6 +110,7 @@ export class FakeChain {
     this.rpcDown = false;
     this.blockscoutDown = false;
     this.blockscoutHead = null;
+    this.blockscoutFinished = true;
     this.multicallBlock = null;
     this.delayMs = 0;
   }
@@ -256,6 +259,9 @@ export class FakeChain {
     this.blockscoutCalls++;
     if (this.blockscoutDown) return send(502, { message: 'down' });
     const url = new URL(path, 'http://x');
+    if (url.pathname === '/api/v2/main-page/indexing-status') {
+      return send(200, { finished_indexing: this.blockscoutFinished, finished_indexing_blocks: this.blockscoutFinished });
+    }
     if (url.pathname === '/api/v2/blocks') {
       return send(200, { items: [{ height: Number(this.blockscoutHead ?? this.head) }] });
     }
