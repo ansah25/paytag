@@ -1,11 +1,11 @@
 import { RequestHandler } from 'express';
-import { ZodType, ZodTypeDef } from 'zod';
+import type { ZodType } from 'zod';
 
 type Source = 'body' | 'query' | 'params';
 
 export const validate =
   // Input is unknown: a schema may transform what it parses (a query string into a bigint).
-  <T>(schema: ZodType<T, ZodTypeDef, unknown>, source: Source = 'body'): RequestHandler =>
+  <T>(schema: ZodType<T, unknown>, source: Source = 'body'): RequestHandler =>
   (req, _res, next) => {
     const result = schema.safeParse(req[source]);
     if (!result.success) {
