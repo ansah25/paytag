@@ -51,5 +51,9 @@
   },
   "engines": {
     "node": "24.x"
+  },
+  "overrides": {
+    "react": "19.1.10",
+    "react-dom": "19.1.10"
   }
 }

@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
 
 interface Props {
-  params: { username: string };
+  params: Promise<{ username: string }>;
 }
 
-export default function LegacyPayRedirect({ params }: Props) {
-  redirect(`/${params.username}`);
+export default async function LegacyPayRedirect({ params }: Props) {
+  redirect(`/${(await params).username}`);
 }

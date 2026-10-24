@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 import { USERNAME_PATTERN, normalizeUsername } from '@/lib/username';
 import { MessageScreen } from '@/components/MessageScreen';
 import { PayPanel } from '@/components/PayPanel';
@@ -25,11 +25,11 @@ type LoadState =
   | { kind: 'error' };
 
 interface Props {
-  params: { username: string };
+  params: Promise<{ username: string }>;
 }
 
 export default function ProfilePage({ params }: Props) {
-  const username = normalizeUsername(decodeURIComponent(params.username));
+  const username = normalizeUsername(decodeURIComponent(use(params).username));
   const validName = USERNAME_PATTERN.test(username);
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [attempt, setAttempt] = useState(0);
