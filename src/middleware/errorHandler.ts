@@ -1,5 +1,5 @@
 import { ErrorRequestHandler } from 'express';
-import { ZodError } from 'zod';
+import { ZodError, flattenError } from 'zod';
 import { AppError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
@@ -35,7 +35,7 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     res.status(400).json({
       error: 'Validation failed',
       code: 'VALIDATION_ERROR',
-      details: err.flatten().fieldErrors,
+      details: flattenError(err).fieldErrors,
     });
     return;
   }

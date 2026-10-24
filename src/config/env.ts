@@ -5,7 +5,7 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(3000),
 
-  SUPABASE_URL: z.string().url(),
+  SUPABASE_URL: z.url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
 
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
@@ -25,10 +25,10 @@ const envSchema = z.object({
   // On-chain reads (Base Sepolia). The primary RPC is the public endpoint in
   // src/onchain/generated/endpoints.ts; this is the fallback, typically a keyed provider URL
   // (Alchemy). It holds a secret: server-side only, never in the CSP or the web bundle.
-  BASE_SEPOLIA_RPC_FALLBACK_URL: z.string().url().startsWith('https://').optional(),
+  BASE_SEPOLIA_RPC_FALLBACK_URL: z.url().startsWith('https://').optional(),
   // Etherscan-compatible logs API used to catch the events table up in one call per contract.
   // When it fails, the sync falls back to eth_getLogs in ONCHAIN_LOG_CHUNK_BLOCKS chunks.
-  BLOCKSCOUT_API_URL: z.string().url().startsWith('https://').default('https://base-sepolia.blockscout.com'),
+  BLOCKSCOUT_API_URL: z.url().startsWith('https://').default('https://base-sepolia.blockscout.com'),
   // eth_getLogs range per call on the fallback path (sepolia.base.org allows 200).
   ONCHAIN_LOG_CHUNK_BLOCKS: z.coerce.number().int().min(1).max(10_000).default(200),
   // At most this many eth_getLogs calls per request on the fallback path; the rest waits for the
@@ -57,7 +57,7 @@ const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
   // eslint-disable-next-line no-console
-  console.error('Invalid environment configuration:', parsed.error.flatten().fieldErrors);
+  console.error('Invalid environment configuration:', z.flattenError(parsed.error).fieldErrors);
   process.exit(1);
 }
 

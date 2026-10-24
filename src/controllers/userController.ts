@@ -28,10 +28,10 @@ const profileText = (max: number, label: string) =>
     .optional()
     .transform((value) => (typeof value === 'string' ? value.replace(CONTROL_CHARS, ' ').trim() : value))
     .refine((value) => value == null || value.length <= max, {
-      message: `${label} must be ${max} characters or fewer`,
+      error: `${label} must be ${max} characters or fewer`,
     })
     .refine((value) => value == null || !DECEPTIVE_CHARS.test(value), {
-      message: `${label} contains invisible or text-direction characters`,
+      error: `${label} contains invisible or text-direction characters`,
     })
     .transform((value) => (value === '' ? null : value));
 
@@ -41,7 +41,7 @@ export const updateProfileBodySchema = z
     bio: profileText(profileService.PROFILE_LIMITS.bio, 'Bio'),
   })
   .refine((body) => body.displayName !== undefined || body.bio !== undefined, {
-    message: 'Provide displayName or bio',
+    error: 'Provide displayName or bio',
   });
 
 export const register: RequestHandler = async (req, res, next) => {
