@@ -296,6 +296,8 @@ Public read endpoints (`/resolve`, `/available`, `/onchain/*`, `/health`) are CO
 
 `onchain.status` is `linked` (the on-chain name's owner is the verified `ethereum` address), `not_linked` (held on-chain, by another address), `none` (not registered on-chain), or `unavailable` when the chain couldn't be read. (`syncing` is no longer sent: the API reads the registry directly.) `/resolve` and `/available` wait up to 800ms for the read and `/register` up to 1s, then carry on without the answer.
 
+When Postgres can't be reached, any endpoint that reads it answers `503 { code: "DATABASE_UNAVAILABLE" }`, which clients can retry. The API itself doesn't retry: each Supabase request gets `SUPABASE_TIMEOUT_MS` (default 5s), once, then fails. `/register` is safe to retry after a 503: if the earlier attempt had committed, the same wallet asking for the same name gets its account back instead of `USERNAME_TAKEN`. **Resuming a paused project:** a paused Supabase project doesn't wake on a request (it's restored from the dashboard), and its first queries after a restore can take longer than 5s. Those return 503 and `/status` shows the database down, even though the project is up and warming. If the 503s persist for more than a minute or two after a restore, raise the budget until it's warm (`flyctl secrets set SUPABASE_TIMEOUT_MS=30000`, then unset it).
+
 **Resolution response**
 
 ```json

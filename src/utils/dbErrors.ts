@@ -15,7 +15,13 @@ export class DatabaseUnavailableError extends AppError {
 export interface DbErrorLike {
   code?: string | null;
   message?: string | null;
+  details?: string | null;
 }
+
+// For a failed fetch, postgrest-js's message is only "TypeError: fetch failed"; the reason (DNS,
+// refused, TLS, our timeout) is the "Caused by:" line it puts in `details`, ahead of a stack.
+const causeOf = (details?: string | null): string =>
+  /Caused by: ([^\n]*)/.exec(details ?? '')?.[1] ?? '';
 
 // PostgREST couldn't reach or use the database: connection failed, pool timeout, schema cache
 // not loaded yet. (https://postgrest.org/en/stable/references/errors.html)
@@ -60,7 +66,13 @@ export const redact = (text: string): string =>
  */
 export function dbError(what: string, error: DbErrorLike, status?: number): Error {
   if (isDatabaseUnavailable(error, status)) {
-    logger.warn('db.unavailable', { what, code: error.code ?? '', status, reason: redact(String(error.message ?? '')) });
+    logger.warn('db.unavailable', {
+      what,
+      code: error.code ?? '',
+      status,
+      reason: redact(String(error.message ?? '')),
+      cause: redact(causeOf(error.details)),
+    });
     return new DatabaseUnavailableError();
   }
   return new Error(`Failed to ${what}: ${redact(String(error.message ?? ''))}`);

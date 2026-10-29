@@ -179,7 +179,13 @@ export const registerUsername = async (
 
   const wallet = ownerWallet.toLowerCase();
 
+  // A retry of a registration that committed but whose response was lost (a timeout, a dropped
+  // connection) finds the row it wrote: return it, rather than telling the user their own name is
+  // taken.
   const existing = await findByWallet(wallet);
+  if (existing?.username === normalized) {
+    return completeRegistration(existing, wallet);
+  }
   if (existing) {
     throw new ConflictError(
       'This wallet already has a registered username',
@@ -208,6 +214,12 @@ export const registerUsername = async (
 
   if (error) {
     if (error.code === PG_UNIQUE_VIOLATION) {
+      // Written by an earlier attempt of this same registration that the check above didn't see
+      // (the two requests ran concurrently).
+      const own = await findByWallet(wallet);
+      if (own?.username === normalized) {
+        return completeRegistration(own, wallet);
+      }
       // The DB now enforces unique(owner_wallet) too, so disambiguate by
       // constraint to give the client a useful error code.
       const isWalletConflict =
@@ -224,28 +236,32 @@ export const registerUsername = async (
     throw dbError('register username', error, status);
   }
 
-  // Smart default: register the connected wallet as the user's ethereum address.
-  // It's verified from the start — the user just signed in with this wallet.
-  // Best-effort — failure here doesn't fail the registration since the user
-  // can still add the address manually.
-  const { error: defaultErr } = await supabase
+  logger.info('user.registered', { username: normalized, wallet });
+  return completeRegistration(data as UserRecord, wallet);
+};
+
+// Smart default: register the connected wallet as the user's ethereum address.
+// It's verified from the start — the user just signed in with this wallet.
+// Best-effort — failure here doesn't fail the registration since the user
+// can still add the address manually. Never overwrites: a retried registration
+// runs this again, and by then the user may have changed their ethereum address.
+const completeRegistration = async (user: UserRecord, wallet: string): Promise<UserRecord> => {
+  const { error } = await supabase
     .from('wallet_mappings')
     .upsert(
       {
-        user_id: (data as UserRecord).id,
+        user_id: user.id,
         chain: 'ethereum',
         address: wallet,
         verified_at: new Date().toISOString(),
       },
-      { onConflict: 'user_id,chain' },
+      { onConflict: 'user_id,chain', ignoreDuplicates: true },
     );
-  if (defaultErr) {
+  if (error) {
     logger.warn('register.default_address_failed', {
-      userId: (data as UserRecord).id,
-      message: redact(defaultErr.message),
+      userId: user.id,
+      message: redact(error.message),
     });
   }
-
-  logger.info('user.registered', { username: normalized, wallet });
-  return data as UserRecord;
+  return user;
 };

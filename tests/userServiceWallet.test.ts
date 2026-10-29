@@ -15,6 +15,9 @@ interface MappingRow {
 const userStore = new Map<string, UserRow>();
 const mappingStore: MappingRow[] = [];
 let nextUserId = 1;
+// owner_wallet lookups to answer "no row" regardless of the store: a pre-check that ran before a
+// concurrent request's insert committed.
+let missWalletLookups = 0;
 
 // Simulate the postgres unique-violation surface that supabase-js returns.
 class UniqueViolation extends Error {
@@ -42,6 +45,10 @@ jest.mock('../src/config/supabase', () => {
       return builder;
     };
     builder.maybeSingle = () => {
+      if (missWalletLookups > 0 && filters.some((f) => f.column === 'owner_wallet')) {
+        missWalletLookups--;
+        return Promise.resolve({ data: null, error: null });
+      }
       const match = [...userStore.values()].find((u) =>
         filters.every(
           (f) => (u as unknown as Record<string, string>)[f.column] === f.value,
@@ -106,11 +113,12 @@ jest.mock('../src/config/supabase', () => {
 
   const mappingsBuilder = () => {
     const builder: Record<string, unknown> = {};
-    builder.upsert = (payload: MappingRow) => {
+    builder.upsert = (payload: MappingRow, options?: { ignoreDuplicates?: boolean }) => {
       const idx = mappingStore.findIndex(
         (m) => m.user_id === payload.user_id && m.chain === payload.chain,
       );
-      if (idx >= 0) mappingStore[idx] = payload;
+      if (idx >= 0 && !options?.ignoreDuplicates) mappingStore[idx] = payload;
+      else if (idx >= 0) { /* ON CONFLICT DO NOTHING */ }
       else mappingStore.push(payload);
       return Promise.resolve({ data: null, error: null });
     };
@@ -151,6 +159,7 @@ beforeEach(() => {
   userStore.clear();
   mappingStore.length = 0;
   nextUserId = 1;
+  missWalletLookups = 0;
   getOnchainOwner.mockReset();
   getOnchainOwner.mockResolvedValue({ kind: 'none' });
 });
@@ -201,6 +210,54 @@ describe('userService.registerUsername — uniqueness', () => {
     await registerUsername('derrick', '0xabc0000000000000000000000000000000000004');
     await expect(
       registerUsername('derrick', '0xabc0000000000000000000000000000000000005'),
+    ).rejects.toMatchObject({ errorCode: 'USERNAME_TAKEN' });
+  });
+});
+
+describe('userService.registerUsername — retries', () => {
+  const wallet = '0xabc0000000000000000000000000000000000006';
+
+  it('returns the existing account when the same wallet registers the same name again', async () => {
+    const first = await registerUsername('derrick', wallet);
+    const again = await registerUsername('Derrick', wallet.toUpperCase().replace('0X', '0x'));
+    expect(again).toMatchObject({ id: first.id, username: 'derrick', owner_wallet: wallet });
+    expect(userStore.size).toBe(1);
+  });
+
+  it('adds the default address when the first attempt committed without it', async () => {
+    // The first attempt's insert committed, then its response (and the address write) was lost.
+    userStore.set('u9', { id: 'u9', username: 'derrick', owner_wallet: wallet, created_at: new Date().toISOString() });
+    await registerUsername('derrick', wallet);
+    expect(mappingStore).toEqual([expect.objectContaining({ user_id: 'u9', chain: 'ethereum', address: wallet })]);
+  });
+
+  it('does not overwrite an ethereum address the user changed since', async () => {
+    const first = await registerUsername('derrick', wallet);
+    mappingStore[0] = { user_id: first.id, chain: 'ethereum', address: '0xdef0000000000000000000000000000000000001' };
+    await registerUsername('derrick', wallet);
+    expect(mappingStore).toEqual([
+      { user_id: first.id, chain: 'ethereum', address: '0xdef0000000000000000000000000000000000001' },
+    ]);
+  });
+
+  it('returns the account written by a concurrent attempt the pre-check missed', async () => {
+    const first = await registerUsername('derrick', wallet);
+    missWalletLookups = 1;
+    await expect(registerUsername('derrick', wallet)).resolves.toMatchObject({ id: first.id });
+    expect(userStore.size).toBe(1);
+  });
+
+  it('still refuses a different name from a wallet the pre-check missed', async () => {
+    await registerUsername('derrick', wallet);
+    missWalletLookups = 1;
+    await expect(registerUsername('other', wallet)).rejects.toMatchObject({ errorCode: 'WALLET_HAS_USERNAME' });
+  });
+
+  it('still refuses the same name from a different wallet', async () => {
+    await registerUsername('derrick', wallet);
+    missWalletLookups = 1;
+    await expect(
+      registerUsername('derrick', '0xabc0000000000000000000000000000000000007'),
     ).rejects.toMatchObject({ errorCode: 'USERNAME_TAKEN' });
   });
 });
