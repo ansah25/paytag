@@ -8,8 +8,8 @@ const envSchema = z.object({
   SUPABASE_URL: z.url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   // Per-request budget for Supabase calls (src/config/supabase.ts); past it the request is a 503.
-  // Normal queries take well under a second. See docs/ARCHITECTURE.md on a project resuming from
-  // a pause, whose first queries can be slower than this.
+  // Normal queries take well under a second. See "Resuming a paused project" in the README: the
+  // first queries after a restore can be slower than this.
   SUPABASE_TIMEOUT_MS: z.coerce.number().int().min(500).max(30_000).default(5_000),
 
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),

@@ -184,7 +184,7 @@ export const registerUsername = async (
   // taken.
   const existing = await findByWallet(wallet);
   if (existing?.username === normalized) {
-    return completeRegistration(existing, wallet);
+    return resumeRegistration(existing, wallet);
   }
   if (existing) {
     throw new ConflictError(
@@ -218,7 +218,7 @@ export const registerUsername = async (
       // (the two requests ran concurrently).
       const own = await findByWallet(wallet);
       if (own?.username === normalized) {
-        return completeRegistration(own, wallet);
+        return resumeRegistration(own, wallet);
       }
       // The DB now enforces unique(owner_wallet) too, so disambiguate by
       // constraint to give the client a useful error code.
@@ -239,6 +239,17 @@ export const registerUsername = async (
   logger.info('user.registered', { username: normalized, wallet });
   return completeRegistration(data as UserRecord, wallet);
 };
+
+// How long after an account's creation a repeated registration still counts as a retry of it.
+const REGISTER_RETRY_WINDOW_MS = 10 * 60 * 1000;
+
+// A repeated registration (same wallet, same name) returns the account. Within the retry window it
+// also fills in the default address the lost attempt may not have written; after that it changes
+// nothing, so a stale or replayed request can't bring back an address the user removed.
+const resumeRegistration = async (user: UserRecord, wallet: string): Promise<UserRecord> =>
+  Date.now() - Date.parse(user.created_at) < REGISTER_RETRY_WINDOW_MS
+    ? completeRegistration(user, wallet)
+    : user;
 
 // Smart default: register the connected wallet as the user's ethereum address.
 // It's verified from the start — the user just signed in with this wallet.

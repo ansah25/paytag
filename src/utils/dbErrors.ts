@@ -19,7 +19,8 @@ export interface DbErrorLike {
 }
 
 // For a failed fetch, postgrest-js's message is only "TypeError: fetch failed"; the reason (DNS,
-// refused, TLS, our timeout) is the "Caused by:" line it puts in `details`, ahead of a stack.
+// refused, TLS, a dropped connection) is the "Caused by:" line it puts in `details`, ahead of a
+// stack. A timeout has no cause: its message ("TimeoutError: ...") already says what happened.
 const causeOf = (details?: string | null): string =>
   /Caused by: ([^\n]*)/.exec(details ?? '')?.[1] ?? '';
 

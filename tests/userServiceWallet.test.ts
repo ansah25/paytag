@@ -231,6 +231,14 @@ describe('userService.registerUsername — retries', () => {
     expect(mappingStore).toEqual([expect.objectContaining({ user_id: 'u9', chain: 'ethereum', address: wallet })]);
   });
 
+  it('changes nothing for a repeat long after the account was created', async () => {
+    // The user removed their ethereum address; a stale or replayed request must not restore it.
+    const old = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    userStore.set('u9', { id: 'u9', username: 'derrick', owner_wallet: wallet, created_at: old });
+    await expect(registerUsername('derrick', wallet)).resolves.toMatchObject({ id: 'u9' });
+    expect(mappingStore).toEqual([]);
+  });
+
   it('does not overwrite an ethereum address the user changed since', async () => {
     const first = await registerUsername('derrick', wallet);
     mappingStore[0] = { user_id: first.id, chain: 'ethereum', address: '0xdef0000000000000000000000000000000000001' };
