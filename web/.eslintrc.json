@@ -1,3 +1,44 @@
 {
-  "extends": "next/core-web-vitals"
+  "extends": "next/core-web-vitals",
+  "rules": {
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "wagmi/connectors",
+            "message": "The connectors barrel bundles every wallet SDK. Import `injected` from @wagmi/core. Adding a connector changes which advisories are reachable: update web/DEPENDENCY_ADVISORIES.md first."
+          }
+        ],
+        "patterns": [
+          {
+            "group": [
+              "@wagmi/connectors",
+              "@wagmi/connectors/*",
+              "@walletconnect/*",
+              "@reown/*",
+              "@coinbase/*",
+              "@base-org/*",
+              "@metamask/*",
+              "@gemini-wallet/*",
+              "porto",
+              "porto/*"
+            ],
+            "message": "Wallet SDKs are installed by wagmi but never bundled; that is why their advisories are unreachable. Adding one changes that: update web/DEPENDENCY_ADVISORIES.md first."
+          }
+        ]
+      }
+    ],
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "ImportExpression[source.value=/^(wagmi.connectors|@wagmi.connectors|@walletconnect.|@reown.|@coinbase.|@base-org.|@metamask.|@gemini-wallet.|porto($|[^-a-z0-9._~]))/]",
+        "message": "Lazy-loading a wallet SDK still bundles it (as a lazy chunk), so its advisories become reachable. Update web/DEPENDENCY_ADVISORIES.md first."
+      },
+      {
+        "selector": "CallExpression[callee.name='require'][arguments.0.value=/^(wagmi.connectors|@wagmi.connectors|@walletconnect.|@reown.|@coinbase.|@base-org.|@metamask.|@gemini-wallet.|porto($|[^-a-z0-9._~]))/]",
+        "message": "Requiring a wallet SDK bundles it, so its advisories become reachable. Update web/DEPENDENCY_ADVISORIES.md first."
+      }
+    ]
+  }
 }

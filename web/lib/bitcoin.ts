@@ -48,8 +48,10 @@ const errorMessage = (err: unknown): string => {
 };
 
 /**
- * Open the Sats Connect modal so the user picks a wallet (Xverse, Leather, …)
- * and authorizes us to read their Payment-purpose address. The wallet's
+ * Ask the wallet for its Payment-purpose address. Sats Connect's top-level
+ * `request` shows no wallet picker: it talks to
+ * `window.XverseProviders.BitcoinProvider` (Xverse), falling back to
+ * `window.BitcoinProvider`. The wallet's
  * configured network governs whether mainnet or testnet is used; the app's
  * `network` prop is only used for routing the explorer link.
  */
