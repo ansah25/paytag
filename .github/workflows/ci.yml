@@ -123,6 +123,12 @@ jobs:
       - name: Type-check web
         run: npm run -w paytag-web type-check
 
+      # `next build` below also lints, but only app/, components/, lib/ and with less
+      # obvious output. This covers all of web/ and fails early. It carries the guard
+      # that keeps wallet SDKs out of the bundle (web/DEPENDENCY_ADVISORIES.md).
+      - name: Lint web
+        run: npm run -w paytag-web lint
+
       # lib/onchain: tx state machine, revert decoding, and the shared codec vectors
       # (reads tests/onchain/vectors.json, which this checkout includes).
       - name: Test web
