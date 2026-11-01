@@ -392,11 +392,11 @@ The repo is an npm workspace; `npm install` at the root installs everything.
 
 ## Security
 
-- Nonces are single-use and TTL-bounded
-- JWT secret enforced ≥ 32 chars
-- Service-role Supabase key isolated to backend
-- RLS enabled on all tables (public read on `users` + `wallet_mappings`, no public access to `auth_nonces` / `auth_nonces_used`)
-- No private keys are ever stored or transmitted
+- **Sign-in is SIWE (EIP-4361).** The server writes the message, bound to an allow-listed domain (`SIWE_DOMAINS`, checked against `Origin`). Nonces are stateless (MAC-bound to the wallet), TTL-bounded and single-use (spent nonces are recorded in `auth_nonces_used`).
+- **Sessions:** JWTs last at most 24h and carry `iss`/`aud`. The API won't start with a `JWT_SECRET` shorter than 32 characters. `POST /auth/logout-all` revokes every session for the account (`users.session_version`).
+- **No public database access.** Only the API touches the database, as `service_role`; the service-role key never leaves the backend. Migration 0006 dropped the old public read policies on `users` and `wallet_mappings` and revoked every privilege from `anon`, `authenticated` and `PUBLIC`. Migration 0007 makes new tables, sequences and functions start closed too. RLS stays enabled on every table with no policies, so even a leaked anon key reads nothing. `supabase/ops/exposure_check.sql` lists anything still exposed.
+- **Web:** an enforced Content-Security-Policy with `frame-ancestors 'none'` (`web/security-headers.js`).
+- **Non-custodial:** no private keys are stored or transmitted, and funds never pass through Paytag.
 
 ## License
 
