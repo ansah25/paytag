@@ -397,6 +397,7 @@ The repo is an npm workspace; `npm install` at the root installs everything.
 - **No public database access.** Only the API touches the database, as `service_role`; the service-role key never leaves the backend. Migration 0006 dropped the old public read policies on `users` and `wallet_mappings`, revoked their grants from `anon`, `authenticated` and `PUBLIC`, and dropped the unused `auth_nonces` table. Every other table locks itself down in the migration that creates it: 0003 and 0004 revoke `anon` and `authenticated`, and 0008 also revokes `PUBLIC` on its tables and functions. Migration 0007 makes new tables, sequences and functions that our migrations create start closed too. RLS stays enabled on every table with no policies, so even a leaked anon key reads nothing from `public`. `supabase/ops/exposure_check.sql` lists anything still exposed.
 - **Web:** an enforced Content-Security-Policy with `frame-ancestors 'none'` (`web/security-headers.js`).
 - **Non-custodial:** no private keys are stored or transmitted, and funds never pass through Paytag.
+- **Dependency advisories:** `npm audit` still lists entries in the web workspace. [`web/DEPENDENCY_ADVISORIES.md`](web/DEPENDENCY_ADVISORIES.md) traces each one to its install path, says why it can't be reached, and lists the changes that would void that.
 
 ## License
 
