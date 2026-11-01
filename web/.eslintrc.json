@@ -7,7 +7,7 @@
         "paths": [
           {
             "name": "wagmi/connectors",
-            "message": "The connectors barrel bundles every wallet SDK. Import `injected` from @wagmi/core. Adding a connector changes which advisories are reachable: update web/DEPENDENCY_ADVISORIES.md first."
+            "message": "The connectors barrel bundles every wallet SDK. Import `injected` from @wagmi/core. Adding a connector changes which advisories are reachable: Update web/DEPENDENCY_ADVISORIES.md first."
           }
         ],
         "patterns": [
@@ -21,10 +21,11 @@
               "@base-org/*",
               "@metamask/*",
               "@gemini-wallet/*",
+              "@safe-global/*",
               "porto",
               "porto/*"
             ],
-            "message": "Wallet SDKs are installed by wagmi but never bundled; that is why their advisories are unreachable. Adding one changes that: update web/DEPENDENCY_ADVISORIES.md first."
+            "message": "Wallet SDKs are installed by wagmi but never bundled; that is why their advisories are unreachable. Adding one changes that: Update web/DEPENDENCY_ADVISORIES.md first."
           }
         ]
       }
@@ -32,11 +33,19 @@
     "no-restricted-syntax": [
       "error",
       {
-        "selector": "ImportExpression[source.value=/^(wagmi.connectors|@wagmi.connectors|@walletconnect.|@reown.|@coinbase.|@base-org.|@metamask.|@gemini-wallet.|porto($|[^-a-z0-9._~]))/]",
+        "selector": "ImportExpression[source.value=/^(wagmi[^-a-z0-9._~]connectors($|[^-a-z0-9._~])|@wagmi[^-a-z0-9._~]connectors($|[^-a-z0-9._~])|porto($|[^-a-z0-9._~])|@walletconnect[^-a-z0-9._~]|@reown[^-a-z0-9._~]|@coinbase[^-a-z0-9._~]|@base-org[^-a-z0-9._~]|@metamask[^-a-z0-9._~]|@gemini-wallet[^-a-z0-9._~]|@safe-global[^-a-z0-9._~])/]",
         "message": "Lazy-loading a wallet SDK still bundles it (as a lazy chunk), so its advisories become reachable. Update web/DEPENDENCY_ADVISORIES.md first."
       },
       {
-        "selector": "CallExpression[callee.name='require'][arguments.0.value=/^(wagmi.connectors|@wagmi.connectors|@walletconnect.|@reown.|@coinbase.|@base-org.|@metamask.|@gemini-wallet.|porto($|[^-a-z0-9._~]))/]",
+        "selector": "ImportExpression[source.quasis.0.value.raw=/^(wagmi[^-a-z0-9._~]connectors($|[^-a-z0-9._~])|@wagmi[^-a-z0-9._~]connectors($|[^-a-z0-9._~])|porto($|[^-a-z0-9._~])|@walletconnect[^-a-z0-9._~]|@reown[^-a-z0-9._~]|@coinbase[^-a-z0-9._~]|@base-org[^-a-z0-9._~]|@metamask[^-a-z0-9._~]|@gemini-wallet[^-a-z0-9._~]|@safe-global[^-a-z0-9._~])/]",
+        "message": "Lazy-loading a wallet SDK still bundles it (as a lazy chunk), so its advisories become reachable. Update web/DEPENDENCY_ADVISORIES.md first."
+      },
+      {
+        "selector": "CallExpression[callee.name='require'][arguments.0.value=/^(wagmi[^-a-z0-9._~]connectors($|[^-a-z0-9._~])|@wagmi[^-a-z0-9._~]connectors($|[^-a-z0-9._~])|porto($|[^-a-z0-9._~])|@walletconnect[^-a-z0-9._~]|@reown[^-a-z0-9._~]|@coinbase[^-a-z0-9._~]|@base-org[^-a-z0-9._~]|@metamask[^-a-z0-9._~]|@gemini-wallet[^-a-z0-9._~]|@safe-global[^-a-z0-9._~])/]",
+        "message": "Requiring a wallet SDK bundles it, so its advisories become reachable. Update web/DEPENDENCY_ADVISORIES.md first."
+      },
+      {
+        "selector": "CallExpression[callee.name='require'][arguments.0.quasis.0.value.raw=/^(wagmi[^-a-z0-9._~]connectors($|[^-a-z0-9._~])|@wagmi[^-a-z0-9._~]connectors($|[^-a-z0-9._~])|porto($|[^-a-z0-9._~])|@walletconnect[^-a-z0-9._~]|@reown[^-a-z0-9._~]|@coinbase[^-a-z0-9._~]|@base-org[^-a-z0-9._~]|@metamask[^-a-z0-9._~]|@gemini-wallet[^-a-z0-9._~]|@safe-global[^-a-z0-9._~])/]",
         "message": "Requiring a wallet SDK bundles it, so its advisories become reachable. Update web/DEPENDENCY_ADVISORIES.md first."
       }
     ]

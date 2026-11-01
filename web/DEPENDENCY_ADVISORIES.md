@@ -4,11 +4,11 @@
 
 ## Scope of this analysis
 
-- **Checked:** 2026-11-01, on the lockfile in the same commit as this file (`git log -1 -- web/DEPENDENCY_ADVISORIES.md`), branched from `main` at `ff17980`.
+- **Checked:** 2026-11-01, on the lockfile in the same commit as this file (`git log -1 -- web/DEPENDENCY_ADVISORIES.md`), on top of `main` at `b7c3700`.
 - **Versions:** `next@15.5.28`, `wagmi@2.19.5` (+ `@wagmi/core@2.22.1`), `@solana/web3.js@1.99.0`, `sats-connect@4.2.1` (with `@sats-connect/core@0.10.0`), `valibot@1.5.0`.
 - **Call sites checked** (each conclusion depends on these and nothing else):
   - EVM: `lib/wagmi.ts` builds the only wagmi config, with one connector, `injected()` from `@wagmi/core`.
-  - Bitcoin: `lib/bitcoin.ts` calls `request('getAccounts')` and `request('sendTransfer')`. `lib/pay/useBitcoinPay.ts` calls `getDefaultProvider()` and `getProviders()`. Nothing else from sats-connect is used.
+  - Bitcoin: `lib/bitcoin.ts` calls `request('getAccounts')` and `request('sendTransfer')`. `lib/pay/useBitcoinPay.ts` calls `getDefaultProvider()` and `getProviders()`. Apart from the `AddressPurpose` constant, nothing else from sats-connect is used.
   - Solana: `lib/solana.ts` and `lib/pay/useSolanaPay.ts`, both only in the browser (`next/dynamic`, `ssr: false`).
 
 Any change to those call sites voids the matching section below. [When to revisit](#when-to-revisit) lists the specific triggers.
@@ -63,7 +63,7 @@ None of these copies is bundled. The app's viem uses `ws@8.21.0` (fixed), and on
 
 Positive controls, to show the search finds code that is there: `eip6963:requestProvider` and `personal_sign` (wagmi `injected()` + SIWE) are found in client chunks, and `XverseProviders` in the Bitcoin chunk.
 
-**The guard.** This holds only while nobody imports the tree. `web/.eslintrc.json` rejects `wagmi/connectors`, `@wagmi/connectors`, `@walletconnect/*`, `@reown/*`, `@coinbase/*`, `@base-org/*`, `@metamask/*`, `@gemini-wallet/*` and `porto` in three forms: static `import`/`export … from` (`no-restricted-imports`), dynamic `import()` and `require()` (`no-restricted-syntax`). Lazy loading is included because a lazy chunk is still shipped. The lint script runs on the whole of `web/` (`next lint --dir .`), and CI runs it. A wallet SDK that arrives some other way, for example a new dependency that bundles one internally, would not be caught; that is what re-running the bundle check below is for.
+**The guard.** This holds only while nobody imports the tree. `web/.eslintrc.json` rejects `wagmi/connectors`, `@wagmi/connectors`, `@walletconnect/*`, `@reown/*`, `@coinbase/*`, `@base-org/*`, `@metamask/*`, `@gemini-wallet/*`, `@safe-global/*` and `porto`. It catches them in three forms: static `import`/`export … from` (`no-restricted-imports`), and dynamic `import()` and `require()` (`no-restricted-syntax`, with string or template-literal specifiers). Lazy loading is included because a lazy chunk is still shipped. The lint script runs on the whole of `web/` (`next lint --dir .`), and CI runs it. A wallet SDK that arrives some other way would not be caught: a new dependency that bundles one internally, or a specifier computed at runtime. That is what re-running the bundle check below is for. `next lint` is deprecated and removed in Next 16, so that upgrade must move the lint script to the ESLint CLI (`npx @next/codemod next-lint-to-eslint-cli .`), or the guard stops running.
 
 ## 2. Bitcoin (sats-connect, 3 packages)
 
@@ -76,11 +76,11 @@ sats-connect **is** bundled. The Bitcoin pay flow loads it as a lazy chunk (`com
 The reason is that **axios never makes a request on Paytag's paths.**
 - In core 0.10.0, axios is used only by `RunesApi` (Runes mint/etch/order calls against `ordinals.xverse.app`).
 - `RunesApi` is constructed only by the `runes_*` cases of `SatsConnectAdapter.request`, and the adapters (`XverseAdapter`, `UnisatAdapter`, `FordefiAdapter`, `BaseAdapter`) are used only by sats-connect's `Wallet` default export. Paytag doesn't use that export.
-- Paytag's `request('getAccounts')` and `request('sendTransfer')` are core's top-level `request`. It calls `window.XverseProviders.BitcoinProvider.request` directly (falling back to `window.BitcoinProvider`), with no adapter and no `RunesApi`.
+- Paytag's `request('getAccounts')` and `request('sendTransfer')` are core's top-level `request`. It calls `window.XverseProviders.BitcoinProvider.request` directly (falling back to `window.BitcoinProvider`), with no adapter and no `RunesApi`. Before the first method it also sends the wallet a `getInfo` (cached for the page), which goes the same way.
 - `getProviders()` returns `window.btc_providers`, and `getDefaultProvider()` reads `localStorage['sats-connect_defaultProvider']`. Neither touches axios.
 - The prototype-pollution gadgets would also need a separate pollution bug to start from, and they only fire when axios builds a request.
 
-**This holds only while** Paytag makes no sats-connect call other than those four. Any `runes_*` method, `wallet_connect`, `signPsbt` or another new call needs this section redone first.
+**This holds only while** Paytag calls no sats-connect function other than those four (the `getInfo` that `request` sends itself is fine). Any `runes_*` method, `wallet_connect`, `signPsbt` or another new call needs this section redone first.
 
 **valibot** (`1.5.0` via an override; it was `1.1.0`) is the only other validation code that sees wallet data. Core 0.10.0 checks each wallet reply in `requestInternal` with `v.is()` against the JSON-RPC envelope schemas (`object` / `literal` / `number` / `string` / `unknown`). No schema uses `emoji()`, and nothing calls `flatten()`; `record()` appears only in the outgoing `signPsbt` params schema. So neither valibot advisory fixed by 1.5.0 (GHSA-vqpr-j7v3-hqw9, ReDoS in `EMOJI_REGEX`; GHSA-5qjj-4xww-7phc, `record()` + `flatten()`) was reachable, but valibot is on a path that ships and 1.5.0 is the same major. That is why it is overridden rather than argued.
 
@@ -153,7 +153,7 @@ Each conclusion above depends on specific code. Redo the matching section when a
 - **Group 1:** adding any wagmi connector (WalletConnect, Coinbase Wallet / Base Account for smart-account sign-in, MetaMask SDK), or any dependency that bundles a wallet SDK. The tree then becomes shipped code, and most of its advisories need a real fix. The lint rule fails first, on purpose. Upgrading to wagmi 3 makes connectors optional peer dependencies, which would clear this group while `injected()` is the only connector. If that upgrade is done, build a mock-wallet end-to-end harness against the current version first, so the upgrade is tested against a known-good baseline.
 - **Group 2:** calling any sats-connect method besides `getAccounts` and `sendTransfer` (especially `runes_*`, which uses axios), using the sats-connect `Wallet` default export, or upgrading sats-connect. Re-run the smoke-test table for any core version change.
 - **Group 3:** importing `@solana/web3.js` (or `lib/solana.ts`) from server code.
-- **Group 4:** accepting CSS from users anywhere, or upgrading Next (the postcss pin changes).
+- **Group 4:** accepting CSS from users anywhere, or upgrading Next (the postcss pin changes; and on Next 16, `next lint` is gone, which disables the group 1 guard unless the lint script is migrated).
 - **Any new advisory:** run the commands below and check whether its package falls into an existing group.
 
 ## Reproducing
